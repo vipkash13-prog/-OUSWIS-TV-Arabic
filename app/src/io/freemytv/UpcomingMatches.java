@@ -33,7 +33,7 @@ public final class UpcomingMatches {
         long now=System.currentTimeMillis();
         SimpleDateFormat day=new SimpleDateFormat("yyyyMMdd",Locale.US);
         day.setTimeZone(TimeZone.getTimeZone("UTC"));
-        String from=day.format(new Date(now));
+        String from=day.format(new Date(now-2L*24*60*60*1000));
         String to=day.format(new Date(now+14L*24*60*60*1000));
         for(String league:leagues){
             if(league==null||!league.matches("[a-z0-9.]+"))continue;
@@ -84,7 +84,7 @@ public final class UpcomingMatches {
                 // Unavailable competition must not prevent other competitions from loading.
             }finally{if(c!=null)c.disconnect();}
         }
-        java.util.Collections.sort(out,(a,b)->a.kickoff.compareTo(b.kickoff));
+        // Kickoff strings are formatted day/month; preserve the provider order until a typed timestamp model is introduced.
         return out;
     }
 }
