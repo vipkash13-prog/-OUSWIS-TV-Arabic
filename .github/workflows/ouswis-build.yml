@@ -67,7 +67,8 @@ jobs:
           else
             test "$published_package" = io.ouswis.tv.standalone
           fi
-          curl --fail --location --silent --show-error https://github.com/vipkash13-prog/-OUSWIS-TV-Arabic/releases/download/matches-preview-1/OUSWIS-TV-preview.apk --output "$RUNNER_TEMP/legacy.apk"
+          gh release download matches-preview-1 --repo "$GITHUB_REPOSITORY" --pattern OUSWIS-TV-preview.apk --output "$RUNNER_TEMP/legacy.apk"
+          printf '474cb5b4b38c7f9e32c9077e05368635b42d6e13d4952e60d52d3a3c784db120  %s\n' "$RUNNER_TEMP/legacy.apk" | sha256sum --check
           echo "LEGACY_APK=$RUNNER_TEMP/legacy.apk" >> "$GITHUB_ENV"
           echo "INAPP_RELEASE_CODE=$published_code" >> "$GITHUB_ENV"
           export INAPP_RELEASE_CODE="$published_code"
