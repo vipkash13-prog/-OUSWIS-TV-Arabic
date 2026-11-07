@@ -1,0 +1,35 @@
+
+{
+  "language": "العربية",
+  "code": "ar",
+  "direction": "rtl",
+  "translations": {
+    "Home": "الرئيسية",
+    "Settings": "الإعدادات",
+    "Home Settings": "إعدادات الشاشة الرئيسية",
+    "Apps": "التطبيقات",
+    "Movies": "الأفلام",
+    "Shows": "المسلسلات",
+    "Continue Watching": "متابعة المشاهدة",
+    "Weather": "الطقس",
+    "Search": "بحث",
+    "Favorites": "المفضلة",
+    "Language": "اللغة",
+    "Arabic": "العربية",
+    "English": "الإنجليزية",
+    "Save": "حفظ",
+    "Cancel": "إلغاء",
+    "Back": "رجوع",
+    "Install": "تثبيت",
+    "Update": "تحديث",
+    "About": "حول التطبيق",
+    "Appearance": "المظهر",
+    "Clock": "الساعة",
+    "Location": "الموقع",
+    "Refresh": "تحديث",
+    "Select apps": "اختيار التطبيقات",
+    "Trending": "الرائج",
+    "Privacy": "الخصوصية",
+    "Done": "تم"
+  }
+}
