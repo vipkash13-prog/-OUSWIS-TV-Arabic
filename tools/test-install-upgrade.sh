@@ -51,7 +51,9 @@ first_before="$(sed -n 's/^ *firstInstallTime=//p' "$evidence/before.txt" | head
 [ -n "$first_before" ]
 "$adb_bin" shell "mkdir -p /data/user/0/io.ouswis.tv.standalone/files; echo ouswis-preserved > /data/user/0/io.ouswis.tv.standalone/files/upgrade-probe; chown $uid_before:$uid_before /data/user/0/io.ouswis.tv.standalone/files /data/user/0/io.ouswis.tv.standalone/files/upgrade-probe"
 
-if [ -n "${INAPP_RELEASE_CODE:-}" ]; then
+if [ "${PRIVATE_RELEASES:-false}" = true ]; then
+  echo "NOT VERIFIED: in-app downloads cannot access this private GitHub repository without authentication. The actual published signed APK is installed as the baseline, and the final APK upgrade/data-retention test runs below. Manual downloads require a signed-in GitHub browser." | tee "$evidence/inapp-update.log"
+elif [ -n "${INAPP_RELEASE_CODE:-}" ]; then
   python3 tools/test-inapp-update.py "$evidence"
 fi
 "$adb_bin" install --no-streaming -r "$update"

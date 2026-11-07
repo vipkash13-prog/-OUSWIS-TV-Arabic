@@ -58,6 +58,7 @@ jobs:
           python3 tools/translate.py --check
           node tests/ArabicI18nTest.js
           bash tools/test-update-release.sh
+          echo "PRIVATE_RELEASES=$(gh api "repos/$GITHUB_REPOSITORY" --jq .private)" >> "$GITHUB_ENV"
           published_tag=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)
           published_code=$(python3 -c 'import re,sys; print(re.fullmatch(r"v1\.0-official-(\d+)-\d+-\d+",sys.argv[1])[1])' "$published_tag")
           gh release download "$published_tag" --repo "$GITHUB_REPOSITORY" --pattern OUSWIS-TV-1.0.apk --output "$RUNNER_TEMP/published.apk"
@@ -88,6 +89,9 @@ jobs:
           PYCODE
           ./build.sh --generic --release
           cp FreeMyTV.apk "$RUNNER_TEMP/previous.apk"
+          if [ "$(gh api "repos/$GITHUB_REPOSITORY" --jq .private)" = true ]; then
+            cp "$RUNNER_TEMP/published.apk" "$RUNNER_TEMP/previous.apk"
+          fi
       - name: Build final signed OUSWIS TV 1.0
         run: |
           ./build.sh --generic --release
@@ -149,12 +153,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
+          shopt -s nullglob
           cp FreeMyTV.apk OUSWIS-TV-1.0.apk
           code=$(sed -n 's/.*android:versionCode="\([0-9]*\)".*/\1/p' app/AndroidManifest.xml)
           tag="v1.0-official-${code}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           gh release create "$tag" OUSWIS-TV-1.0.apk install-evidence/install-upgrade.log install-evidence/coexistence.log install-evidence/inapp-update.log install-evidence/inapp-*.png install-evidence/prayer-widget.log install-evidence/prayer-times-jeddah.png install-evidence/new-app-icon.png install-evidence/feature-navigation.log install-evidence/live-playback.log install-evidence/live-input-single.png install-evidence/live-fit-16x9.png install-evidence/live-fit-4x3.png install-evidence/settings-features.png install-evidence/xtream-login.png install-evidence/matches-screen.png install-evidence/matches-details.png install-evidence/home-features.png \
             --target "$GITHUB_SHA" --title "OUSWIS TV 1.0 — Official" \
-            --notes "Independent package io.ouswis.tv.standalone, OUSWIS TV 1.0. Android 14 emulator installation alongside the supplied legacy io.freemytv APK passed; the legacy APK, app ID, first-install time and private data were retained. Standalone update/data-retention and feature/remote/playback checks passed. Permanent repository signing certificate aa97cc826f59fa9ba8d37f4ba3978bd968bcc8f94a0f5aa9b458f55151a177b7. No app removal is needed. Settings belong to the new independent app. Physical MECOOL testing is separate."
+            --notes "Independent package io.ouswis.tv.standalone, OUSWIS TV 1.0. Android 14 emulator installation alongside the supplied legacy io.freemytv APK passed; the legacy APK, app ID, first-install time and private data were retained. Standalone update/data-retention and feature/remote/playback checks passed. Permanent repository signing certificate aa97cc826f59fa9ba8d37f4ba3978bd968bcc8f94a0f5aa9b458f55151a177b7. No app removal is needed. Settings belong to the new independent app. See inapp-update.log for online updater availability; private repositories require a signed-in manual download. Physical MECOOL testing is separate."
           echo "https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/OUSWIS-TV-1.0.apk" >> "$GITHUB_STEP_SUMMARY"
       - name: Remove runner signing key
         if: always()
