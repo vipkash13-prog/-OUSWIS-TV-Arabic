@@ -29,6 +29,7 @@ public final class MatchCarouselView extends FrameLayout {
     private final TextView league, teams, time, next;
     private final TextView side;
     private final FrameLayout mainCard;
+    private final LayoutParams frontParams, sideParams;
     private int index=0;
     private boolean active=false;
     private OnMatchSelected listener;
@@ -52,13 +53,16 @@ public final class MatchCarouselView extends FrameLayout {
         mainCard=new FrameLayout(context);
         mainCard.setBackground(glass);
         mainCard.setElevation(dp(18));
-        addView(mainCard,new LayoutParams((int)(getResources().getDisplayMetrics().widthPixels*.48f),-1,Gravity.LEFT));
+        frontParams=new LayoutParams(0,-1,Gravity.LEFT|Gravity.CENTER_VERTICAL);
+        addView(mainCard,frontParams);
         side=new TextView(context);
         side.setTextColor(Color.WHITE);side.setTextSize(18);side.setGravity(Gravity.CENTER);
         GradientDrawable sideGlass=new GradientDrawable(GradientDrawable.Orientation.TL_BR,new int[]{0xCC27334B,0xF0101929});
         sideGlass.setCornerRadius(dp(22));sideGlass.setStroke(dp(1),0x88A5B6D3);
         side.setBackground(sideGlass);
-        addView(side,new LayoutParams((int)(getResources().getDisplayMetrics().widthPixels*.24f),-1,Gravity.RIGHT));
+        sideParams=new LayoutParams(0,-1,Gravity.RIGHT|Gravity.CENTER_VERTICAL);
+        addView(side,sideParams);
+        mainCard.bringToFront();
         side.setRotationY(-35f);
         side.setCameraDistance(dp(12000));
         mainCard.setCameraDistance(dp(12000));
@@ -70,11 +74,22 @@ public final class MatchCarouselView extends FrameLayout {
         time=label(16,0xFFE4C68C); next=label(13,0xFFB1C2DD);
         content.addView(league); content.addView(teams); content.addView(time); content.addView(next);
         setOnFocusChangeListener((v,focused)->{
-            animate().scaleX(focused?1.04f:1f).scaleY(focused?1.04f:1f).setDuration(180).start();
+            mainCard.animate().scaleX(focused?1.025f:1f).scaleY(focused?1.025f:1f).setDuration(180).start();
             if(focused)handler.removeCallbacks(advance);
             else schedule();
         });
         render();
+    }
+    @Override protected void onSizeChanged(int w,int h,int oldw,int oldh){
+        super.onSizeChanged(w,h,oldw,oldh);
+        if(w>0){
+            frontParams.width=(int)(w*.78f);
+            sideParams.width=(int)(w*.49f);
+            mainCard.setLayoutParams(frontParams);
+            side.setLayoutParams(sideParams);
+            side.setPivotX(sideParams.width*.12f);
+            side.setPivotY(h*.5f);
+        }
     }
     private int dp(int n){return (int)(n*getResources().getDisplayMetrics().density+.5f);}
     private TextView label(int size,int color) {
