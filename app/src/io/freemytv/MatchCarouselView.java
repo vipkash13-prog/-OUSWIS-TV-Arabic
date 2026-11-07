@@ -27,6 +27,8 @@ public final class MatchCarouselView extends FrameLayout {
     private final List<Match> matches=new ArrayList<>();
     private final Handler handler=new Handler(Looper.getMainLooper());
     private final TextView league, teams, time, next;
+    private final TextView side;
+    private final FrameLayout mainCard;
     private int index=0;
     private boolean active=false;
     private OnMatchSelected listener;
@@ -46,12 +48,24 @@ public final class MatchCarouselView extends FrameLayout {
                 new int[]{0xE91A2030,0xF20C1424});
         glass.setCornerRadius(dp(24));
         glass.setStroke(dp(1),0x88A5B6D3);
-        setBackground(glass);
-        setPadding(dp(20),dp(14),dp(20),dp(14));
+        setPadding(dp(8),dp(12),dp(8),dp(12));
+        mainCard=new FrameLayout(context);
+        mainCard.setBackground(glass);
+        mainCard.setElevation(dp(18));
+        addView(mainCard,new LayoutParams((int)(getResources().getDisplayMetrics().widthPixels*.48f),-1,Gravity.LEFT));
+        side=new TextView(context);
+        side.setTextColor(Color.WHITE);side.setTextSize(18);side.setGravity(Gravity.CENTER);
+        GradientDrawable sideGlass=new GradientDrawable(GradientDrawable.Orientation.TL_BR,new int[]{0xCC27334B,0xF0101929});
+        sideGlass.setCornerRadius(dp(22));sideGlass.setStroke(dp(1),0x88A5B6D3);
+        side.setBackground(sideGlass);
+        addView(side,new LayoutParams((int)(getResources().getDisplayMetrics().widthPixels*.24f),-1,Gravity.RIGHT));
+        side.setRotationY(-35f);
+        side.setCameraDistance(dp(12000));
+        mainCard.setCameraDistance(dp(12000));
         LinearLayout content=new LinearLayout(context);
         content.setGravity(Gravity.CENTER);
         content.setOrientation(LinearLayout.VERTICAL);
-        addView(content,new LayoutParams(-1,-1));
+        mainCard.addView(content,new LayoutParams(-1,-1));
         league=label(15,0xFFCBD6E8); teams=label(25,Color.WHITE);
         time=label(16,0xFFE4C68C); next=label(13,0xFFB1C2DD);
         content.addView(league); content.addView(teams); content.addView(time); content.addView(next);
@@ -78,25 +92,36 @@ public final class MatchCarouselView extends FrameLayout {
         if(matches.isEmpty()){
             league.setText("مباريات قادمة");
             teams.setText("لا توجد مباريات متاحة");
-            time.setText("");next.setText("");return;
+            time.setText("");next.setText("");side.setVisibility(INVISIBLE);return;
         }
         Match m=matches.get(index);
         league.setText(m.competition);
         teams.setText(m.home+"   VS   "+m.away);
         time.setText(m.kickoff+"  •  بتوقيت السعودية");
         next.setText((index+1)+" / "+matches.size());
+        Match upcoming=matches.get((index+1)%matches.size());
+        side.setText(matches.size()>1?upcoming.home+"\nVS\n"+upcoming.away:"");
+        side.setVisibility(matches.size()>1?VISIBLE:INVISIBLE);
     }
     private void show(int target,boolean animated) {
         if(matches.isEmpty())return;
         index=(target+matches.size())%matches.size();
+        mainCard.animate().cancel();
+        side.animate().cancel();
         if(animated){
-            animate().cancel();
-            animate().alpha(.55f).translationX(dp(-12)).setDuration(110).withEndAction(()->{
-                render();
-                setTranslationX(dp(12));
-                animate().alpha(1f).translationX(0).setDuration(200).start();
-            }).start();
-        } else render();
+            mainCard.setPivotX(mainCard.getWidth()*.85f);
+            mainCard.setPivotY(mainCard.getHeight()*.5f);
+            mainCard.animate().rotationY(25f).translationX(-dp(26)).alpha(.5f)
+                    .setDuration(140).withEndAction(()->{
+                        render();
+                        mainCard.setRotationY(-25f);
+                        mainCard.setTranslationX(dp(26));
+                        mainCard.animate().rotationY(0f).translationX(0f).alpha(1f)
+                                .setDuration(280).start();
+                        side.setRotationY(-48f);
+                        side.animate().rotationY(-35f).alpha(1f).setDuration(280).start();
+                    }).start();
+        }else render();
     }
     private void schedule(){
         handler.removeCallbacks(advance);
