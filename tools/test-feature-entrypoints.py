@@ -23,8 +23,16 @@ def note(text):
     (OUT / 'feature-navigation.log').write_text('\n'.join(log) + '\n')
 
 def xml():
-    adb('shell', 'uiautomator', 'dump', '/data/local/tmp/ouswis-features.xml')
-    return ET.fromstring(adb('shell', 'cat', '/data/local/tmp/ouswis-features.xml'))
+    for attempt in range(3):
+        try:
+            adb('shell', 'uiautomator', 'dump', '/data/local/tmp/ouswis-features.xml')
+            return ET.fromstring(adb('shell', 'cat', '/data/local/tmp/ouswis-features.xml'))
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, ET.ParseError):
+            if attempt == 2:
+                screenshot('navigation-failure.png')
+                (OUT / 'navigation-logcat.txt').write_text(adb('logcat', '-d', '-t', '300'))
+                raise
+            time.sleep(2)
 
 def activity(name):
     for _ in range(20):
