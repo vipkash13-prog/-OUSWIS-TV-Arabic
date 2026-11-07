@@ -11,6 +11,7 @@ import sys
 import tempfile
 import threading
 import time
+import xml.etree.ElementTree as ET
 from urllib.parse import parse_qs, urlparse
 from PIL import Image
 
@@ -29,10 +30,14 @@ def keys(*names):
     for name in names:
         adb('shell', 'input', 'keyevent', 'KEYCODE_' + name)
 
+def ui():
+    adb('shell', 'uiautomator', 'dump', '/data/local/tmp/live-ui.xml')
+    return ET.fromstring(adb('shell', 'cat', '/data/local/tmp/live-ui.xml'))
+
 assert adb('shell', 'getprop', 'ro.kernel.qemu').strip() == '1'
 with tempfile.TemporaryDirectory() as temp:
     clips = []
-    for index, (size, color) in enumerate((('640x360', 'red'), ('640x480', 'blue'))):
+    for index, (size, color) in enumerate((('640x360', 'red'), ('640x480', 'blue'), ('640x360', 'yellow'))):
         path = Path(temp) / (str(index) + '.ts')
         subprocess.run(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', 'color=c='+color+':s='+size+':r=10',
                         '-vf', 'drawbox=x=0:y=0:w=iw:h=ih:color=lime:t=12', '-t', '20',
@@ -48,13 +53,14 @@ with tempfile.TemporaryDirectory() as temp:
             if url.path == '/player_api.php':
                 query = parse_qs(url.query)
                 if query.get('action') == ['get_live_streams']:
-                    body = [{'name': 'Test 16:9', 'stream_id': '1'}, {'name': 'Test 4:3', 'stream_id': '2'}]
+                    body = [{'name': 'Test 16:9', 'stream_id': '1'}, {'name': 'Test 4:3', 'stream_id': '2'},
+                            {'name': 'Test third', 'stream_id': '3'}]
                 else:
                     body = {'user_info': {'status': 'Active'}}
                 data = json.dumps(body).encode()
                 kind = 'application/json'
-            elif url.path in ('/live/demo/demo/1.ts', '/live/demo/demo/2.ts'):
-                data = clips[0 if url.path.endswith('/1.ts') else 1]
+            elif url.path in ('/live/demo/demo/1.ts', '/live/demo/demo/2.ts', '/live/demo/demo/3.ts'):
+                data = clips[int(url.path.rsplit('/',1)[1].split('.')[0])-1]
                 kind = 'video/mp2t'
             else:
                 self.send_error(404)
@@ -83,12 +89,21 @@ with tempfile.TemporaryDirectory() as temp:
                '</string><string name="user">demo</string><string name="pass">demo</string></map>')
     subprocess.run([ADB, 'shell', 'cat > '+pref], input=content.encode(), check=True)
     adb('shell', 'chown', uid+':'+uid, folder, pref)
-    adb('shell', 'am', 'start', '-W', '-n', 'io.freemytv/io.freemytv.SettingsActivity')
-    keys('DPAD_RIGHT', 'DPAD_LEFT', 'DPAD_CENTER')
+    adb('shell', 'am', 'start', '-W', '-n', 'io.freemytv/io.freemytv.HomeActivity')
+    keys('DPAD_DOWN')
+    nodes = list(ui().iter('node'))
+    height = Image.open(BytesIO(subprocess.check_output([ADB, 'exec-out', 'screencap', '-p']))).height
+    entries = [n for n in nodes if n.get('text') in ('Live TV', 'البث التلفزيوني المباشر')
+               and int(re.findall(r'\d+', n.get('bounds'))[1]) > height//3]
+    assert len(entries) == 1, 'Expected exactly one Live TV tile in the drawer, inside Inputs: '+str(len(entries))
+    (OUT / 'live-input-single.png').write_bytes(subprocess.check_output([ADB, 'exec-out', 'screencap', '-p']))
+    note('PASS: drawer has one Live TV tile in Inputs, with no duplicate shortcut.')
+    x1,y1,x2,y2 = map(int,re.findall(r'\d+',entries[0].get('bounds')))
+    adb('shell','input','tap',str((x1+x2)//2),str((y1+y2)//2))
     time.sleep(3)
     keys('DPAD_CENTER')
 
-    def complete_frame(vw, vh, filename, percent=100):
+    def complete_frame(vw, vh, filename, percent=100, color=None):
         for _ in range(25):
             time.sleep(1)
             png = subprocess.check_output([ADB, 'exec-out', 'screencap', '-p'], timeout=60)
@@ -104,7 +119,9 @@ with tempfile.TemporaryDirectory() as temp:
             def green(x, y):
                 r,g,b = image.getpixel((x,y))
                 return g > 160 and r < 100 and b < 100
-            if all(green(x,y) for x,y in points):
+            r,g,b = image.getpixel((width//2,height//2))
+            right_color = color is None or (color == 'yellow' and r > 180 and g > 180 and b < 100)
+            if right_color and all(green(x,y) for x,y in points):
                 (OUT / filename).write_bytes(png)
                 note('PASS: decoded '+str(vw)+'x'+str(vh)+' channel retains all four green frame borders, centered without crop.')
                 return
@@ -121,9 +138,20 @@ with tempfile.TemporaryDirectory() as temp:
     keys('DPAD_DOWN')
     complete_frame(640, 480, 'live-fit-4x3.png')
     note('PASS: DOWN switches to the next channel during playback.')
+    keys('DPAD_DOWN')
+    complete_frame(640, 360, 'live-third-channel.png', color='yellow')
+    note('PASS: DOWN from channel 2 opens channel 3, rather than the earlier channel 1.')
+    keys('DPAD_DOWN')
+    complete_frame(640, 360, 'live-third-channel.png', color='yellow')
+    note('PASS: DOWN at the last channel stays there without jumping to the top.')
+    keys('DPAD_UP')
+    complete_frame(640, 480, 'live-fit-4x3.png')
     keys('DPAD_UP')
     complete_frame(640, 360, 'live-fit-16x9.png')
     note('PASS: UP switches back to the previous channel during playback.')
+    keys('DPAD_UP')
+    complete_frame(640, 360, 'live-fit-16x9.png')
+    note('PASS: UP at the first channel stays there without jumping to the bottom.')
     keys('BACK')
     server.shutdown()
     adb('reverse', '--remove', 'tcp:'+str(port))

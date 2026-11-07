@@ -327,7 +327,6 @@ final class HomeApps {
     /** Live TV, the HDMI inputs with a device sending a signal, and All Apps. */
     static List<Item> shortcuts(Context c) {
         List<Item> items = new ArrayList<>();
-        items.add(shortcut(XTREAM_LIVE, TOP_LIVE, Ui.tr("Live TV"), "live_tv"));
         items.add(shortcut(MATCHES, TOP_MATCHES, Ui.tr("Matches"), "tv"));
         items.addAll(inputs(c));
         items.add(shortcut(ALL_APPS, "all", Ui.tr("All Apps"), "apps"));
@@ -368,7 +367,6 @@ final class HomeApps {
     /** Shortcuts in the bottom drawer. */
     static List<Item> drawerShortcuts(Context c) {
         List<Item> items = new ArrayList<>();
-        items.add(shortcut(XTREAM_LIVE, TOP_LIVE, Ui.tr("Live TV"), "live_tv"));
         items.add(shortcut(MATCHES, TOP_MATCHES, Ui.tr("Matches"), "tv"));
         items.add(shortcut(ALL_APPS, "all", Ui.tr("All Apps"), "apps"));
         items.add(shortcut(SETTINGS, "settings", Ui.tr("Home Settings"), "settings"));
@@ -420,7 +418,7 @@ final class HomeApps {
     /** For the bottom drawer: live TV and every HDMI input (the ones with no device are shown dimmed). */
     static List<Item> allInputs(Context c) {
         List<Item> items = new ArrayList<>();
-        if (liveTv(c) != null) items.add(shortcut(LIVE_TV, "live", Ui.tr("Live TV"), "tv"));
+        items.add(shortcut(LIVE_TV, TOP_LIVE, Ui.tr("Live TV"), "tv"));
         items.addAll(inputs(c, true));
         return items;
     }
@@ -644,7 +642,7 @@ final class HomeApps {
                 break;
             case LIVE_TV:
                 intent = "ouswis_matches".equals(it.key) ? new Intent(a, MatchesActivity.class) :
-                        "xtream_live".equals(it.key) ? new Intent(a, XtreamActivity.class) : liveTv(a);
+                        new Intent(a, XtreamActivity.class);
                 break;
             case INPUT:
                 if (HomeMode.AMAZON && fireInput(a, it)) return true;

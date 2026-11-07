@@ -130,6 +130,7 @@ public final class XtreamActivity extends Activity {
         }).start();
     }
     private void showChannels() {
+        int selected=Math.max(0,current);
         if(video!=null){video.stopPlayback();video=null;} current=-1; shell();
         LinearLayout header=new LinearLayout(this); root.addView(header);
         TextView heading=title("البث المباشر  |  Live TV ("+channels.size()+")",22);
@@ -140,6 +141,7 @@ public final class XtreamActivity extends Activity {
         ArrayList<String> names=new ArrayList<>();for(Channel c:channels)names.add(c.name);
         ArrayAdapter<String> adapter=new ArrayAdapter<>(this,android.R.layout.simple_list_item_1,names);
         list.setAdapter(adapter);list.setOnItemClickListener((parent,view,pos,id)->play(pos));
+        list.setSelection(selected);
         list.requestFocus();
     }
     private void play(int index) {
@@ -182,7 +184,7 @@ public final class XtreamActivity extends Activity {
             int y=Math.round(player.getHeight()*(100-picturePercent)/200f);
             player.setPadding(x,y,x,y);
         });
-        channelLabel.setText(channels.get(current).name+"  •  "+picturePercent+"%  •  ←→ الحجم / Size  •  ↑↓ القنوات");
+        channelLabel.setText((current+1)+"/"+channels.size()+"  "+channels.get(current).name+"  •  "+picturePercent+"%  •  ←→ الحجم / Size  •  ↑↓ القنوات");
         channelLabel.setVisibility(View.VISIBLE);
         main.removeCallbacks(hideLabel);
         main.postDelayed(hideLabel,3000);
@@ -196,8 +198,10 @@ public final class XtreamActivity extends Activity {
             boolean resize=key==KeyEvent.KEYCODE_DPAD_LEFT||key==KeyEvent.KEYCODE_DPAD_RIGHT;
             if(previous||next||pause||resize){
                 if(event.getAction()==KeyEvent.ACTION_DOWN&&event.getRepeatCount()==0){
-                    if(previous)play((current+channels.size()-1)%channels.size());
-                    else if(next)play((current+1)%channels.size());
+                    if(previous||next){
+                        int index=Math.max(0,Math.min(channels.size()-1,current+(next?1:-1)));
+                        if(index!=current)play(index); else applyPictureSize();
+                    }
                     else if(resize){
                         picturePercent=Math.max(80,Math.min(100,picturePercent+(key==KeyEvent.KEYCODE_DPAD_LEFT?-5:5)));
                         getPreferences(0).edit().putInt("picturePercent",picturePercent).apply();
