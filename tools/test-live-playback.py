@@ -101,8 +101,9 @@ with tempfile.TemporaryDirectory() as temp:
     x1,y1,x2,y2 = map(int,re.findall(r'\d+',entries[0].get('bounds')))
     adb('shell','input','tap',str((x1+x2)//2),str((y1+y2)//2))
     time.sleep(3)
-    # The tile was tapped: leave Android touch mode and select the first list row before OK.
-    keys('DPAD_UP','DPAD_CENTER')
+    first = next(n for n in ui().iter('node') if n.get('text') == 'Test 16:9')
+    x1,y1,x2,y2 = map(int,re.findall(r'\d+',first.get('bounds')))
+    adb('shell','input','tap',str((x1+x2)//2),str((y1+y2)//2))
 
     def complete_frame(vw, vh, filename, percent=100, color=None):
         for _ in range(25):
