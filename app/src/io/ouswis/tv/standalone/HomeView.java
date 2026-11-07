@@ -1666,11 +1666,16 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         float radius = (TILE_RADIUS + SHELF_PAD) * k;
         tmp.set(platterRect);
         tmp.offset(0, 18 * k);
-        shadow.setColor(tone(0x1F000000, 0x52000000));
-        shadows.draw(c, tmp, radius, SHADOW_BLUR * k, shadow);
-        // White glass by day; smoked glass at night.
-        scene.liquid(c, platterRect, radius, tone(glassLight(), SMOKE), tone(0.42f, 0.12f), tone(0.03f, 0.08f),
-                tone(30, 34) * k, tone(22, 28) * k, tone(0.65f, 0.95f), 1);
+        shadow.setColor(tone(0x28000000, 0x66000000));
+        shadows.draw(c, tmp, radius, SHADOW_BLUR * k * 1.15f, shadow);
+        // Cinematic frosted glass: liquid glass with delicate silver-specular rim highlight
+        scene.liquid(c, platterRect, radius, tone(glassLight(), SMOKE), tone(0.46f, 0.16f), tone(0.04f, 0.09f),
+                tone(32, 36) * k, tone(24, 30) * k, tone(0.70f, 0.95f), 1);
+        rim.setShader(null);
+        rim.setColor(tone(0x22FFFFFF, 0x1AFFFFFF));
+        rim.setStrokeWidth(1.2f * k);
+        c.drawRoundRect(platterRect, radius, radius, rim);
+        rim.setStrokeWidth(2.5f * k);
     }
 
     // What's playing, cut to fit the tab row and the clock's row: once per title, never while drawing.
@@ -1885,6 +1890,13 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             drawLogo(c, it, cell, s, 0);
         } else {
             if (it.tile != null) roundImage(c, it.tile, it.tileShader, cell, r);
+        }
+        if (fc > 0.01f) {
+            rim.setShader(null);
+            rim.setColor(Ui.alpha(0xFFFFFFFF, 0.45f * fc));
+            rim.setStrokeWidth(2.0f * k);
+            c.drawRoundRect(cell, r, r, rim);
+            rim.setStrokeWidth(2.5f * k);
         }
     }
 
@@ -2441,8 +2453,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                 gridLabels[i] = TextUtils.ellipsize(others.get(i).label, gridLabel, (GRID_W - 10) * k, TextUtils.TruncateAt.END).toString();
             }
         }
-        float gridWidth = COLUMNS * GRID_W + (COLUMNS - 1) * GRID_GAP;
-        float left = (1920 - gridWidth) / 2 * k;
+        float gridWidth = (COLUMNS * GRID_W + (COLUMNS - 1) * GRID_GAP) * k;
+        float left = (w - gridWidth) / 2f;
         float gridTop = GRID_TOP * k;
         for (int i = 0; i < n; i++) {
             int r = i / COLUMNS, col = i % COLUMNS;
@@ -2917,8 +2929,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
      * next one under the pointer (retargetGrid's rows).
      */
     private int gridAt(float x, float y, boolean still) {
-        float gridWidth = COLUMNS * GRID_W + (COLUMNS - 1) * GRID_GAP;
-        float left = (1920 - gridWidth) / 2 * k, top = GRID_TOP * k - scroll.value * GRID_ROW * k;
+        float gridWidth = (COLUMNS * GRID_W + (COLUMNS - 1) * GRID_GAP) * k;
+        float left = (w - gridWidth) / 2f, top = GRID_TOP * k - scroll.value * GRID_ROW * k;
         float cw = GRID_W * k, ch = GRID_H * k, gap = GRID_GAP * k, row = GRID_ROW * k;
         for (int i = 0; i < others.size(); i++) {
             int r = i / COLUMNS, col = i % COLUMNS;
@@ -3667,8 +3679,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                 break;
             case GRID: {
                 if (!sheetOpen || i >= others.size()) return false;
-                float gridWidth = COLUMNS * GRID_W + (COLUMNS - 1) * GRID_GAP;
-                float x = ((1920 - gridWidth) / 2 + (i % COLUMNS) * (GRID_W + GRID_GAP)) * k;
+                float gridWidth = (COLUMNS * GRID_W + (COLUMNS - 1) * GRID_GAP) * k;
+                float x = (w - gridWidth) / 2f + (i % COLUMNS) * (GRID_W + GRID_GAP) * k;
                 float y = (GRID_TOP + (i / COLUMNS - scroll.target) * GRID_ROW) * k;
                 a11yRect.set(x, y, x + GRID_W * k, y + GRID_H * k);
                 dy = 0;

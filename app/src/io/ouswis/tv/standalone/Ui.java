@@ -69,6 +69,10 @@ final class Ui {
      * or, with "auto", the TV's own (English when there is no catalogue for it).
      */
     static volatile String language = "en";
+    /** True if the current language is right-to-left (e.g. Arabic). */
+    static boolean isRtl() {
+        return "ar".equals(language) || (locale != null && locale.getLanguage().equals("ar"));
+    }
     /** Bumped when the language changes: text cached by the screens is made again. */
     static volatile int generation;
     static Typeface thin, light, displayMedium, displaySemibold, regular, medium, semibold;
