@@ -6,7 +6,18 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 GENERIC=false
-for arg in "$@"; do [ "$arg" = "--generic" ] && GENERIC=true; done
+RELEASE=false
+for arg in "$@"; do
+  case "$arg" in
+    --generic) GENERIC=true ;;
+    --release) RELEASE=true ;;
+    *) echo "Usage: ./build.sh [--generic] [--release]" >&2; exit 2 ;;
+  esac
+done
+if $RELEASE && { [ -z "${FREEMYTV_KEYSTORE:-}" ] || [ -z "${FREEMYTV_KEYSTORE_PASS:-}" ]; }; then
+  echo "Release build requires the existing io.freemytv signing key; refusing to generate a replacement." >&2
+  exit 1
+fi
 
 # --- Tools
 SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
@@ -165,7 +176,7 @@ mkdir -p out/res/xml
 "$BT/aapt2" compile --dir out/res -o out/res-gen.zip
 # Fonts uncompressed: Android reads them straight from the APK.
 "$BT/aapt2" link -o out/base.apk -I "$AJ" --manifest app/AndroidManifest.xml --java out/gen out/res.zip out/res-gen.zip \
-  --min-sdk-version 26 --target-sdk-version 33 --rename-manifest-package io.ouswis.tv.standalone -A app/assets -0 ttf
+  --min-sdk-version 26 --target-sdk-version 33 -A app/assets -0 ttf
 # Windows aapt2 packs assets with backslash separators ("assets/symbols\x.png") and Android
 # cannot find them: the home screen loses its icons and fonts. Rename the zip entries to "/".
 case "$(uname -s 2>/dev/null)" in
@@ -239,5 +250,12 @@ else
       -storepass freemytv -keypass freemytv -dname "CN=Free My TV" >/dev/null 2>&1
   fi
   apksigner sign --ks freemytv.keystore --ks-pass pass:freemytv --key-pass pass:freemytv --out FreeMyTV.apk out/aligned.apk
+fi
+if $RELEASE; then
+  apksigner verify --print-certs FreeMyTV.apk > out/signature.txt
+  grep -Fq 'Signer #1 certificate SHA-256 digest: 01fe551ebdc98f87521e57223787da29ad660cbc87cfc16ef3e9e18678cc7bee' out/signature.txt || {
+    echo "Wrong release certificate: this APK cannot update the existing io.freemytv app." >&2
+    exit 1
+  }
 fi
 echo "Built FreeMyTV.apk ($(du -h FreeMyTV.apk | cut -f1)). Install: adb install -r FreeMyTV.apk"

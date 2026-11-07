@@ -2,17 +2,18 @@ name: OUSWIS TV signed APK
 on:
   push:
     branches: [main]
-    paths: ['app/**', 'build.sh', '.github/workflows/ouswis-build.yml', 'signing/**']
+    paths: ['app/**', 'build.sh', 'tools/**', '.github/workflows/ouswis-build.yml']
   workflow_dispatch:
 permissions:
   contents: write
+concurrency:
+  group: ouswis-release
+  cancel-in-progress: false
 jobs:
   android:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          persist-credentials: true
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -23,54 +24,76 @@ jobs:
           set +o pipefail
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$RUNNER_TEMP/sdk" "build-tools;34.0.0" "platforms;android-34" > /dev/null
           echo "ANDROID_HOME=$RUNNER_TEMP/sdk" >> "$GITHUB_ENV"
-      - name: Verify signing secret
+      - name: Restore existing update signing key
         env:
-          KEY_PASS: ${{ secrets.OUSWIS_SIGNING_PASSWORD }}
-        run: test -n "$KEY_PASS"
-      - name: Restore or create permanent signing key
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KEYSTORE_BASE64" && test -n "$KEYSTORE_PASSWORD" || {
+            echo "Add KEYSTORE_BASE64 and KEYSTORE_PASSWORD for the existing io.freemytv key. Never generate a replacement key."
+            exit 1
+          }
+          umask 077
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/ouswis-update.keystore"
+          echo "FREEMYTV_KEYSTORE=$RUNNER_TEMP/ouswis-update.keystore" >> "$GITHUB_ENV"
+      - name: Check translations and build upgrade baseline
         env:
-          KEY_PASS: ${{ secrets.OUSWIS_SIGNING_PASSWORD }}
+          FREEMYTV_KEYSTORE_PASS: ${{ secrets.KEYSTORE_PASSWORD }}
+        shell: bash
         run: |
-          KEY_PASS="$(printf %s "$KEY_PASS" | sha256sum | cut -d " " -f1)"
-          mkdir -p signing
-          if [ -f signing/ouswis-release.jks.b64 ]; then
-            base64 -d signing/ouswis-release.jks.b64 > "$RUNNER_TEMP/ouswis-release.jks"
-          else
-            keytool -genkeypair -keystore "$RUNNER_TEMP/ouswis-release.jks" -storetype PKCS12 -alias ouswis -keyalg RSA -keysize 3072 -validity 10000 -storepass "$KEY_PASS" -keypass "$KEY_PASS" -dname "CN=OUSWIS TV, O=OUSWIS" -noprompt
-            base64 -w0 "$RUNNER_TEMP/ouswis-release.jks" > signing/ouswis-release.jks.b64
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add signing/ouswis-release.jks.b64
-            git commit -m "Preserve encrypted OUSWIS signing key for future updates"
-            git push
-          fi
-          echo "FREEMYTV_KEYSTORE=$RUNNER_TEMP/ouswis-release.jks" >> "$GITHUB_ENV"
-          echo "FREEMYTV_KEYSTORE_PASS=$KEY_PASS" >> "$GITHUB_ENV"
-      - name: Build signed APK
-        run: ./build.sh --generic
-      - name: Verify APK signature
+          set -euo pipefail
+          python3 tools/translate.py --check
+          node tests/ArabicI18nTest.js
+          cp app/AndroidManifest.xml "$RUNNER_TEMP/AndroidManifest.xml"
+          trap 'cp "$RUNNER_TEMP/AndroidManifest.xml" app/AndroidManifest.xml' EXIT
+          python3 - <<'PYCODE'
+          import re
+          from pathlib import Path
+          p = Path('app/AndroidManifest.xml')
+          s = p.read_text()
+          code = int(re.search(r'android:versionCode="(\d+)"', s)[1])
+          assert code >= 10002
+          p.write_text(re.sub(r'android:versionCode="\d+"', f'android:versionCode="{code - 1}"', s, count=1))
+          PYCODE
+          ./build.sh --generic --release
+          cp FreeMyTV.apk "$RUNNER_TEMP/previous.apk"
+      - name: Build final signed OUSWIS TV 1.0
+        env:
+          FREEMYTV_KEYSTORE_PASS: ${{ secrets.KEYSTORE_PASSWORD }}
         run: |
-          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose --print-certs FreeMyTV.apk
-      - name: Verify real Android installation in emulator
+          ./build.sh --generic --release
+          python3 tools/verify-release-apk.py FreeMyTV.apk
+          bash tools/test-remote.sh
+          bash tools/test-order.sh
+      - name: Actual Android 14 installation and update test
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 30
+          api-level: 34
+          target: default
           arch: x86_64
-          profile: pixel_2
           disable-animations: true
-          script: |
-            adb install -r FreeMyTV.apk
-            adb shell pm path io.ouswis.tv.standalone | grep -q 'package:'
-      - name: Save APK
+          script: bash tools/test-install-upgrade.sh "$RUNNER_TEMP/previous.apk" FreeMyTV.apk install-evidence
+      - name: Save install evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: OUSWIS-TV-1.0-STANDALONE-SIGNED
-          path: FreeMyTV.apk
-          if-no-files-found: error
-      - name: Publish direct APK download
+          name: OUSWIS-TV-Android14-install-evidence
+          path: install-evidence/
+          if-no-files-found: warn
+      - name: Publish only after successful installation
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          cp FreeMyTV.apk OUSWIS-TV-1.0-STANDALONE.apk
-          gh release view v1.0-standalone >/dev/null 2>&1 && gh release upload v1.0-standalone OUSWIS-TV-1.0-STANDALONE.apk --clobber || gh release create v1.0-standalone OUSWIS-TV-1.0-STANDALONE.apk --title "OUSWIS TV 1.0 Standalone" --notes "Independent Android TV Arabic build, signed with persistent OUSWIS release key."
+          cp FreeMyTV.apk OUSWIS-TV-1.0.apk
+          code=$(sed -n 's/.*android:versionCode="\([0-9]*\)".*/\1/p' app/AndroidManifest.xml)
+          tag="v1.0-build${code}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          gh release create "$tag" OUSWIS-TV-1.0.apk install-evidence/install-upgrade.log \
+            --target "$GITHUB_SHA" --title "OUSWIS TV 1.0" \
+            --notes "Android 14 emulator installation and in-place upgrade passed. Package io.freemytv; requires the matching existing signing certificate. Physical MECOOL testing is separate."
+          echo "https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/OUSWIS-TV-1.0.apk" >> "$GITHUB_STEP_SUMMARY"
+      - name: Remove runner signing key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/ouswis-update.keystore"

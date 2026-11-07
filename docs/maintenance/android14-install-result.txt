@@ -1,0 +1,27 @@
+OUSWIS TV 1.0 - Android 14 installation audit (2026-11-07)
+
+Package: io.freemytv
+Display version: 1.0
+Internal versionCode: 10002
+Certificate SHA-256: 01fe551ebdc98f87521e57223787da29ad660cbc87cfc16ef3e9e18678cc7bee
+APK SHA-256: 15cf2f02365441c8ad2181a83821f6e679ebb8ca60d966425bd43d6dacd51659
+
+Actual emulator: Android 14, API 34, AOSP x86_64, userdebug.
+Build fingerprint: Android/sdk_phone64_x86_64/emu64x:14/UE1A.230829.036.A1/11228894:userdebug/test-keys
+
+1. Saved previous io.freemytv APK, code 10001, installed: Success.
+2. Published standalone APK rejected:
+   INSTALL_FAILED_CONFLICTING_PROVIDER: provider io.freemytv.photos already used by io.freemytv.
+3. Same-key io.freemytv APK with code 6 rejected:
+   INSTALL_FAILED_VERSION_DOWNGRADE: Update version code 6 is older than current 10001.
+4. Corrected code 10002 APK installed over previous app with adb install -r: Success.
+5. Exact final branded APK installed with adb install -r: Success.
+6. Original appId 10141 retained, firstInstallTime 2026-11-07 06:08:41 retained, private-data sentinel retained.
+7. SettingsActivity launched: Status: ok.
+8. Pulled installed base.apk and compared SHA-256 with release file: identical (15cf2f02365441c8ad2181a83821f6e679ebb8ca60d966425bd43d6dacd51659).
+
+No uninstall or app data clear was used. No physical device was modified.
+Matches 3D, upcoming matches, Xtream Codes player, Arabic catalogue and remote logic preserved.
+Full project checks passed, including 438 translation keys, 48 remote assertions and 997 order assertions.
+No physical MECOOL test, Google Play Protect/file-manager test, or live provider playback test is claimed.
+Updating another io.freemytv installation additionally requires that its signing certificate match the fingerprint above.
