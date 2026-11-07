@@ -33,7 +33,7 @@ public final class MatchesActivity extends Activity {
     private TextView heading;
     private LinearLayout window;
     private volatile boolean active;
-    private boolean closing, firstLoad=true;
+    private boolean closing, firstLoad=true, initialFocus=true;
     private int selectedTab;
     private Future<?> request;
     private final Runnable refresh=new Runnable(){
@@ -117,6 +117,15 @@ public final class MatchesActivity extends Activity {
         carousel.requestFocus();
         window.setScaleX(0.92f);window.setScaleY(0.92f);window.setAlpha(0f);
         window.animate().scaleX(1f).scaleY(1f).alpha(1f).setDuration(260).start();
+    }
+
+    @Override public void onWindowFocusChanged(boolean hasFocus){
+        super.onWindowFocusChanged(hasFocus);
+        if(hasFocus&&initialFocus&&carousel!=null){
+            initialFocus=false;
+            // RTL layout resolution can otherwise give the first tab the initial window focus.
+            carousel.post(()->carousel.requestFocus());
+        }
     }
 
     private GradientDrawable chip(int color,float scale){

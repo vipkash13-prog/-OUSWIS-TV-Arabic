@@ -67,7 +67,8 @@ public final class MatchCarouselView extends View {
         super(context);
         setFocusable(true);
         setClickable(true);
-        setFocusableInTouchMode(false);
+        // The Android installer leaves touch mode active; remote playback must still start focused.
+        setFocusableInTouchMode(true);
         setOnFocusChangeListener((v,focused)->invalidate());
         line.setStyle(Paint.Style.STROKE);
         ink.setTypeface(Typeface.create(Typeface.DEFAULT,Typeface.BOLD));
