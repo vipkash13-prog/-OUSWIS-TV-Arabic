@@ -2,7 +2,7 @@ name: OUSWIS TV signed APK
 on:
   push:
     branches: [main]
-    paths: ['app/**', 'build.sh', 'tools/**', '.github/workflows/ouswis-build.yml']
+    paths: ['app/**', 'build.sh', 'tools/**', '.github/workflows/ouswis-build.yml', 'signing/ouswis-release.jks.b64']
   workflow_dispatch:
 permissions:
   contents: write
@@ -24,23 +24,32 @@ jobs:
           set +o pipefail
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$RUNNER_TEMP/sdk" "build-tools;34.0.0" "platforms;android-34" > /dev/null
           echo "ANDROID_HOME=$RUNNER_TEMP/sdk" >> "$GITHUB_ENV"
-      - name: Restore existing update signing key
+      - name: Restore the permanent repository signing key
         env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_PASS: ${{ secrets.OUSWIS_SIGNING_PASSWORD }}
         shell: bash
         run: |
           set -euo pipefail
-          test -n "$KEYSTORE_BASE64" && test -n "$KEYSTORE_PASSWORD" || {
-            echo "Add KEYSTORE_BASE64 and KEYSTORE_PASSWORD for the existing io.freemytv key. Never generate a replacement key."
-            exit 1
-          }
+          test -n "$KEY_PASS" || { echo "OUSWIS_SIGNING_PASSWORD is required. No replacement key will be generated."; exit 1; }
+          test -s signing/ouswis-release.jks.b64 || { echo "Permanent signing key is missing. Restore it; do not create a new one."; exit 1; }
           umask 077
-          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/ouswis-update.keystore"
-          echo "FREEMYTV_KEYSTORE=$RUNNER_TEMP/ouswis-update.keystore" >> "$GITHUB_ENV"
+          base64 --decode signing/ouswis-release.jks.b64 > "$RUNNER_TEMP/ouswis-official.keystore"
+          derived=$(printf '%s' "$KEY_PASS" | sha256sum | cut -d ' ' -f1)
+          echo "::add-mask::$derived"
+          echo "FREEMYTV_KEYSTORE=$RUNNER_TEMP/ouswis-official.keystore" >> "$GITHUB_ENV"
+          echo "FREEMYTV_KEYSTORE_PASS=$derived" >> "$GITHUB_ENV"
+      - name: Assign increasing internal build number
+        shell: python
+        run: |
+          import os, re
+          from pathlib import Path
+          p = Path('app/AndroidManifest.xml')
+          s = p.read_text()
+          base = int(re.search(r'android:versionCode="(\d+)"', s)[1])
+          code = base + int(os.environ['GITHUB_RUN_NUMBER'])
+          s = re.sub(r'android:versionCode="\d+"', f'android:versionCode="{code}"', s, count=1)
+          p.write_text(s)
       - name: Check translations and build upgrade baseline
-        env:
-          FREEMYTV_KEYSTORE_PASS: ${{ secrets.KEYSTORE_PASSWORD }}
         shell: bash
         run: |
           set -euo pipefail
@@ -54,14 +63,12 @@ jobs:
           p = Path('app/AndroidManifest.xml')
           s = p.read_text()
           code = int(re.search(r'android:versionCode="(\d+)"', s)[1])
-          assert code >= 10002
+          assert code >= 10003
           p.write_text(re.sub(r'android:versionCode="\d+"', f'android:versionCode="{code - 1}"', s, count=1))
           PYCODE
           ./build.sh --generic --release
           cp FreeMyTV.apk "$RUNNER_TEMP/previous.apk"
       - name: Build final signed OUSWIS TV 1.0
-        env:
-          FREEMYTV_KEYSTORE_PASS: ${{ secrets.KEYSTORE_PASSWORD }}
         run: |
           ./build.sh --generic --release
           python3 tools/verify-release-apk.py FreeMyTV.apk
@@ -89,11 +96,11 @@ jobs:
         run: |
           cp FreeMyTV.apk OUSWIS-TV-1.0.apk
           code=$(sed -n 's/.*android:versionCode="\([0-9]*\)".*/\1/p' app/AndroidManifest.xml)
-          tag="v1.0-build${code}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          tag="v1.0-official-${code}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           gh release create "$tag" OUSWIS-TV-1.0.apk install-evidence/install-upgrade.log \
-            --target "$GITHUB_SHA" --title "OUSWIS TV 1.0" \
-            --notes "Android 14 emulator installation and in-place upgrade passed. Package io.freemytv; requires the matching existing signing certificate. Physical MECOOL testing is separate."
+            --target "$GITHUB_SHA" --title "OUSWIS TV 1.0 — Official" \
+            --notes "Android 14 emulator installation and in-place upgrade passed. Permanent repository signing certificate aa97cc826f59fa9ba8d37f4ba3978bd968bcc8f94a0f5aa9b458f55151a177b7. Install once after replacing an older differently-signed build; future official APKs update this identity in place. Package io.freemytv, display version 1.0. Physical MECOOL testing is separate."
           echo "https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/OUSWIS-TV-1.0.apk" >> "$GITHUB_STEP_SUMMARY"
       - name: Remove runner signing key
         if: always()
-        run: rm -f "$RUNNER_TEMP/ouswis-update.keystore"
+        run: rm -f "$RUNNER_TEMP/ouswis-official.keystore"

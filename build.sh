@@ -15,7 +15,7 @@ for arg in "$@"; do
   esac
 done
 if $RELEASE && { [ -z "${FREEMYTV_KEYSTORE:-}" ] || [ -z "${FREEMYTV_KEYSTORE_PASS:-}" ]; }; then
-  echo "Release build requires the existing io.freemytv signing key; refusing to generate a replacement." >&2
+  echo "Release build requires the permanent repository signing key; refusing to generate a replacement." >&2
   exit 1
 fi
 
@@ -253,8 +253,8 @@ else
 fi
 if $RELEASE; then
   apksigner verify --print-certs FreeMyTV.apk > out/signature.txt
-  grep -Fq 'Signer #1 certificate SHA-256 digest: 01fe551ebdc98f87521e57223787da29ad660cbc87cfc16ef3e9e18678cc7bee' out/signature.txt || {
-    echo "Wrong release certificate: this APK cannot update the existing io.freemytv app." >&2
+  grep -Fq 'Signer #1 certificate SHA-256 digest: aa97cc826f59fa9ba8d37f4ba3978bd968bcc8f94a0f5aa9b458f55151a177b7' out/signature.txt || {
+    echo "Wrong release certificate: this APK does not use the permanent OUSWIS TV signing identity." >&2
     exit 1
   }
 fi

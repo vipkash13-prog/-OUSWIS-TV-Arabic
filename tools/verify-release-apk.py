@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reject APKs which cannot update the existing OUSWIS io.freemytv installation."""
+"""Verify APK metadata and the permanent repository signing identity."""
 import argparse
 import hashlib
 import os
@@ -7,7 +7,7 @@ from pathlib import Path
 import re
 import subprocess
 
-CERT = "01fe551ebdc98f87521e57223787da29ad660cbc87cfc16ef3e9e18678cc7bee"
+CERT = "aa97cc826f59fa9ba8d37f4ba3978bd968bcc8f94a0f5aa9b458f55151a177b7"
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -19,7 +19,7 @@ def main():
     package = re.search(r"^package: name='([^']+)' versionCode='(\d+)' versionName='([^']+)'", badging, re.M)
     assert package, "Package metadata unavailable"
     assert package[1] == "io.freemytv", "Package must remain io.freemytv for an in-place update"
-    assert int(package[2]) >= 10002, "versionCode must exceed the saved previous build (10001)"
+    assert int(package[2]) >= 10003, "versionCode must exceed the official-release baseline"
     assert package[3] == "1.0", "Display version must stay 1.0"
     assert "application-label:'OUSWIS TV'" in badging, "Application label must be OUSWIS TV"
     assert "launchable-activity: name='io.freemytv.SettingsActivity'" in badging

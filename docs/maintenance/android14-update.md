@@ -1,42 +1,38 @@
-# OUSWIS TV 1.0: Android 14 installation and updates
+# OUSWIS TV 1.0 official signing and updates
 
-The update package remains `io.freemytv`, the identity reported for the installed app. Java component names and provider authorities keep that identity. The build must not rename it to `io.ouswis.tv.standalone`.
+## One permanent identity
 
-The display name is OUSWIS TV and `versionName` is 1.0. The internal `versionCode` is 10002, greater than the saved previous io.freemytv build (10001). Android compares versionCode for installation; the user-visible version can remain 1.0.
+The official package is `io.freemytv`, with visible name OUSWIS TV and visible version 1.0. Every official APK uses the repository's already-existing encrypted key, `signing/ouswis-release.jks.b64`, and the existing `OUSWIS_SIGNING_PASSWORD` Actions secret. The workflow uses the same SHA-256 password normalization as the workflow which originally created this key.
 
-The required signing certificate SHA-256 is:
+The official signing certificate SHA-256 is:
 
 ```
-01fe551ebdc98f87521e57223787da29ad660cbc87cfc16ef3e9e18678cc7bee
+aa97cc826f59fa9ba8d37f4ba3978bd968bcc8f94a0f5aa9b458f55151a177b7
 ```
 
-This is the certificate of the saved previous APK and the recovered private signing key. A device with another certificate cannot accept this update merely because its package name matches. Obtain the installed APK's certificate before claiming device-specific compatibility. No uninstall, data clear, or package-name workaround is part of this repair.
+The workflow never generates a key. Missing key/password or a wrong certificate stops publication. Do not replace the key file or generate a new signing identity for an update. No password or decrypted private key is committed or uploaded as an artifact.
 
-## Build
+## Initial transition, then updates without deleting
 
-Restore the existing key privately, set `FREEMYTV_KEYSTORE` and `FREEMYTV_KEYSTORE_PASS`, then run:
+The historical TiviMate APK supplied by the user is signed by `4a922ee77ad8441a8448847bb9ac2a14bfe1fd451b09f4063482ce9e4a14e86f`. The previously tested compatibility APK in `dist/legacy/` uses `01fe551ebdc98f87521e57223787da29ad660cbc87cfc16ef3e9e18678cc7bee`. Neither updates to the official identity in place. The user authorized removing the old differently-signed installation once.
 
-```sh
-./build.sh --generic --release
-python3 tools/verify-release-apk.py FreeMyTV.apk
-```
+If the old app is the active launcher, switch its Home Screen mode to Original before removing it and confirm the device's original Home screen opens. Install the first official APK. Thereafter install official updates over it without deleting it or clearing data. Their package and signing certificate remain identical.
 
-`--release` requires an explicit key and checks its certificate. It never creates a replacement key. Use GitHub Actions secrets `KEYSTORE_BASE64` and `KEYSTORE_PASSWORD` for this existing key. The separately encrypted key in `signing/` belongs to the previous standalone signing identity; it must not be used for io.freemytv updates. Never commit the recovered private key or password.
+## Automatic future builds
 
-## Actual installation test
+Push app/build/tool changes to main. `.github/workflows/ouswis-build.yml` automatically:
 
-Use a fresh disposable, rootable AOSP Android 14 / API 34 emulator:
+1. Restores the existing encrypted key using the existing secret; no key replacement fallback.
+2. Adds GITHUB_RUN_NUMBER to the manifest's base versionCode (10003 initially). Keep that base monotonic; never lower it. Display version remains 1.0.
+3. Builds a preceding-code fixture and the final APK with that same key.
+4. Verifies package, version, app name and pinned signing certificate.
+5. Installs the fixture and updates it with the final APK on a fresh rootable AOSP Android 14/API 34 emulator. Verifies private data, app ID and first-install time survive and SettingsActivity launches. No uninstall/data clear is used in the test.
+6. Publishes the APK and the actual install log in Releases only after that test succeeds.
 
-```sh
-bash tools/test-install-upgrade.sh previous.apk FreeMyTV.apk install-evidence
-```
+The signature policy is enforced by `./build.sh --generic --release` and `tools/verify-release-apk.py`. Local release builds also require the permanent repository key. The prior one-off publisher has been retired so it cannot republish an alternate key as the current official APK.
 
-The script refuses physical devices, other API levels, and an emulator which already has io.freemytv. It installs the baseline, writes a private-data sentinel, installs the update with `adb install -r`, verifies unchanged UID and first-install timestamp, reads the sentinel, and launches SettingsActivity. It never uninstalls or clears anything. Optional `REJECTED_APK` and `DOWNGRADE_APK` test expected rejections before the successful update.
+## Scope and limits
 
-CI builds a previous-code fixture with the same signing key and current source, then performs the real update test on API 34. The local repair audit additionally uses the actual saved previous 10001 APK. A successful build or API 30 installation alone is insufficient for release.
+Matches 3D, upcoming matches, Xtream Codes player, Arabic catalogue and remote control logic are preserved. The older audit file `android14-install-result.txt` is historical evidence for the compatibility key, not an official-key test. Each official release attaches its own install-upgrade.log.
 
-## Scope and device limits
-
-The installation repair preserves the matches 3D carousel, upcoming matches, Xtream Codes player, Arabic catalogue and remote control logic. Surface application names were updated to OUSWIS TV. No other repository is part of this repair.
-
-The emulator tests package installation and updates on AOSP Android 14. It is not a physical MECOOL KM2 Plus Deluxe test, nor a test of Google Play Protect or a particular file manager. Xtream server credentials and live playback must be tested on the device with the user's own account. The minimum SDK remains 26 and target SDK 33; target 33 meets Android 14's install target floor and is retained to avoid unrelated runtime behavior changes.
+An emulator installation test is not a physical MECOOL KM2 Plus Deluxe test or a test of its Google Play Protect/file manager. Minimum SDK remains 26 and target SDK 33 to avoid unrelated runtime behavior changes. The original attribution and licence remain intact. No other repository is involved.
