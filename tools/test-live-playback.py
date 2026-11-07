@@ -236,10 +236,11 @@ with tempfile.TemporaryDirectory() as temp:
     tap(next(n for n in ui().iter('node') if n.get('content-desc') == 'مسح البحث / Clear search'))
     texts = [n.get('text') for n in ui().iter('node')]
     assert all(name in texts for name in ('Test 16:9','Test 4:3','Test third')), texts
+    search_channels('4:3')
+    keys('DPAD_UP')
+    assert any(n.get('class') == 'android.widget.EditText' and n.get('focused') == 'true' for n in ui().iter('node'))
     keys('DPAD_DOWN')
     assert any(n.get('class') == 'android.widget.ListView' and n.get('focused') == 'true' for n in ui().iter('node'))
-    keys('DPAD_UP','DPAD_UP')
-    assert any(n.get('class') == 'android.widget.EditText' and n.get('focused') == 'true' for n in ui().iter('node'))
     note('PASS: case-insensitive channel search, filtered playback of the correct original channel, BACK retention, empty results, clear and remote focus.')
     server.shutdown()
     adb('reverse', '--remove', 'tcp:'+str(port))

@@ -219,7 +219,7 @@ public final class XtreamActivity extends Activity {
         clear.setOnClickListener(view->{search.setText("");search.requestFocus();});
         search.setNextFocusDownId(list.getId());list.setNextFocusUpId(search.getId());
         list.setOnItemClickListener((parent,view,pos,id)->{
-            if(pos>=0&&pos<visible.size())play(visible.get(pos));
+            if(pos>=0&&pos<visible.size()){results.run();play(visible.get(pos));}
         });
         filter.run();
         if(visible.isEmpty())search.requestFocus();else list.requestFocus();
