@@ -39,7 +39,9 @@ try:
     saved = adb('shell', 'cat', prefs, binary=True)
 except subprocess.CalledProcessError:
     saved = b'<?xml version="1.0" encoding="utf-8" standalone="yes" ?>\n<map>\n</map>\n'
-uid = re.search(r'userId=(\d+)', adb('shell', 'dumpsys', 'package', PKG)).group(1)
+pkg_info = adb('shell', 'dumpsys', 'package', PKG)
+uid_m = re.search(r'(?:userId|appId)=(\d+)', pkg_info)
+uid = uid_m.group(1) if uid_m else '10000'
 size = adb('shell', 'wm', 'size')
 override = re.search(r'Override size: (\d+x\d+)', size)
 
