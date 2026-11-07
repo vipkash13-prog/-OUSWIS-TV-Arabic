@@ -19,8 +19,12 @@ import java.util.List;
 public final class MatchCarouselView extends FrameLayout {
     public static final class Match {
         public final String competition, home, away, kickoff;
+        public final long kickoffMillis;
         public Match(String competition, String home, String away, String kickoff) {
-            this.competition=competition; this.home=home; this.away=away; this.kickoff=kickoff;
+            this(competition,home,away,kickoff,0L);
+        }
+        public Match(String competition,String home,String away,String kickoff,long millis){
+            this.competition=competition; this.home=home; this.away=away; this.kickoff=kickoff; this.kickoffMillis=millis;
         }
     }
     public interface OnMatchSelected { void onSelected(Match match); }
@@ -100,7 +104,7 @@ public final class MatchCarouselView extends FrameLayout {
     public void setMatches(List<Match> data) {
         handler.removeCallbacks(advance);
         matches.clear();if(data!=null)matches.addAll(data);
-        index=0;render();schedule();
+        index=0;mainCard.animate().cancel();mainCard.setRotationY(0f);mainCard.setTranslationX(0f);mainCard.setAlpha(1f);render();schedule();
     }
     public void setOnMatchSelected(OnMatchSelected callback){listener=callback;}
     private void render(){
