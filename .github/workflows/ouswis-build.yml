@@ -51,6 +51,16 @@ jobs:
       - name: Verify APK signature
         run: |
           "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose --print-certs FreeMyTV.apk
+      - name: Verify real Android installation in emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          script: |
+            adb install -r FreeMyTV.apk
+            adb shell pm path io.ouswis.tv.standalone | grep -q 'package:'
       - name: Save APK
         uses: actions/upload-artifact@v4
         with:
