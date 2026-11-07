@@ -1,0 +1,25 @@
+name: Import OUSWIS Arabic source
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/import-ouswis.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - name: Copy translated source and Xtream player
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch feature/ouswis-xtream-live https://github.com/vipkash3-sudo/Ouswis.git /tmp/ouswis-source
+          find /tmp/ouswis-source -mindepth 1 -maxdepth 1 ! -name .git ! -name .github -exec cp -a {} ./ \;
+          # Preserve original upstream attribution and license. Use this repo's independent workflows.
+          git add -A
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'Import OUSWIS Arabic source and Xtream player'
+          git push origin HEAD:main
