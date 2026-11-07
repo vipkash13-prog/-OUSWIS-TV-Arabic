@@ -29,7 +29,11 @@ public class HomeActivity extends Activity {
             new Thread(()->{
                 List<MatchCarouselView.Match> fixtures=UpcomingMatches.fetch(null,"upcoming");
                 runOnUiThread(()->{
-                    if(matchPreview!=null){matchPreview.setMatches(fixtures);matchHandler.postDelayed(loadMatches,15*60*1000);}
+                    if(matchPreview!=null){
+                        matchPreview.setMatches(fixtures);
+                        matchPreview.setVisibility(fixtures.isEmpty()?android.view.View.GONE:android.view.View.VISIBLE);
+                        matchHandler.postDelayed(loadMatches,15*60*1000);
+                    }
                 });
             },"ouswis-fixtures").start();
         }
@@ -64,6 +68,7 @@ public class HomeActivity extends Activity {
                 Gravity.RIGHT|Gravity.CENTER_VERTICAL);
         previewParams.rightMargin=(int)(getResources().getDisplayMetrics().density*22);
         matchPreview.setFocusable(true);
+        matchPreview.setVisibility(android.view.View.GONE);
         matchPreview.setClickable(true);
         matchPreview.setOnClickListener(v->startActivity(new Intent(this,MatchesActivity.class)));
         stage.addView(matchPreview,previewParams);
