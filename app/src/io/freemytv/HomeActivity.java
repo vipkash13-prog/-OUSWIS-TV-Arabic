@@ -29,7 +29,7 @@ public class HomeActivity extends Activity {
             new Thread(()->{
                 List<MatchCarouselView.Match> fixtures=UpcomingMatches.fetch(null,"upcoming");
                 runOnUiThread(()->{
-                    if(matchPreview!=null){
+                    if(resumed && !isFinishing() && !isDestroyed() && matchPreview!=null){
                         matchPreview.setMatches(fixtures);
                         matchPreview.setVisibility(fixtures.isEmpty()?android.view.View.GONE:android.view.View.VISIBLE);
                         matchHandler.postDelayed(loadMatches,15*60*1000);
@@ -114,6 +114,7 @@ public class HomeActivity extends Activity {
         resumed = false;
         matchHandler.removeCallbacks(loadMatches);
         if (home != null) home.pause();
+        if (matchPreview != null) matchPreview.clearFocus();
         super.onPause();
     }
 
@@ -153,7 +154,7 @@ public class HomeActivity extends Activity {
 
     @Override public boolean dispatchKeyEvent(KeyEvent event) {
         keyPressed = true;
-        // The carousel owns left/right only while focused; keep Home and system keys intact.
+        // The carousel owns navigation only while focused; keep Home and system keys intact.
         if (matchPreview != null && matchPreview.hasFocus()
                 && event.getAction()==KeyEvent.ACTION_DOWN
                 && (event.getKeyCode()==KeyEvent.KEYCODE_DPAD_LEFT
