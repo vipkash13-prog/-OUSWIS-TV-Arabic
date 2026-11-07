@@ -125,6 +125,8 @@ public final class UpcomingMatches {
         URL url=new URL("https://site.api.espn.com/apis/site/v2/sports/soccer/"+league+"/scoreboard?dates="+month+"&limit=1000");
         HttpURLConnection c=(HttpURLConnection)url.openConnection();
         c.setConnectTimeout(8000);c.setReadTimeout(12000);
+        c.setRequestProperty("Accept","application/json");
+        c.setRequestProperty("User-Agent","OUSWIS-TV/1.0 (Android)");
         try{
             int code=c.getResponseCode();
             if(code!=200)throw new java.io.IOException(league+": HTTP "+code);

@@ -11,7 +11,21 @@ mkdir -p out/feed-tests
 "${JAVA_HOME:+$JAVA_HOME/bin/}javac" -encoding UTF-8 \
   -cp "out/classes:$jar:${ANDROID_HOME:?Android SDK required}/platforms/android-34/android.jar" \
   -d out/feed-tests tests/MatchesFeedTest.java
-if ! "${JAVA_HOME:+$JAVA_HOME/bin/}java" -cp "out/classes:out/feed-tests:$jar" io.ouswis.tv.standalone.MatchesFeedTest "$@"; then
+if ! python3 - "$jar" "$@" <<'PYJAVA'
+import os,subprocess,sys,urllib.parse,urllib.request
+from pathlib import Path
+java=str(Path(os.environ['JAVA_HOME'])/'bin/java') if os.environ.get('JAVA_HOME') else 'java'
+cmd=[java]
+proxy=urllib.parse.urlparse(urllib.request.getproxies().get('https',''))
+if proxy.hostname and not urllib.request.proxy_bypass('site.api.espn.com'):
+    cmd+=['-Dhttps.proxyHost='+proxy.hostname,'-Dhttps.proxyPort='+str(proxy.port or 80)]
+    trust=Path('/etc/ssl/certs/java/cacerts')
+    if trust.exists():cmd+=['-Djavax.net.ssl.trustStore='+str(trust)]
+    print('Java feed test uses the configured HTTPS proxy and CA trust.',flush=True)
+cmd+=['-cp','out/classes:out/feed-tests:'+sys.argv[1],'io.ouswis.tv.standalone.MatchesFeedTest']+sys.argv[2:]
+raise SystemExit(subprocess.call(cmd))
+PYJAVA
+then
   if [ "${1:-}" = --live ]; then
     python3 - <<'PY'
 import datetime,urllib.request,urllib.error,gzip
