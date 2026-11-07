@@ -1,126 +1,151 @@
 package io.freemytv;
 
 import android.app.Activity;
+import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.StateListDrawable;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.Gravity;
-import android.view.View;
 import android.view.KeyEvent;
-import android.graphics.drawable.GradientDrawable;
-import android.graphics.drawable.StateListDrawable;
-import android.app.AlertDialog;
-import java.util.concurrent.Future;
+import android.view.View;
+import android.view.Window;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Arrays;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
-/** TV-friendly matches screen; never performs network requests on the UI thread. */
+/**
+ * Matches in a centred glass window over the home screen: live matches first (score, minute, goals), then
+ * upcoming, today's and yesterday's results. Left/right move between matches. Network only off the UI thread.
+ */
 public final class MatchesActivity extends Activity {
     private final Handler main=new Handler(Looper.getMainLooper());
     private final ExecutorService worker=Executors.newSingleThreadExecutor();
+    private final String[] keys={"live","upcoming","today","yesterday"};
+    private final String[] titles={"مباشر الآن","مباريات قادمة","نتائج اليوم","نتائج أمس"};
+    private final int[] ids={R.id.matches_tab_live,R.id.matches_tab_upcoming,R.id.matches_tab_today,R.id.matches_tab_yesterday};
+    private final TextView[] tabViews=new TextView[4];
     private MatchCarouselView carousel;
     private TextView heading;
+    private LinearLayout window;
     private volatile boolean active;
-    private volatile String section="upcoming";
-    private LinearLayout tabs;
-    private final TextView[] tabViews=new TextView[4];
+    private boolean closing, firstLoad=true;
     private int selectedTab;
     private Future<?> request;
-    private AlertDialog details;
-    private final String[] keys={"upcoming","live","today","yesterday"};
-    private final String[] titles={"مباريات قادمة","مباشر الآن","نتائج اليوم","نتائج أمس"};
     private final Runnable refresh=new Runnable(){
         @Override public void run(){
             if(!active)return;
             if(request!=null)request.cancel(true);
-            heading.setText(titles[selectedTab]+"  •  جارٍ التحميل…");
+            final String requested=keys[selectedTab];
+            heading.setText(titles[selectedTab]);
+            carousel.setMessage("جارٍ التحميل…");
             request=worker.submit(()->{
-                String requested=section;
-                List<MatchCarouselView.Match> fixtures=UpcomingMatches.fetch(null,requested);
+                final UpcomingMatches.Result result;
+                try{result=UpcomingMatches.load(null,requested);}catch(Throwable t){return;}
                 main.post(()->{
-                    if(!active||!requested.equals(section))return;
-                    carousel.setMatches(fixtures);
-                    heading.setText(titles[java.util.Arrays.asList(keys).indexOf(section)]+"  •  "+fixtures.size());
-                    main.postDelayed(refresh,"live".equals(section)?60*1000:15*60*1000);
+                    if(!active||!requested.equals(keys[selectedTab]))return;
+                    if(firstLoad){
+                        firstLoad=false;
+                        // Nothing live right now: show what is coming instead of an empty window.
+                        if("live".equals(requested)&&result.matches.isEmpty()&&!result.unavailable()){select(1);return;}
+                    }
+                    carousel.setMatches(result.matches);
+                    if(result.matches.isEmpty())carousel.setMessage(result.unavailable()
+                            ?"تعذّر الاتصال بمصدر المباريات. تحقق من الإنترنت"
+                            :"live".equals(requested)?"لا توجد مباريات مباشرة الآن":"لا توجد مباريات في هذا القسم");
+                    heading.setText(titles[selectedTab]+(result.matches.isEmpty()?"":"  •  "+result.matches.size()));
+                    main.postDelayed(refresh,"live".equals(requested)?60*1000:15*60*1000);
                 });
             });
         }
     };
+
     @Override public void onCreate(Bundle state){
         super.onCreate(state);
-        LinearLayout root=new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setGravity(Gravity.CENTER);
-        float scale=Math.max(0.65f,Math.min(1.5f,getResources().getDisplayMetrics().heightPixels/720f));
-        root.setPadding(Math.round(24*scale),Math.round(12*scale),Math.round(24*scale),Math.round(12*scale));
-        root.setBackgroundColor(Ui.pageBackground(this));
+        requestWindowFeature(Window.FEATURE_NO_TITLE);
+        final float scale=Math.max(0.65f,Math.min(1.5f,getResources().getDisplayMetrics().heightPixels/720f));
+        int screenW=getResources().getDisplayMetrics().widthPixels,screenH=getResources().getDisplayMetrics().heightPixels;
+        FrameLayout root=new FrameLayout(this);
+        root.setOnClickListener(v->close());
+        window=new LinearLayout(this);
+        window.setOrientation(LinearLayout.VERTICAL);
+        window.setGravity(Gravity.CENTER_HORIZONTAL);
+        int pad=Math.round(18*scale);
+        window.setPadding(pad,pad,pad,Math.round(10*scale));
+        GradientDrawable bg=new GradientDrawable(GradientDrawable.Orientation.TL_BR,new int[]{0xF01B2740,0xF00E1424});
+        bg.setCornerRadius(34*scale);bg.setStroke(Math.max(1,Math.round(1.5f*scale)),0x66FFFFFF);
+        window.setBackground(bg);
+        window.setClickable(true);
         heading=new TextView(this);
-        heading.setText("مباريات قادمة");
-        heading.setTextColor(Ui.pageInk(this));heading.setTextSize(26*scale);
-        heading.setGravity(Gravity.CENTER);
-        root.addView(heading,new LinearLayout.LayoutParams(-1,-2));
-        tabs=new LinearLayout(this);tabs.setGravity(Gravity.CENTER);
+        heading.setTextColor(0xFFFFFFFF);heading.setTextSize(22*scale);heading.setGravity(Gravity.CENTER);
+        window.addView(heading,new LinearLayout.LayoutParams(-1,-2));
+        LinearLayout tabs=new LinearLayout(this);tabs.setGravity(Gravity.CENTER);
         for(int i=0;i<keys.length;i++){
             final int index=i;
             TextView tab=new TextView(this);
-            tabViews[i]=tab;
-            tab.setId(new int[]{R.id.matches_tab_upcoming,R.id.matches_tab_live,R.id.matches_tab_today,R.id.matches_tab_yesterday}[i]);
-            tab.setText(titles[i]);tab.setTextColor(Ui.pageInk(this));tab.setTextSize(17*scale);
+            tabViews[i]=tab;tab.setId(ids[i]);
+            tab.setText(titles[i]);tab.setTextColor(0xFFFFFFFF);tab.setTextSize(15*scale);
             tab.setGravity(Gravity.CENTER);tab.setFocusable(true);
-            tab.setPadding(Math.round(8*scale),Math.round(12*scale),Math.round(8*scale),Math.round(12*scale));
-            StateListDrawable focus=new StateListDrawable();
-            focus.addState(new int[]{android.R.attr.state_focused},chip(Ui.pageDark(this)?0xFF55555D:0xFFFFFFFF));
-            focus.addState(new int[]{android.R.attr.state_selected},chip(Ui.pageDark(this)?0xFF333338:0xFFDADAE2));
-            focus.addState(new int[]{},chip(0x00000000));
-            tab.setBackground(focus);
-            tab.setOnClickListener(v->{
-                selectedTab=index;section=keys[index];
-                for(int j=0;j<tabViews.length;j++)tabViews[j].setSelected(j==index);
-                carousel.setMatches(java.util.Collections.emptyList());
-                main.removeCallbacks(refresh);main.post(refresh);carousel.requestFocus();
-            });
+            tab.setPadding(Math.round(6*scale),Math.round(8*scale),Math.round(6*scale),Math.round(8*scale));
+            StateListDrawable look=new StateListDrawable();
+            look.addState(new int[]{android.R.attr.state_focused},chip(0x66FFFFFF,scale));
+            look.addState(new int[]{android.R.attr.state_selected},chip(0x33FFFFFF,scale));
+            look.addState(new int[]{},chip(0x00000000,scale));
+            tab.setBackground(look);
+            tab.setOnClickListener(v->select(index));
             tabs.addView(tab,new LinearLayout.LayoutParams(0,-2,1));
         }
-        root.addView(tabs,new LinearLayout.LayoutParams(-1,-2));
+        window.addView(tabs,new LinearLayout.LayoutParams(-1,-2));
         carousel=new MatchCarouselView(this);
         carousel.setId(R.id.matches_carousel);
-        carousel.setOnClickListener(v->openDetails());
-        root.addView(carousel,new LinearLayout.LayoutParams(-1,0,1));
+        carousel.setOnMatchSelected(m->{});
+        window.addView(carousel,new LinearLayout.LayoutParams(-1,0,1));
         TextView note=new TextView(this);
-        note.setText("يمين ويسار للتنقل  •  مواعيد السعودية  •  مصدر ESPN غير رسمي");
-        note.setTextColor(Ui.pageMuted(this));note.setTextSize(16*scale);note.setGravity(Gravity.CENTER);
-        root.addView(note,new LinearLayout.LayoutParams(-1,-2));
+        note.setText("يمين / يسار للتنقل  •  توقيت السعودية  •  مصدر ESPN غير رسمي");
+        note.setTextColor(0xAAFFFFFF);note.setTextSize(12*scale);note.setGravity(Gravity.CENTER);
+        window.addView(note,new LinearLayout.LayoutParams(-1,-2));
+        FrameLayout.LayoutParams lp=new FrameLayout.LayoutParams(Math.round(screenW*0.66f),Math.round(screenH*0.68f),Gravity.CENTER);
+        root.addView(window,lp);
         setContentView(root);
         tabViews[0].setSelected(true);
-        tabViews[0].requestFocus();
+        carousel.requestFocus();
+        window.setScaleX(0.92f);window.setScaleY(0.92f);window.setAlpha(0f);
+        window.animate().scaleX(1f).scaleY(1f).alpha(1f).setDuration(260).start();
     }
-    private GradientDrawable chip(int color){
-        GradientDrawable d=new GradientDrawable();d.setColor(color);d.setCornerRadius(14);return d;
+
+    private GradientDrawable chip(int color,float scale){
+        GradientDrawable d=new GradientDrawable();d.setColor(color);d.setCornerRadius(14*scale);return d;
     }
-    private void openDetails(){
-        MatchCarouselView.Match match=carousel.selectedMatch();
-        String title=match==null?titles[selectedTab]:match.competition;
-        String message=match==null?"لا توجد مباريات متاحة في هذا القسم":match.home+"  VS  "+match.away+"\n"+match.kickoff+"  •  بتوقيت السعودية";
-        details=new AlertDialog.Builder(this).setTitle(title).setMessage(message)
-                .setPositiveButton("إغلاق",(dialog,which)->carousel.requestFocus()).create();
-        details.show();
+    private void select(int index){
+        selectedTab=index;
+        for(int j=0;j<tabViews.length;j++)tabViews[j].setSelected(j==index);
+        carousel.setMatches(java.util.Collections.emptyList());
+        main.removeCallbacks(refresh);main.post(refresh);carousel.requestFocus();
+    }
+    private void close(){
+        if(closing)return;
+        closing=true;
+        window.animate().scaleX(0.94f).scaleY(0.94f).alpha(0f).setDuration(200)
+                .withEndAction(()->{finish();overridePendingTransition(0,0);}).start();
+    }
+    @Override public void onBackPressed(){
+        if(!carousel.hasFocus()){carousel.requestFocus();return;}
+        close();
     }
     @Override public boolean dispatchKeyEvent(KeyEvent event){
-        if(details!=null&&details.isShowing())return super.dispatchKeyEvent(event);
         int key=event.getKeyCode();
-        if(key!=KeyEvent.KEYCODE_DPAD_LEFT&&key!=KeyEvent.KEYCODE_DPAD_RIGHT
-                &&key!=KeyEvent.KEYCODE_DPAD_UP&&key!=KeyEvent.KEYCODE_DPAD_DOWN
-                &&key!=KeyEvent.KEYCODE_DPAD_CENTER&&key!=KeyEvent.KEYCODE_ENTER)return super.dispatchKeyEvent(event);
+        if(key==KeyEvent.KEYCODE_BACK||key==KeyEvent.KEYCODE_ESCAPE)return super.dispatchKeyEvent(event);
+        if(key!=KeyEvent.KEYCODE_DPAD_LEFT&&key!=KeyEvent.KEYCODE_DPAD_RIGHT&&key!=KeyEvent.KEYCODE_DPAD_UP
+                &&key!=KeyEvent.KEYCODE_DPAD_DOWN&&key!=KeyEvent.KEYCODE_DPAD_CENTER&&key!=KeyEvent.KEYCODE_ENTER)
+            return super.dispatchKeyEvent(event);
         if(event.getAction()!=KeyEvent.ACTION_DOWN)return true;
         if(carousel.hasFocus()){
             if(key==KeyEvent.KEYCODE_DPAD_UP)tabViews[selectedTab].requestFocus();
-            else if(key==KeyEvent.KEYCODE_DPAD_DOWN)return true;
-            else if(key==KeyEvent.KEYCODE_DPAD_CENTER||key==KeyEvent.KEYCODE_ENTER){if(event.getRepeatCount()==0)carousel.performClick();}
-            else carousel.onKeyDown(key,event);
+            else if(key==KeyEvent.KEYCODE_DPAD_LEFT||key==KeyEvent.KEYCODE_DPAD_RIGHT)carousel.onKeyDown(key,event);
         }else{
             int focused=selectedTab;
             for(int i=0;i<tabViews.length;i++)if(tabViews[i].hasFocus())focused=i;
