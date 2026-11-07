@@ -24,7 +24,8 @@ public final class UpcomingMatches {
         "ksa.1", "afc.champions.league", "uefa.champions",
         "eng.1", "esp.1", "ita.1", "fra.1"
     };
-    public static List<MatchCarouselView.Match> fetch(String[] selected) {
+    public static List<MatchCarouselView.Match> fetch(String[] selected) { return fetch(selected, "upcoming"); }
+    public static List<MatchCarouselView.Match> fetch(String[] selected, String section) {
         ArrayList<MatchCarouselView.Match> out=new ArrayList<>();
         HashSet<String> seen=new HashSet<>();
         String[] leagues=selected==null?LEAGUES:selected;
@@ -33,6 +34,16 @@ public final class UpcomingMatches {
         long now=System.currentTimeMillis();
         SimpleDateFormat day=new SimpleDateFormat("yyyyMMdd",Locale.US);
         day.setTimeZone(TimeZone.getTimeZone("UTC"));
+        TimeZone riyadh=TimeZone.getTimeZone("Asia/Riyadh");
+        java.util.Calendar calendar=java.util.Calendar.getInstance(riyadh);
+        calendar.setTimeInMillis(now);
+        calendar.set(java.util.Calendar.HOUR_OF_DAY,0);
+        calendar.set(java.util.Calendar.MINUTE,0);
+        calendar.set(java.util.Calendar.SECOND,0);
+        calendar.set(java.util.Calendar.MILLISECOND,0);
+        long todayStart=calendar.getTimeInMillis();
+        long yesterdayStart=todayStart-24L*60*60*1000;
+        long tomorrowStart=todayStart+24L*60*60*1000;
         String from=day.format(new Date(now-2L*24*60*60*1000));
         String to=day.format(new Date(now+14L*24*60*60*1000));
         for(String league:leagues){
@@ -59,7 +70,8 @@ public final class UpcomingMatches {
                     JSONObject comp=comps.optJSONObject(0);if(comp==null)continue;
                     JSONObject status=e.optJSONObject("status");
                     JSONObject type=status==null?null:status.optJSONObject("type");
-                    if(type==null||!type.optString("state").equalsIgnoreCase("pre"))continue;
+                    if(type==null)continue;
+                    String state=type.optString("state");
                     JSONArray teams=comp.optJSONArray("competitors");
                     if(teams==null||teams.length()<2)continue;
                     String home="",away="";
@@ -75,10 +87,27 @@ public final class UpcomingMatches {
                     SimpleDateFormat iso=new SimpleDateFormat("yyyy-MM-dd'T'HH:mm'Z'",Locale.US);
                     iso.setTimeZone(TimeZone.getTimeZone("UTC"));
                     Date date=iso.parse(utc);
-                    if(date==null||date.getTime()<now)continue;
+                    if(date==null)continue;
+                    long kickoff=date.getTime();
+                    boolean include;
+                    if("live".equals(section)) include="in".equals(state);
+                    else if("today".equals(section)) include="post".equals(state)&&kickoff>=todayStart&&kickoff<tomorrowStart;
+                    else if("yesterday".equals(section)) include="post".equals(state)&&kickoff>=yesterdayStart&&kickoff<todayStart;
+                    else include="pre".equals(state)&&kickoff>=now;
+                    if(!include)continue;
                     JSONObject leagueObj=e.optJSONObject("league");
                     String competition=leagueObj==null?league:leagueObj.optString("name",league);
-                    out.add(new MatchCarouselView.Match(competition,home,away,fmt.format(date)));
+                    String display=fmt.format(date);
+                    if("live".equals(section)||"today".equals(section)||"yesterday".equals(section)) {
+                        String hs="",as="";
+                        for(int k=0;k<teams.length();k++){
+                            JSONObject t=teams.optJSONObject(k);if(t==null)continue;
+                            if("home".equals(t.optString("homeAway")))hs=t.optString("score");
+                            if("away".equals(t.optString("homeAway")))as=t.optString("score");
+                        }
+                        if(!hs.isEmpty()&&!as.isEmpty())display=hs+" - "+as+"  •  "+display;
+                    }
+                    out.add(new MatchCarouselView.Match(competition,home,away,display));
                 }
             }catch(Exception ignored){
                 // Unavailable competition must not prevent other competitions from loading.
