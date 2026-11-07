@@ -119,6 +119,7 @@ jobs:
             python3 tools/test-feature-entrypoints.py install-evidence
             python3 tools/test-prayer-widget.py install-evidence
             python3 tools/test-live-playback.py install-evidence
+            python3 tools/test-rtl-4k.py install-evidence
             python3 tools/test-coexistence.py verify install-evidence
       - name: Save install evidence
         if: always()
@@ -128,6 +129,7 @@ jobs:
           path: install-evidence/
           if-no-files-found: warn
       - name: Publish only after successful installation
+        if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash

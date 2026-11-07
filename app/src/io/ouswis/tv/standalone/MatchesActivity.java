@@ -70,6 +70,8 @@ public final class MatchesActivity extends Activity {
         final float scale=Math.max(0.65f,Math.min(1.5f,getResources().getDisplayMetrics().heightPixels/720f));
         int screenW=getResources().getDisplayMetrics().widthPixels,screenH=getResources().getDisplayMetrics().heightPixels;
         FrameLayout root=new FrameLayout(this);
+        // Follow the selected application language, even when the system language differs.
+        root.setLayoutDirection(Ui.isRtl()?View.LAYOUT_DIRECTION_RTL:View.LAYOUT_DIRECTION_LTR);
         root.setOnClickListener(v->close());
         window=new LinearLayout(this);
         window.setOrientation(LinearLayout.VERTICAL);
@@ -149,8 +151,9 @@ public final class MatchesActivity extends Activity {
         }else{
             int focused=selectedTab;
             for(int i=0;i<tabViews.length;i++)if(tabViews[i].hasFocus())focused=i;
-            if(key==KeyEvent.KEYCODE_DPAD_LEFT)tabViews[Math.max(0,focused-1)].requestFocus();
-            else if(key==KeyEvent.KEYCODE_DPAD_RIGHT)tabViews[Math.min(3,focused+1)].requestFocus();
+            int step=Ui.isRtl()?-1:1;
+            if(key==KeyEvent.KEYCODE_DPAD_LEFT)tabViews[Math.max(0,Math.min(3,focused-step))].requestFocus();
+            else if(key==KeyEvent.KEYCODE_DPAD_RIGHT)tabViews[Math.max(0,Math.min(3,focused+step))].requestFocus();
             else if(key==KeyEvent.KEYCODE_DPAD_DOWN)carousel.requestFocus();
             else if((key==KeyEvent.KEYCODE_DPAD_CENTER||key==KeyEvent.KEYCODE_ENTER)&&event.getRepeatCount()==0)tabViews[focused].performClick();
         }
