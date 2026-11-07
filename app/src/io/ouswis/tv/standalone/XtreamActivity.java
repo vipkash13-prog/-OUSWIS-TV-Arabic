@@ -36,7 +36,7 @@ public final class XtreamActivity extends Activity {
     private int picturePercent;
     private int playbackGeneration;
     private long renderedAt;
-    private Runnable recovery;
+    private Runnable recovery, playbackTimeout;
     private boolean playbackFailed, foreground;
     private final Runnable hideLabel = () -> { if (channelLabel != null) channelLabel.setVisibility(View.GONE); };
 
@@ -156,6 +156,7 @@ public final class XtreamActivity extends Activity {
     }
     private void stopPlayer() {
         playbackGeneration++;
+        cancelPlaybackTimeout();
         if(recovery!=null){main.removeCallbacks(recovery);recovery=null;}
         VideoView previous=video;
         video=null;
@@ -195,8 +196,15 @@ public final class XtreamActivity extends Activity {
             String url=server+"/live/"+enc(user)+"/"+enc(pass)+"/"+enc(c.id)+"."+ext;
             // Register before opening: preparation or failure can arrive immediately.
             fitted.setOnInfoListener((mp,what,extra)->{
-                if(video==fitted&&what==MediaPlayer.MEDIA_INFO_VIDEO_RENDERING_START)
+                if(video!=fitted||generation!=playbackGeneration)return false;
+                if(what==MediaPlayer.MEDIA_INFO_VIDEO_RENDERING_START){
                     renderedAt=android.os.SystemClock.elapsedRealtime();
+                    cancelPlaybackTimeout();
+                }else if(what==MediaPlayer.MEDIA_INFO_BUFFERING_START){
+                    watchPlayback(fitted,generation,index,attempt,ext);
+                }else if(what==MediaPlayer.MEDIA_INFO_BUFFERING_END&&renderedAt>0){
+                    cancelPlaybackTimeout();
+                }
                 return false;
             });
             fitted.setOnPreparedListener(mp->{
@@ -218,8 +226,22 @@ public final class XtreamActivity extends Activity {
                 if(video==fitted&&generation==playbackGeneration)recover(index,attempt,ext,0,0);
             });
             fitted.setVideoURI(Uri.parse(url));
+            watchPlayback(fitted,generation,index,attempt,ext);
             fitted.requestFocus();
         } catch(Exception e){recover(index,attempt,ext,MediaPlayer.MEDIA_ERROR_UNKNOWN,0);}
+    }
+    private void cancelPlaybackTimeout() {
+        if(playbackTimeout!=null){main.removeCallbacks(playbackTimeout);playbackTimeout=null;}
+    }
+    private void watchPlayback(FitVideoView fitted,int generation,int index,int attempt,String format) {
+        if(video!=fitted||generation!=playbackGeneration)return;
+        cancelPlaybackTimeout();
+        // Some Android decoders retry a dead HTTP source silently for over thirty seconds.
+        playbackTimeout=()->{
+            if(video==fitted&&generation==playbackGeneration)
+                recover(index,attempt,format,MediaPlayer.MEDIA_ERROR_UNKNOWN,MediaPlayer.MEDIA_ERROR_TIMED_OUT);
+        };
+        main.postDelayed(playbackTimeout,12000);
     }
     private void recover(int index,int attempt,String format,int what,int extra) {
         // Numeric diagnostics only: provider URLs contain the viewer's credentials.
@@ -283,6 +305,7 @@ public final class XtreamActivity extends Activity {
     @Override protected void onResume(){super.onResume();foreground=true;}
     @Override protected void onStop(){
         foreground=false;
+        cancelPlaybackTimeout();
         if(recovery!=null){main.removeCallbacks(recovery);recovery=null;playbackFailed=true;}
         if(video!=null&&video.isPlaying())video.pause();
         super.onStop();
