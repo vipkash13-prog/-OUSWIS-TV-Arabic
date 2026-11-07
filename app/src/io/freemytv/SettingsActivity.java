@@ -80,6 +80,10 @@ public class SettingsActivity extends Activity {
         matchesButton.setId(View.generateViewId());
         channelsButton.setAllCaps(false);
         matchesButton.setAllCaps(false);
+        channelsButton.setPadding(0, 0, 0, 0);
+        matchesButton.setPadding(0, 0, 0, 0);
+        channelsButton.setTextColor(0xFFFFFFFF);
+        matchesButton.setTextColor(0xFFFFFFFF);
         channelsButton.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, 24 * scale);
         matchesButton.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, 24 * scale);
         channelsButton.setOnClickListener(v -> startActivity(new Intent(this, XtreamActivity.class)));

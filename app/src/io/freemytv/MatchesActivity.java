@@ -44,35 +44,36 @@ public final class MatchesActivity extends Activity {
         LinearLayout root=new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.CENTER);
-        root.setPadding(60,32,60,32);
+        float scale=Math.max(0.65f,Math.min(1.5f,getResources().getDisplayMetrics().heightPixels/720f));
+        root.setPadding(Math.round(24*scale),Math.round(12*scale),Math.round(24*scale),Math.round(12*scale));
         root.setBackgroundColor(0xFF101725);
         heading=new TextView(this);
         heading.setText("مباريات قادمة");
-        heading.setTextColor(-1);heading.setTextSize(26);
+        heading.setTextColor(-1);heading.setTextSize(26*scale);
         heading.setGravity(Gravity.CENTER);
-        root.addView(heading,new LinearLayout.LayoutParams(-1,80));
+        root.addView(heading,new LinearLayout.LayoutParams(-1,-2));
         tabs=new LinearLayout(this);tabs.setGravity(Gravity.CENTER);
         for(int i=0;i<keys.length;i++){
             final String key=keys[i];
             TextView tab=new TextView(this);
-            tab.setText(titles[i]);tab.setTextColor(-1);tab.setTextSize(17);
+            tab.setText(titles[i]);tab.setTextColor(-1);tab.setTextSize(17*scale);
             tab.setGravity(Gravity.CENTER);tab.setFocusable(true);
-            tab.setPadding(18,12,18,12);
+            tab.setPadding(Math.round(8*scale),Math.round(12*scale),Math.round(8*scale),Math.round(12*scale));
             tab.setOnClickListener(v->{section=key;main.removeCallbacks(refresh);main.post(refresh);carousel.requestFocus();});
-            tabs.addView(tab,new LinearLayout.LayoutParams(0,65,1));
+            tabs.addView(tab,new LinearLayout.LayoutParams(0,-2,1));
         }
-        root.addView(tabs,new LinearLayout.LayoutParams(-1,70));
+        root.addView(tabs,new LinearLayout.LayoutParams(-1,-2));
         carousel=new MatchCarouselView(this);
         carousel.setOnMatchSelected(match->new android.app.AlertDialog.Builder(this)
                 .setTitle(match.competition)
                 .setMessage(match.home+"  VS  "+match.away+"\n"+match.kickoff+"  •  بتوقيت السعودية")
                 .setPositiveButton("إغلاق",(dialog,which)->carousel.requestFocus())
                 .show());
-        root.addView(carousel,new LinearLayout.LayoutParams(-1,320));
+        root.addView(carousel,new LinearLayout.LayoutParams(-1,0,1));
         TextView note=new TextView(this);
         note.setText("يمين ويسار للتنقل  •  مواعيد السعودية  •  مصدر ESPN غير رسمي");
-        note.setTextColor(0xFFBCC5D3);note.setTextSize(16);note.setGravity(Gravity.CENTER);
-        root.addView(note,new LinearLayout.LayoutParams(-1,75));
+        note.setTextColor(0xFFBCC5D3);note.setTextSize(16*scale);note.setGravity(Gravity.CENTER);
+        root.addView(note,new LinearLayout.LayoutParams(-1,-2));
         setContentView(root);
         carousel.requestFocus();
     }
