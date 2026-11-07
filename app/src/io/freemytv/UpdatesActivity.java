@@ -36,14 +36,14 @@ public final class UpdatesActivity extends Activity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.CENTER);
         root.setPadding(24, 16, 24, 16);
-        root.setBackgroundColor(0xFF101725);
+        root.setBackgroundColor(Ui.pageBackground(this));
         TextView heading = new TextView(this);
         heading.setText("OUSWIS TV 1.0  •  " + Ui.tr("Updates"));
-        heading.setTextColor(Color.WHITE);
+        heading.setTextColor(Ui.pageInk(this));
         heading.setTextSize(22);
         root.addView(heading);
         status = new TextView(this);
-        status.setTextColor(Color.WHITE);
+        status.setTextColor(Ui.pageInk(this));
         status.setTextSize(18);
         status.setPadding(0, 20, 0, 20);
         root.addView(status);

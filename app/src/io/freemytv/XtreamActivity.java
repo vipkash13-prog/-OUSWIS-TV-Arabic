@@ -65,12 +65,12 @@ public final class XtreamActivity extends Activity {
         if (server.isEmpty() || user.isEmpty() || pass.isEmpty()) login(); else load();
     }
     private TextView title(String text, int size) {
-        TextView t=new TextView(this); t.setText(text); t.setTextColor(Color.WHITE);
+        TextView t=new TextView(this); t.setText(text); t.setTextColor(Ui.pageInk(this));
         t.setTextSize(size); t.setPadding(24,16,24,16); return t;
     }
     private void shell() {
         root=new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(Color.rgb(12,14,28)); setContentView(root);
+        root.setBackgroundColor(Ui.pageBackground(this)); setContentView(root);
     }
     private void login() {
         shell(); root.addView(title(Ui.tr("Live TV")+"  |  Xtream Codes",26));
@@ -93,7 +93,7 @@ public final class XtreamActivity extends Activity {
     }
     private EditText field(LinearLayout form,String hint,String value) {
         EditText e=new EditText(this); e.setSingleLine(true); e.setHint(hint); e.setText(value);
-        e.setTextColor(Color.WHITE); e.setHintTextColor(Color.LTGRAY); form.addView(e); return e;
+        e.setTextColor(Ui.pageInk(this)); e.setHintTextColor(Ui.pageMuted(this)); form.addView(e); return e;
     }
     private String enc(String s) throws Exception {return URLEncoder.encode(s,"UTF-8");}
     private String api(String action) throws Exception {
@@ -139,7 +139,13 @@ public final class XtreamActivity extends Activity {
         account.setOnClickListener(v->{if(video!=null){video.stopPlayback();video=null;}login();});
         ListView list=new ListView(this);root.addView(list,new LinearLayout.LayoutParams(-1,0,1));
         ArrayList<String> names=new ArrayList<>();for(Channel c:channels)names.add(c.name);
-        ArrayAdapter<String> adapter=new ArrayAdapter<>(this,android.R.layout.simple_list_item_1,names);
+        ArrayAdapter<String> adapter=new ArrayAdapter<String>(this,android.R.layout.simple_list_item_1,names) {
+            @Override public View getView(int position,View recycled,android.view.ViewGroup parent) {
+                TextView row=(TextView)super.getView(position,recycled,parent);
+                row.setTextColor(Ui.pageInk(XtreamActivity.this));
+                return row;
+            }
+        };
         list.setAdapter(adapter);list.setOnItemClickListener((parent,view,pos,id)->play(pos));
         list.setSelection(selected);
         list.requestFocus();
@@ -156,6 +162,7 @@ public final class XtreamActivity extends Activity {
         video=fitted;
         player.addView(video,new FrameLayout.LayoutParams(-1,-1,Gravity.CENTER));
         channelLabel=title(c.name,20);
+        channelLabel.setTextColor(Color.WHITE);
         channelLabel.setBackgroundColor(0xB0000000);
         FrameLayout.LayoutParams labelPosition=new FrameLayout.LayoutParams(-2,-2,Gravity.TOP|Gravity.CENTER_HORIZONTAL);
         labelPosition.topMargin=Math.round(getResources().getDisplayMetrics().heightPixels*0.05f);
@@ -192,8 +199,8 @@ public final class XtreamActivity extends Activity {
     @Override public boolean dispatchKeyEvent(KeyEvent event) {
         int key=event.getKeyCode();
         if(current>=0){
-            boolean previous=key==KeyEvent.KEYCODE_DPAD_UP||key==KeyEvent.KEYCODE_CHANNEL_UP;
-            boolean next=key==KeyEvent.KEYCODE_DPAD_DOWN||key==KeyEvent.KEYCODE_CHANNEL_DOWN;
+            boolean previous=key==KeyEvent.KEYCODE_DPAD_DOWN||key==KeyEvent.KEYCODE_CHANNEL_DOWN;
+            boolean next=key==KeyEvent.KEYCODE_DPAD_UP||key==KeyEvent.KEYCODE_CHANNEL_UP;
             boolean pause=key==KeyEvent.KEYCODE_DPAD_CENTER||key==KeyEvent.KEYCODE_ENTER;
             boolean resize=key==KeyEvent.KEYCODE_DPAD_LEFT||key==KeyEvent.KEYCODE_DPAD_RIGHT;
             if(previous||next||pause||resize){

@@ -40,6 +40,11 @@ import java.util.function.Supplier;
 final class Ui {
     private Ui() {}
 
+    static boolean pageDark(Context c) { return HomeData.get(c).isNight(System.currentTimeMillis()); }
+    static int pageBackground(Context c) { return pageDark(c) ? 0xFF141416 : 0xFFEBEBF0; }
+    static int pageInk(Context c) { return pageDark(c) ? 0xFFF5F5F7 : 0xFF202024; }
+    static int pageMuted(Context c) { return pageDark(c) ? 0xFFBCC0C8 : 0xFF606068; }
+
     /**
      * Android 8 to 11, and Android 12 and 12L short on memory: their GPUs need the cheaper drawing paths (Shadows,
      * rounded images) and can't afford the off-screen layers (a 2 GB TCL on Android 12 spent 156 MB of GPU memory on

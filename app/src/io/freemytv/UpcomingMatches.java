@@ -47,6 +47,7 @@ public final class UpcomingMatches {
         String from=day.format(new Date(now-2L*24*60*60*1000));
         String to=day.format(new Date(now+14L*24*60*60*1000));
         for(String league:leagues){
+            if(Thread.currentThread().isInterrupted())break;
             if(league==null||!league.matches("[a-z0-9.]+"))continue;
             HttpURLConnection c=null;
             try {

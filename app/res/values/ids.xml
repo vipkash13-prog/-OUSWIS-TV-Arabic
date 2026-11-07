@@ -1,4 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <item name="home_matches" type="id" />
+    <item name="matches_carousel" type="id" />
+    <item name="matches_tab_upcoming" type="id" />
+    <item name="matches_tab_live" type="id" />
+    <item name="matches_tab_today" type="id" />
+    <item name="matches_tab_yesterday" type="id" />
 </resources>

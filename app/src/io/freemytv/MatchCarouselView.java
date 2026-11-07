@@ -47,12 +47,16 @@ public final class MatchCarouselView extends FrameLayout {
     public MatchCarouselView(Context context) {
         super(context);
         setFocusable(true);
+        setClickable(true);
+        setDescendantFocusability(FOCUS_BLOCK_DESCENDANTS);
+        boolean dark=Ui.pageDark(context);
+        int ink=Ui.pageInk(context);
         setFocusableInTouchMode(false);
         setClipChildren(false);
         GradientDrawable glass=new GradientDrawable(GradientDrawable.Orientation.TL_BR,
-                new int[]{0xE91A2030,0xF20C1424});
+                new int[]{dark?0xFF303034:0xFFFFFFFF,dark?0xFF202024:0xFFF1F1F5});
         glass.setCornerRadius(dp(24));
-        glass.setStroke(dp(1),0x88A5B6D3);
+        glass.setStroke(dp(1),dark?0xFF66666F:0xFFCCCCD4);
         setPadding(dp(8),dp(12),dp(8),dp(12));
         mainCard=new FrameLayout(context);
         mainCard.setBackground(glass);
@@ -60,8 +64,8 @@ public final class MatchCarouselView extends FrameLayout {
         frontParams=new LayoutParams(0,-1,Gravity.LEFT|Gravity.CENTER_VERTICAL);
         addView(mainCard,frontParams);
         side=new TextView(context);
-        side.setTextColor(Color.WHITE);side.setTextSize(18);side.setGravity(Gravity.CENTER);
-        GradientDrawable sideGlass=new GradientDrawable(GradientDrawable.Orientation.TL_BR,new int[]{0xCC27334B,0xF0101929});
+        side.setTextColor(ink);side.setTextSize(18);side.setGravity(Gravity.CENTER);
+        GradientDrawable sideGlass=new GradientDrawable(GradientDrawable.Orientation.TL_BR,new int[]{dark?0xFF36363C:0xFFE5E5EB,dark?0xFF242428:0xFFEEEEF2});
         sideGlass.setCornerRadius(dp(22));sideGlass.setStroke(dp(1),0x88A5B6D3);
         side.setBackground(sideGlass);
         sideParams=new LayoutParams(0,-1,Gravity.RIGHT|Gravity.CENTER_VERTICAL);
@@ -74,10 +78,11 @@ public final class MatchCarouselView extends FrameLayout {
         content.setGravity(Gravity.CENTER);
         content.setOrientation(LinearLayout.VERTICAL);
         mainCard.addView(content,new LayoutParams(-1,-1));
-        league=label(15,0xFFCBD6E8); teams=label(25,Color.WHITE);
-        time=label(16,0xFFE4C68C); next=label(13,0xFFB1C2DD);
+        league=label(15,Ui.pageMuted(context)); teams=label(25,ink);
+        time=label(16,ink); next=label(13,Ui.pageMuted(context));
         content.addView(league); content.addView(teams); content.addView(time); content.addView(next);
         setOnFocusChangeListener((v,focused)->{
+            glass.setStroke(dp(focused?3:1),dark?0xFFAAAAAF:0xFF777780);
             mainCard.animate().scaleX(focused?1.025f:1f).scaleY(focused?1.025f:1f).setDuration(180).start();
             if(focused)handler.removeCallbacks(advance);
             else schedule();
@@ -97,7 +102,7 @@ public final class MatchCarouselView extends FrameLayout {
     }
     private int dp(int n){return (int)(n*getResources().getDisplayMetrics().density+.5f);}
     private TextView label(int size,int color) {
-        TextView t=new TextView(getContext());t.setTextSize(size);t.setTextColor(color);
+        TextView t=new TextView(getContext());t.setTextSize(size*Math.max(0.65f,Math.min(1f,getResources().getDisplayMetrics().heightPixels/600f)));t.setTextColor(color);
         t.setGravity(Gravity.CENTER);t.setTypeface(Typeface.DEFAULT,Typeface.BOLD);
         t.setPadding(0,dp(6),0,dp(6));return t;
     }
@@ -106,6 +111,7 @@ public final class MatchCarouselView extends FrameLayout {
         matches.clear();if(data!=null)matches.addAll(data);
         index=0;mainCard.animate().cancel();mainCard.setRotationY(0f);mainCard.setTranslationX(0f);mainCard.setAlpha(1f);render();schedule();
     }
+    Match selectedMatch(){return matches.isEmpty()?null:matches.get(index);}
     public void setOnMatchSelected(OnMatchSelected callback){listener=callback;}
     private void render(){
         if(matches.isEmpty()){

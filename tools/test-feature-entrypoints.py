@@ -80,10 +80,44 @@ for title in ('مباريات قادمة', 'مباشر الآن', 'نتائج ا
     assert title in ui, title
 screenshot('matches-screen.png')
 note('PASS: remote LEFT + DOWN + OK opens Matches with all four tabs.')
+def key(name):
+    adb('shell','input','keyevent','KEYCODE_DPAD_'+name)
+
+def focused(identifier):
+    assert any(n.get('resource-id') == 'io.freemytv:id/'+identifier and n.get('focused') == 'true'
+               for n in xml().iter('node')), 'Expected remote focus: '+identifier
+
+focused('matches_tab_upcoming')
+key('RIGHT')
+focused('matches_tab_live')
+key('CENTER')
+focused('matches_carousel')
+key('UP')
+focused('matches_tab_live')
+key('RIGHT')
+key('CENTER')
+focused('matches_carousel')
+key('UP')
+focused('matches_tab_today')
+key('RIGHT')
+key('CENTER')
+focused('matches_carousel')
+key('UP')
+focused('matches_tab_yesterday')
+for _ in range(3): key('LEFT')
+key('CENTER')
+focused('matches_carousel')
+key('RIGHT')
+key('LEFT')
+key('CENTER')
+assert 'إغلاق' in ET.tostring(xml(),encoding='unicode')
+screenshot('matches-details.png')
+adb('shell','input','keyevent','KEYCODE_BACK')
+note('PASS: remote arrows reach all four tabs and the match card; OK opens details or an honest empty-state message.')
 result = adb('shell', 'am', 'start', '-W', '-n', 'io.freemytv/io.freemytv.HomeActivity')
 assert 'Status: ok' in result
 activity('HomeActivity')
-assert any(n.get('resource-id') == 'io.freemytv:id/home_matches' for n in xml().iter('node'))
+assert not any(n.get('resource-id') == 'io.freemytv:id/home_matches' for n in xml().iter('node'))
 screenshot('home-features.png')
-note('PASS: the home screen displays its matches card even before a provider returns fixtures.')
+note('PASS: no floating matches card covers the home screen or drawer.')
 note('No provider credentials were entered. Live stream playback and availability of fixtures require the user/provider network.')

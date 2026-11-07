@@ -6,6 +6,11 @@ import android.os.Handler;
 import android.os.Looper;
 import android.view.Gravity;
 import android.view.View;
+import android.view.KeyEvent;
+import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.StateListDrawable;
+import android.app.AlertDialog;
+import java.util.concurrent.Future;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import java.util.ArrayList;
@@ -22,12 +27,18 @@ public final class MatchesActivity extends Activity {
     private volatile boolean active;
     private volatile String section="upcoming";
     private LinearLayout tabs;
+    private final TextView[] tabViews=new TextView[4];
+    private int selectedTab;
+    private Future<?> request;
+    private AlertDialog details;
     private final String[] keys={"upcoming","live","today","yesterday"};
     private final String[] titles={"مباريات قادمة","مباشر الآن","نتائج اليوم","نتائج أمس"};
     private final Runnable refresh=new Runnable(){
         @Override public void run(){
             if(!active)return;
-            worker.execute(()->{
+            if(request!=null)request.cancel(true);
+            heading.setText(titles[selectedTab]+"  •  جارٍ التحميل…");
+            request=worker.submit(()->{
                 String requested=section;
                 List<MatchCarouselView.Match> fixtures=UpcomingMatches.fetch(null,requested);
                 main.post(()->{
@@ -46,38 +57,81 @@ public final class MatchesActivity extends Activity {
         root.setGravity(Gravity.CENTER);
         float scale=Math.max(0.65f,Math.min(1.5f,getResources().getDisplayMetrics().heightPixels/720f));
         root.setPadding(Math.round(24*scale),Math.round(12*scale),Math.round(24*scale),Math.round(12*scale));
-        root.setBackgroundColor(0xFF101725);
+        root.setBackgroundColor(Ui.pageBackground(this));
         heading=new TextView(this);
         heading.setText("مباريات قادمة");
-        heading.setTextColor(-1);heading.setTextSize(26*scale);
+        heading.setTextColor(Ui.pageInk(this));heading.setTextSize(26*scale);
         heading.setGravity(Gravity.CENTER);
         root.addView(heading,new LinearLayout.LayoutParams(-1,-2));
         tabs=new LinearLayout(this);tabs.setGravity(Gravity.CENTER);
         for(int i=0;i<keys.length;i++){
-            final String key=keys[i];
+            final int index=i;
             TextView tab=new TextView(this);
-            tab.setText(titles[i]);tab.setTextColor(-1);tab.setTextSize(17*scale);
+            tabViews[i]=tab;
+            tab.setId(new int[]{R.id.matches_tab_upcoming,R.id.matches_tab_live,R.id.matches_tab_today,R.id.matches_tab_yesterday}[i]);
+            tab.setText(titles[i]);tab.setTextColor(Ui.pageInk(this));tab.setTextSize(17*scale);
             tab.setGravity(Gravity.CENTER);tab.setFocusable(true);
             tab.setPadding(Math.round(8*scale),Math.round(12*scale),Math.round(8*scale),Math.round(12*scale));
-            tab.setOnClickListener(v->{section=key;main.removeCallbacks(refresh);main.post(refresh);carousel.requestFocus();});
+            StateListDrawable focus=new StateListDrawable();
+            focus.addState(new int[]{android.R.attr.state_focused},chip(Ui.pageDark(this)?0xFF55555D:0xFFFFFFFF));
+            focus.addState(new int[]{android.R.attr.state_selected},chip(Ui.pageDark(this)?0xFF333338:0xFFDADAE2));
+            focus.addState(new int[]{},chip(0x00000000));
+            tab.setBackground(focus);
+            tab.setOnClickListener(v->{
+                selectedTab=index;section=keys[index];
+                for(int j=0;j<tabViews.length;j++)tabViews[j].setSelected(j==index);
+                carousel.setMatches(java.util.Collections.emptyList());
+                main.removeCallbacks(refresh);main.post(refresh);carousel.requestFocus();
+            });
             tabs.addView(tab,new LinearLayout.LayoutParams(0,-2,1));
         }
         root.addView(tabs,new LinearLayout.LayoutParams(-1,-2));
         carousel=new MatchCarouselView(this);
-        carousel.setOnMatchSelected(match->new android.app.AlertDialog.Builder(this)
-                .setTitle(match.competition)
-                .setMessage(match.home+"  VS  "+match.away+"\n"+match.kickoff+"  •  بتوقيت السعودية")
-                .setPositiveButton("إغلاق",(dialog,which)->carousel.requestFocus())
-                .show());
+        carousel.setId(R.id.matches_carousel);
+        carousel.setOnClickListener(v->openDetails());
         root.addView(carousel,new LinearLayout.LayoutParams(-1,0,1));
         TextView note=new TextView(this);
         note.setText("يمين ويسار للتنقل  •  مواعيد السعودية  •  مصدر ESPN غير رسمي");
-        note.setTextColor(0xFFBCC5D3);note.setTextSize(16*scale);note.setGravity(Gravity.CENTER);
+        note.setTextColor(Ui.pageMuted(this));note.setTextSize(16*scale);note.setGravity(Gravity.CENTER);
         root.addView(note,new LinearLayout.LayoutParams(-1,-2));
         setContentView(root);
-        carousel.requestFocus();
+        tabViews[0].setSelected(true);
+        tabViews[0].requestFocus();
+    }
+    private GradientDrawable chip(int color){
+        GradientDrawable d=new GradientDrawable();d.setColor(color);d.setCornerRadius(14);return d;
+    }
+    private void openDetails(){
+        MatchCarouselView.Match match=carousel.selectedMatch();
+        String title=match==null?titles[selectedTab]:match.competition;
+        String message=match==null?"لا توجد مباريات متاحة في هذا القسم":match.home+"  VS  "+match.away+"\n"+match.kickoff+"  •  بتوقيت السعودية";
+        details=new AlertDialog.Builder(this).setTitle(title).setMessage(message)
+                .setPositiveButton("إغلاق",(dialog,which)->carousel.requestFocus()).create();
+        details.show();
+    }
+    @Override public boolean dispatchKeyEvent(KeyEvent event){
+        if(details!=null&&details.isShowing())return super.dispatchKeyEvent(event);
+        int key=event.getKeyCode();
+        if(key!=KeyEvent.KEYCODE_DPAD_LEFT&&key!=KeyEvent.KEYCODE_DPAD_RIGHT
+                &&key!=KeyEvent.KEYCODE_DPAD_UP&&key!=KeyEvent.KEYCODE_DPAD_DOWN
+                &&key!=KeyEvent.KEYCODE_DPAD_CENTER&&key!=KeyEvent.KEYCODE_ENTER)return super.dispatchKeyEvent(event);
+        if(event.getAction()!=KeyEvent.ACTION_DOWN)return true;
+        if(carousel.hasFocus()){
+            if(key==KeyEvent.KEYCODE_DPAD_UP)tabViews[selectedTab].requestFocus();
+            else if(key==KeyEvent.KEYCODE_DPAD_DOWN)return true;
+            else if(key==KeyEvent.KEYCODE_DPAD_CENTER||key==KeyEvent.KEYCODE_ENTER){if(event.getRepeatCount()==0)carousel.performClick();}
+            else carousel.onKeyDown(key,event);
+        }else{
+            int focused=selectedTab;
+            for(int i=0;i<tabViews.length;i++)if(tabViews[i].hasFocus())focused=i;
+            if(key==KeyEvent.KEYCODE_DPAD_LEFT)tabViews[Math.max(0,focused-1)].requestFocus();
+            else if(key==KeyEvent.KEYCODE_DPAD_RIGHT)tabViews[Math.min(3,focused+1)].requestFocus();
+            else if(key==KeyEvent.KEYCODE_DPAD_DOWN)carousel.requestFocus();
+            else if((key==KeyEvent.KEYCODE_DPAD_CENTER||key==KeyEvent.KEYCODE_ENTER)&&event.getRepeatCount()==0)tabViews[focused].performClick();
+        }
+        return true;
     }
     @Override protected void onResume(){super.onResume();active=true;main.post(refresh);}
-    @Override protected void onPause(){active=false;main.removeCallbacks(refresh);super.onPause();}
+    @Override protected void onPause(){active=false;main.removeCallbacks(refresh);if(request!=null)request.cancel(true);super.onPause();}
     @Override protected void onDestroy(){worker.shutdownNow();super.onDestroy();}
 }

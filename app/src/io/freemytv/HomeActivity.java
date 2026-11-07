@@ -10,8 +10,6 @@ import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.widget.TextView;
-import android.widget.FrameLayout;
-import java.util.List;
 
 /**
  * The Free My TV home screen (Android's "Home" role in Free My TV mode). It runs in the :home process: if it crashes,
@@ -22,22 +20,6 @@ public class HomeActivity extends Activity {
     /** Opens All Apps (a remote's All Apps button, RemoteKeys). */
     static final String EXTRA_ALL_APPS = "io.freemytv.ALL_APPS";
     private HomeView home;
-    private MatchCarouselView matchPreview;
-    private final android.os.Handler matchHandler=new android.os.Handler(android.os.Looper.getMainLooper());
-    private final Runnable loadMatches=new Runnable() {
-        @Override public void run() {
-            new Thread(()->{
-                List<MatchCarouselView.Match> fixtures=UpcomingMatches.fetch(null,"upcoming");
-                runOnUiThread(()->{
-                    if(resumed && !isFinishing() && !isDestroyed() && matchPreview!=null){
-                        matchPreview.setMatches(fixtures);
-                        matchPreview.setVisibility(android.view.View.VISIBLE);
-                        matchHandler.postDelayed(loadMatches,15*60*1000);
-                    }
-                });
-            },"ouswis-fixtures").start();
-        }
-    };
     private int prefsVersion = Prefs.version;   // settings changed while we were away: start over
 
     @Override protected void onCreate(Bundle savedInstanceState) {
@@ -59,22 +41,7 @@ public class HomeActivity extends Activity {
         }
         Ui.init(this);
         home = new HomeView(this);
-        FrameLayout stage=new FrameLayout(this);
-        stage.addView(home,new FrameLayout.LayoutParams(-1,-1));
-        matchPreview=new MatchCarouselView(this);
-        matchPreview.setId(io.freemytv.R.id.home_matches);
-        FrameLayout.LayoutParams previewParams=new FrameLayout.LayoutParams(
-                (int)(getResources().getDisplayMetrics().widthPixels*.37f),
-                (int)(getResources().getDisplayMetrics().heightPixels*.29f),
-                Gravity.RIGHT|Gravity.CENTER_VERTICAL);
-        previewParams.rightMargin=(int)(getResources().getDisplayMetrics().density*22);
-        matchPreview.setFocusable(true);
-        matchPreview.setVisibility(android.view.View.VISIBLE);
-        matchPreview.setClickable(true);
-        matchPreview.setOnClickListener(v->startActivity(new Intent(this,MatchesActivity.class)));
-        matchPreview.setOnMatchSelected(match->startActivity(new Intent(this,MatchesActivity.class)));
-        stage.addView(matchPreview,previewParams);
-        setContentView(stage);
+        setContentView(home);
         getWindow().setBackgroundDrawable(null);
         if (getIntent().getBooleanExtra(EXTRA_ALL_APPS, false)) home.showAllApps();
         // At power-on "Live TV" (#346): the first time the home screen comes up after a full start, in Free My TV mode.
@@ -107,15 +74,12 @@ public class HomeActivity extends Activity {
             return;
         }
         if (home != null) home.resume();
-        if(matchPreview!=null){matchHandler.removeCallbacks(loadMatches);matchHandler.post(loadMatches);}
         Updates.tellOnce(this);   // an update the week's check got ready: said once
     }
 
     @Override protected void onPause() {
         resumed = false;
-        matchHandler.removeCallbacks(loadMatches);
         if (home != null) home.pause();
-        if (matchPreview != null) matchPreview.clearFocus();
         super.onPause();
     }
 
@@ -139,8 +103,6 @@ public class HomeActivity extends Activity {
     private static final long TWICE_MS = 700;
 
     @Override protected void onDestroy() {
-        matchHandler.removeCallbacks(loadMatches);
-        matchPreview=null;
         if (home != null) {
             home.removeCallbacks(powerOnLive);
             home.destroy();
@@ -155,14 +117,6 @@ public class HomeActivity extends Activity {
 
     @Override public boolean dispatchKeyEvent(KeyEvent event) {
         keyPressed = true;
-        // The carousel owns navigation only while focused; keep Home and system keys intact.
-        if (matchPreview != null && matchPreview.hasFocus()
-                && event.getAction()==KeyEvent.ACTION_DOWN
-                && (event.getKeyCode()==KeyEvent.KEYCODE_DPAD_LEFT
-                    || event.getKeyCode()==KeyEvent.KEYCODE_DPAD_RIGHT
-                    || event.getKeyCode()==KeyEvent.KEYCODE_DPAD_CENTER
-                    || event.getKeyCode()==KeyEvent.KEYCODE_ENTER)
-                && matchPreview.onKeyDown(event.getKeyCode(),event)) return true;
         if (RemoteKeys.onKey(this, event)) return true;
         if (home != null && home.onKey(event)) return true;
         return super.dispatchKeyEvent(event);
