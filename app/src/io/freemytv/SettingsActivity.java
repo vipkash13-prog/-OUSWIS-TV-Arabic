@@ -30,6 +30,10 @@ import android.view.accessibility.AccessibilityNodeProvider;
 import android.view.inputmethod.EditorInfo;
 import android.widget.EditText;
 import android.widget.Toast;
+import android.widget.Button;
+import android.widget.FrameLayout;
+import android.widget.LinearLayout;
+import android.view.Gravity;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -52,6 +56,9 @@ import java.util.Set;
 public class SettingsActivity extends Activity {
     private SettingsView view;
     private DreamView preview;   // "Screensaver": the screensaver right here, without changing the system setting
+    private FrameLayout settingsPage;
+    private Button channelsButton, matchesButton;
+    private int featureReturnKey;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -62,7 +69,38 @@ public class SettingsActivity extends Activity {
         SleepTimer.listen(this);   // :home may start here, from the launcher icon
         SleepTimer.check(this);
         view = new SettingsView(this);
-        setContentView(view);
+        settingsPage = new FrameLayout(this);
+        settingsPage.addView(view, new FrameLayout.LayoutParams(-1, -1));
+        float scale = getResources().getDisplayMetrics().heightPixels / 1080f;
+        LinearLayout features = new LinearLayout(this);
+        features.setOrientation(LinearLayout.VERTICAL);
+        channelsButton = new Button(this);
+        matchesButton = new Button(this);
+        channelsButton.setId(View.generateViewId());
+        matchesButton.setId(View.generateViewId());
+        channelsButton.setAllCaps(false);
+        matchesButton.setAllCaps(false);
+        channelsButton.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, 24 * scale);
+        matchesButton.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, 24 * scale);
+        channelsButton.setOnClickListener(v -> startActivity(new Intent(this, XtreamActivity.class)));
+        matchesButton.setOnClickListener(v -> startActivity(new Intent(this, MatchesActivity.class)));
+        channelsButton.setNextFocusDownId(matchesButton.getId());
+        matchesButton.setNextFocusUpId(channelsButton.getId());
+        features.addView(channelsButton, new LinearLayout.LayoutParams(-1, Math.round(76 * scale)));
+        features.addView(matchesButton, new LinearLayout.LayoutParams(-1, Math.round(76 * scale)));
+        FrameLayout.LayoutParams position = new FrameLayout.LayoutParams(Math.round(400 * scale), -2, Gravity.LEFT | Gravity.BOTTOM);
+        position.leftMargin = Math.round(300 * scale);
+        position.bottomMargin = Math.round(120 * scale);
+        settingsPage.addView(features, position);
+        refreshFeatureLabels();
+        setContentView(settingsPage);
+        view.requestFocus();
+    }
+
+    private void refreshFeatureLabels() {
+        if (channelsButton == null) return;
+        channelsButton.setText("Xtream Codes");
+        matchesButton.setText(Ui.tr("Matches"));
     }
 
     /**
@@ -82,6 +120,7 @@ public class SettingsActivity extends Activity {
     @Override protected void onResume() {
         super.onResume();
         if (view == null) return;
+        refreshFeatureLabels();
         view.resume();
         // From ADB: am start -n io.freemytv/.SettingsActivity --ez screensaver true (straight to the preview).
         if (preview == null && getIntent().getBooleanExtra("screensaver", false)) {
@@ -130,7 +169,24 @@ public class SettingsActivity extends Activity {
                     return super.dispatchKeyEvent(event);
             }
         }
-        if (view.onKey(event)) return true;
+        if (view == null || channelsButton == null) return super.dispatchKeyEvent(event);
+        if (event.getAction() == KeyEvent.ACTION_UP && event.getKeyCode() == featureReturnKey) {
+            featureReturnKey = 0;
+            return true;
+        }
+        boolean featureFocused = channelsButton.hasFocus() || matchesButton.hasFocus();
+        if (event.getAction() == KeyEvent.ACTION_DOWN) {
+            if (featureFocused && (event.getKeyCode() == KeyEvent.KEYCODE_DPAD_RIGHT || event.getKeyCode() == KeyEvent.KEYCODE_BACK)) {
+                featureReturnKey = event.getKeyCode();
+                view.requestFocus();
+                return true;
+            }
+            if (!featureFocused && view.screen == SettingsView.MAIN && event.getKeyCode() == KeyEvent.KEYCODE_DPAD_LEFT) {
+                channelsButton.requestFocus();
+                return true;
+            }
+        }
+        if (!featureFocused && view.onKey(event)) return true;
         return super.dispatchKeyEvent(event);
     }
 
@@ -144,7 +200,7 @@ public class SettingsActivity extends Activity {
         if (preview == null) return;
         preview.stop();
         preview = null;
-        setContentView(view);
+        setContentView(settingsPage);
         view.resume();
     }
 
@@ -1146,8 +1202,7 @@ public class SettingsActivity extends Activity {
                             : i == 6 ? Capabilities.NEED_ADB : null;
                 case HOME_SETTINGS:
                     return pickScroll + i == PLAYING_ROW ? Capabilities.NEED_LISTENER
-                            : pickScroll + i == HOME_ROW ? Capabilities.NEED_HOME_ASSISTANT
-                            : pickScroll + i == POWER_ON_ROW ? Capabilities.NEED_LIVE_TV : null;
+                            : pickScroll + i == HOME_ROW ? Capabilities.NEED_HOME_ASSISTANT : null;
                 case POWER: {
                     int id = powerRows()[i];
                     return id == P_WHERE ? Capabilities.NEED_OVERLAY : null;
@@ -1155,8 +1210,7 @@ public class SettingsActivity extends Activity {
                 case SHELF_EDIT: {   // only to add it: one already among the buttons can still move or go
                     String key = shelfRows.get(pickScroll + i)[0];
                     if (!editingTop || shelfOrder.contains(key)) return null;
-                    return HomeApps.TOP_LIVE.equals(key) ? Capabilities.NEED_LIVE_TV
-                            : HomeApps.TOP_STORE.equals(key) ? Capabilities.NEED_APP_STORE : null;
+                    return HomeApps.TOP_STORE.equals(key) ? Capabilities.NEED_APP_STORE : null;
                 }
                 default:
                     return null;
@@ -2371,6 +2425,7 @@ public class SettingsActivity extends Activity {
                 pickPower();
             } else if (screen == PICKER && pickFor == PICK_LANGUAGE) {
                 Prefs.setLanguage(languageChoices()[pickScroll + focus]);
+                activity.refreshFeatureLabels();
                 SleepOverlay.update(c);   // the pill speaks it too
                 focus = 0;
                 pickScroll = 0;

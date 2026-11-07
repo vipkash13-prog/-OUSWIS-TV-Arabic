@@ -62,6 +62,7 @@ final class HomeApps {
     static final int RECENTS = 8;
     /** A Home Assistant entity in the drawer (HomeAssistant): OK calls its service, nothing opens. */
     static final int HOME_ASSISTANT = 9;
+    static final int XTREAM_LIVE = 10, MATCHES = 11;
     /** Image size of each card (16:9; on screen it shows up to ~330 px wide). */
     static final int TILE_W = 384, TILE_H = 216;
 
@@ -260,10 +261,11 @@ final class HomeApps {
 
     // MARK: - Top buttons (the round ones at the top right)
 
-    static final String TOP_LIVE = "live", TOP_INPUTS = "inputs", TOP_SETTINGS = "settings", TOP_RECENTS = "recents", TOP_STORE = "store";
-    static final List<String> TOP_DEFAULT = Collections.unmodifiableList(java.util.Arrays.asList(TOP_LIVE, TOP_INPUTS, TOP_SETTINGS));
+    static final String TOP_LIVE = "live", TOP_INPUTS = "inputs", TOP_SETTINGS = "settings", TOP_RECENTS = "recents", TOP_STORE = "store",
+            TOP_MATCHES = "ouswis_matches";
+    static final List<String> TOP_DEFAULT = Collections.unmodifiableList(java.util.Arrays.asList(TOP_LIVE, TOP_MATCHES, TOP_INPUTS, TOP_SETTINGS));
     /** What can be a top button: the default three, and Recent Apps and App Store for whoever adds them. */
-    static final List<String> TOP_ALL = Collections.unmodifiableList(java.util.Arrays.asList(TOP_LIVE, TOP_INPUTS, TOP_SETTINGS, TOP_RECENTS, TOP_STORE));
+    static final List<String> TOP_ALL = Collections.unmodifiableList(java.util.Arrays.asList(TOP_LIVE, TOP_MATCHES, TOP_INPUTS, TOP_SETTINGS, TOP_RECENTS, TOP_STORE));
     static final int MAX_TOP = TOP_ALL.size();
 
     /** The keys of the top buttons, in order (Settings > Top Buttons; by default Live TV, HDMI Inputs, Settings). */
@@ -303,7 +305,8 @@ final class HomeApps {
 
     private static Item topButton(String key) {
         switch (key) {
-            case TOP_LIVE: return action(LIVE_TV, TOP_LIVE, Ui.tr("light|Live TV"), "live_tv");
+            case TOP_LIVE: return action(XTREAM_LIVE, TOP_LIVE, Ui.tr("light|Live TV"), "live_tv");
+            case TOP_MATCHES: return action(MATCHES, TOP_MATCHES, Ui.tr("Matches"), "tv");
             case TOP_INPUTS: return action(INPUTS, TOP_INPUTS, Ui.tr("HDMI Inputs"), "hdmi");
             case TOP_RECENTS: return action(RECENTS, TOP_RECENTS, Ui.tr("Recent Apps"), "recents");
             case TOP_STORE: return action(APP, TOP_STORE, Ui.tr("App Store"), "store");
@@ -324,8 +327,8 @@ final class HomeApps {
     /** Live TV, the HDMI inputs with a device sending a signal, and All Apps. */
     static List<Item> shortcuts(Context c) {
         List<Item> items = new ArrayList<>();
-        items.add(shortcut(LIVE_TV, "xtream_live", Ui.tr("Live TV"), "tv"));
-        items.add(shortcut(LIVE_TV, "ouswis_matches", "المباريات", "tv"));
+        items.add(shortcut(XTREAM_LIVE, "xtream_live", "Xtream Codes", "tv"));
+        items.add(shortcut(MATCHES, TOP_MATCHES, Ui.tr("Matches"), "tv"));
         items.addAll(inputs(c));
         items.add(shortcut(ALL_APPS, "all", Ui.tr("All Apps"), "apps"));
         return items;
@@ -365,6 +368,8 @@ final class HomeApps {
     /** Shortcuts in the bottom drawer. */
     static List<Item> drawerShortcuts(Context c) {
         List<Item> items = new ArrayList<>();
+        items.add(shortcut(XTREAM_LIVE, "xtream_live", "Xtream Codes", "tv"));
+        items.add(shortcut(MATCHES, TOP_MATCHES, Ui.tr("Matches"), "tv"));
         items.add(shortcut(ALL_APPS, "all", Ui.tr("All Apps"), "apps"));
         items.add(shortcut(SETTINGS, "settings", Ui.tr("Home Settings"), "settings"));
         items.add(shortcut(ANDROID_SETTINGS, "tv-settings", Ui.tr("TV Settings"), "tv_settings"));
@@ -630,6 +635,12 @@ final class HomeApps {
                         intent.setComponent(plain.getComponent()).putExtra("source", "30").addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK);
                     }
                 }
+                break;
+            case XTREAM_LIVE:
+                intent = new Intent(a, XtreamActivity.class);
+                break;
+            case MATCHES:
+                intent = new Intent(a, MatchesActivity.class);
                 break;
             case LIVE_TV:
                 intent = "ouswis_matches".equals(it.key) ? new Intent(a, MatchesActivity.class) :

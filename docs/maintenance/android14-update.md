@@ -36,3 +36,9 @@ The signature policy is enforced by `./build.sh --generic --release` and `tools/
 Matches 3D, upcoming matches, Xtream Codes player, Arabic catalogue and remote control logic are preserved. The older audit file `android14-install-result.txt` is historical evidence for the compatibility key, not an official-key test. Each official release attaches its own install-upgrade.log.
 
 An emulator installation test is not a physical MECOOL KM2 Plus Deluxe test or a test of its Google Play Protect/file manager. Minimum SDK remains 26 and target SDK 33 to avoid unrelated runtime behavior changes. The original attribution and licence remain intact. No other repository is involved.
+
+## Visible features and remote navigation
+
+The launch/settings screen has native, focusable Xtream Codes and Matches buttons. LEFT moves from the main settings list to Xtream; DOWN selects Matches; RIGHT or Back returns focus to the settings list. Both features also appear in drawer shortcuts; the home Live TV button launches Xtream and Matches is a default top button. Neither feature requires a hardware TV tuner. The home match preview stays visible with an honest empty state if fixtures are unavailable.
+
+`tools/test-feature-entrypoints.py` verifies the visible controls with UIAutomator, opens both activities with remote key events, checks all four matches tabs and captures settings, Xtream, matches and home screenshots. Publication requires this test as well as the Android 14 installation/upgrade test. It does not enter provider credentials or claim successful subscription playback.

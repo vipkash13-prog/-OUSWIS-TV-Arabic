@@ -31,7 +31,7 @@ public class HomeActivity extends Activity {
                 runOnUiThread(()->{
                     if(resumed && !isFinishing() && !isDestroyed() && matchPreview!=null){
                         matchPreview.setMatches(fixtures);
-                        matchPreview.setVisibility(fixtures.isEmpty()?android.view.View.GONE:android.view.View.VISIBLE);
+                        matchPreview.setVisibility(android.view.View.VISIBLE);
                         matchHandler.postDelayed(loadMatches,15*60*1000);
                     }
                 });
@@ -68,7 +68,7 @@ public class HomeActivity extends Activity {
                 Gravity.RIGHT|Gravity.CENTER_VERTICAL);
         previewParams.rightMargin=(int)(getResources().getDisplayMetrics().density*22);
         matchPreview.setFocusable(true);
-        matchPreview.setVisibility(android.view.View.GONE);
+        matchPreview.setVisibility(android.view.View.VISIBLE);
         matchPreview.setClickable(true);
         matchPreview.setOnClickListener(v->startActivity(new Intent(this,MatchesActivity.class)));
         matchPreview.setOnMatchSelected(match->startActivity(new Intent(this,MatchesActivity.class)));
@@ -89,7 +89,7 @@ public class HomeActivity extends Activity {
     private final Runnable powerOnLive = () -> {
         if (!resumed || keyPressed) return;
         AppLog.w("at power-on: Live TV");
-        HomeApps.open(this, HomeApps.action(HomeApps.LIVE_TV, HomeApps.TOP_LIVE, Ui.tr("Live TV"), "live_tv"), null);
+        HomeApps.open(this, HomeApps.action(HomeApps.XTREAM_LIVE, HomeApps.TOP_LIVE, Ui.tr("Live TV"), "live_tv"), null);
     };
 
     @Override protected void onResume() {
