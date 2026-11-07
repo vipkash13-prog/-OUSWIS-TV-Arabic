@@ -75,6 +75,18 @@ adb('shell', 'input', 'keyevent', 'KEYCODE_DPAD_LEFT')
 adb('shell', 'input', 'keyevent', 'KEYCODE_DPAD_DOWN')
 adb('shell', 'input', 'keyevent', 'KEYCODE_DPAD_CENTER')
 activity('MatchesActivity')
+def wait_fixtures():
+    for _ in range(20):
+        tree=xml()
+        headings=[n.get('text','') for n in tree.iter('node') if '•' in n.get('text','')]
+        if any(any(ch.isdigit() and ch not in ('0','٠') for ch in text.rsplit('•',1)[-1]) for text in headings):
+            note('PASS: Android fetched real fixtures and displayed a positive match count: '+str(headings))
+            return
+    screenshot('matches-feed-failure.png')
+    (OUT / 'matches-feed-logcat.txt').write_text(adb('logcat','-d','-t','600'))
+    raise AssertionError('No real fixtures appeared on the Android screen')
+
+wait_fixtures()
 ui = ET.tostring(xml(), encoding='unicode')
 for title in ('مباريات قادمة', 'مباشر الآن', 'نتائج اليوم', 'نتائج أمس'):
     assert title in ui, title
@@ -102,7 +114,17 @@ key('DOWN')
 focused('matches_carousel')
 key('RIGHT')
 key('LEFT')
+key('UP')
+key('LEFT')
+key('LEFT')
+key('CENTER')
+wait_fixtures()
 screenshot('matches-details.png')
+from PIL import Image
+pixel=Image.open(OUT / 'matches-details.png').convert('RGB')
+rgb=pixel.getpixel((int(pixel.width*0.20),int(pixel.height*0.28)))
+assert min(rgb)>100 and max(rgb)-min(rgb)<20, 'Expected light gray matches background: '+str(rgb)
+note('PASS: matches window uses a light neutral gray background.')
 adb('shell','input','keyevent','KEYCODE_BACK')
 note('PASS: remote arrows reach all four tabs and the match card; Back closes the matches window.')
 result = adb('shell', 'am', 'start', '-W', '-n', 'io.ouswis.tv.standalone/io.ouswis.tv.standalone.HomeActivity')

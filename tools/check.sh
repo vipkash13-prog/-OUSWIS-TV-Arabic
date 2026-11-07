@@ -21,6 +21,7 @@ if [ "$what" = all ] || [ "$what" = android ]; then
   bash tools/test-order.sh
   bash tools/test-update-release.sh
   bash tools/test-video-fit.sh
+  bash tools/test-matches-feed.sh
 fi
 
 if [ "$what" = all ] || [ "$what" = web ]; then

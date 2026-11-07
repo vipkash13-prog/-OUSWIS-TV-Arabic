@@ -20,6 +20,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ConcurrentHashMap;
+import java.time.OffsetDateTime;
 
 /** Free, keyless football fixtures from ESPN's unofficial scoreboard feed (no fabricated data).
  * Competitions load in parallel; one that fails never blocks the others. The endpoint is undocumented.
@@ -28,14 +30,14 @@ public final class UpcomingMatches {
     private UpcomingMatches(){}
     public static final String[] LEAGUES={
         "ksa.1", "afc.champions", "uefa.champions",
-        "eng.1", "esp.1", "ita.1", "fra.1"
+        "eng.1", "esp.1", "ita.1", "ger.1", "fra.1", "por.1"
     };
     /** What a load found: the matches, and how many competitions answered or didn't. */
     public static final class Result {
         public final List<MatchCarouselView.Match> matches=new ArrayList<>();
         public int answered, failed;
-        /** True when nothing answered at all (offline, blocked): different from "no matches today". */
-        public boolean unavailable(){return answered==0&&failed>0;}
+        /** A failed feed must not be presented as a confirmed empty schedule. */
+        public boolean unavailable(){return matches.isEmpty()&&failed>0;}
     }
     private static final Map<String,String> AR=new HashMap<>();
     static{
@@ -78,13 +80,16 @@ public final class UpcomingMatches {
         }
         Result result=new Result();
         HashSet<String> seen=new HashSet<>();
+        long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(25);
         for(Future<List<MatchCarouselView.Match>> job:jobs){
             try{
-                List<MatchCarouselView.Match> rows=job.get(20,TimeUnit.SECONDS);
+                List<MatchCarouselView.Match> rows=job.get(Math.max(1,deadline-System.nanoTime()),TimeUnit.NANOSECONDS);
                 result.answered++;
                 for(MatchCarouselView.Match m:rows)if(seen.add(m.key))result.matches.add(m);
-            }catch(Exception e){result.failed++;job.cancel(true);}
+            }catch(InterruptedException e){Thread.currentThread().interrupt();break;}
+            catch(Exception e){result.failed++;job.cancel(true);System.err.println("Matches feed: "+e);}
         }
+        for(Future<?> job:jobs)if(!job.isDone())job.cancel(true);
         pool.shutdownNow();
         // Chronological across leagues; live matches by kickoff too, so the longest-running come first.
         Collections.sort(result.matches,(a,b)->Long.compare(a.kickoffMillis,b.kickoffMillis));
@@ -92,24 +97,64 @@ public final class UpcomingMatches {
         return result;
     }
 
-    private static List<MatchCarouselView.Match> fetchLeague(String league,String section,String from,String to,long now,
-            long todayStart,long yesterdayStart,long tomorrowStart) throws Exception {
-        ArrayList<MatchCarouselView.Match> out=new ArrayList<>();
-        SimpleDateFormat fmt=new SimpleDateFormat("dd/MM  h:mm a",new Locale("ar","SA"));
-        fmt.setTimeZone(TimeZone.getTimeZone("Asia/Riyadh"));
-        HttpURLConnection c=null;
-        try {
-            URL url=new URL("https://site.api.espn.com/apis/site/v2/sports/soccer/"+league+"/scoreboard?dates="+from+"-"+to+"&limit=100");
-            c=(HttpURLConnection)url.openConnection();
-            c.setConnectTimeout(8000);c.setReadTimeout(12000);
+    private static final class CachedFeed {
+        final String json; final long at;
+        CachedFeed(String json){this.json=json;at=System.currentTimeMillis();}
+    }
+    private static final Map<String,CachedFeed> FEEDS=new ConcurrentHashMap<>();
+
+    /** Soccer's feed accepts one day or month, but rejects a date range with HTTP 400. */
+    static List<String> queryMonths(String from,String to){
+        ArrayList<String> months=new ArrayList<>();
+        java.util.Calendar date=java.util.Calendar.getInstance(TimeZone.getTimeZone("UTC"));
+        date.clear();date.set(Integer.parseInt(from.substring(0,4)),Integer.parseInt(from.substring(4,6))-1,1);
+        SimpleDateFormat format=new SimpleDateFormat("yyyyMM",Locale.US);format.setTimeZone(date.getTimeZone());
+        String last=to.substring(0,6);
+        for(int i=0;i<3;i++){
+            String month=format.format(date.getTime());months.add(month);
+            if(month.equals(last))break;
+            date.add(java.util.Calendar.MONTH,1);
+        }
+        return months;
+    }
+
+    private static JSONObject readFeed(String league,String month) throws Exception {
+        String key=league+":"+month;
+        CachedFeed cached=FEEDS.get(key);
+        if(cached!=null&&System.currentTimeMillis()-cached.at<60_000)return new JSONObject(cached.json);
+        URL url=new URL("https://site.api.espn.com/apis/site/v2/sports/soccer/"+league+"/scoreboard?dates="+month+"&limit=1000");
+        HttpURLConnection c=(HttpURLConnection)url.openConnection();
+        c.setConnectTimeout(8000);c.setReadTimeout(12000);
+        try{
             int code=c.getResponseCode();
-            if(code==404||code==400)return out; // this competition has no feed: not a connection failure
-            if(code!=200)throw new java.io.IOException("HTTP "+code);
+            if(code!=200)throw new java.io.IOException(league+": HTTP "+code);
             StringBuilder raw=new StringBuilder();
             try(BufferedReader reader=new BufferedReader(new InputStreamReader(c.getInputStream(),"UTF-8"))){
                 String line;while((line=reader.readLine())!=null)raw.append(line);
             }
             JSONObject root=new JSONObject(raw.toString());
+            if(root.optJSONArray("events")==null)throw new java.io.IOException(league+": missing events");
+            if(FEEDS.size()>48)FEEDS.clear();
+            FEEDS.put(key,new CachedFeed(raw.toString()));
+            return root;
+        }finally{c.disconnect();}
+    }
+
+    private static List<MatchCarouselView.Match> fetchLeague(String league,String section,String from,String to,long now,
+            long todayStart,long yesterdayStart,long tomorrowStart) throws Exception {
+        ArrayList<MatchCarouselView.Match> out=new ArrayList<>();
+        for(String month:queryMonths(from,to)){
+            if(Thread.currentThread().isInterrupted())throw new InterruptedException();
+            out.addAll(parseFeed(readFeed(league,month),league,section,now,todayStart,yesterdayStart,tomorrowStart));
+        }
+        return out;
+    }
+
+    static List<MatchCarouselView.Match> parseFeed(JSONObject root,String league,String section,long now,
+            long todayStart,long yesterdayStart,long tomorrowStart){
+        ArrayList<MatchCarouselView.Match> out=new ArrayList<>();
+        SimpleDateFormat fmt=new SimpleDateFormat("dd/MM  h:mm a",new Locale("ar","SA"));
+        fmt.setTimeZone(TimeZone.getTimeZone("Asia/Riyadh"));
             String leagueLogo="";
             JSONArray leagueList=root.optJSONArray("leagues");
             JSONObject first=leagueList==null?null:leagueList.optJSONObject(0);
@@ -140,16 +185,15 @@ public final class UpcomingMatches {
                 }
                 if(home.isEmpty()||away.isEmpty())continue;
                 String utc=e.optString("date");if(utc.isEmpty())continue;
-                SimpleDateFormat iso=new SimpleDateFormat("yyyy-MM-dd'T'HH:mm'Z'",Locale.US);
-                iso.setTimeZone(TimeZone.getTimeZone("UTC"));
-                Date date=iso.parse(utc);
-                if(date==null)continue;
-                long kickoff=date.getTime();
+                long kickoff;
+                try{kickoff=OffsetDateTime.parse(utc).toInstant().toEpochMilli();}
+                catch(java.time.format.DateTimeParseException badDate){continue;}
+                Date date=new Date(kickoff);
                 boolean include;
                 if("live".equals(section)) include="in".equals(state);
                 else if("today".equals(section)) include="post".equals(state)&&kickoff>=todayStart&&kickoff<tomorrowStart;
                 else if("yesterday".equals(section)) include="post".equals(state)&&kickoff>=yesterdayStart&&kickoff<todayStart;
-                else include="pre".equals(state)&&kickoff>=now;
+                else include="pre".equals(state)&&kickoff>=now&&kickoff<now+14L*24*60*60*1000;
                 if(!include)continue;
                 MatchCarouselView.Match m=new MatchCarouselView.Match(competition,arabic(home),arabic(away),fmt.format(date),kickoff);
                 m.key=league+":"+e.optString("id");
@@ -172,7 +216,6 @@ public final class UpcomingMatches {
                 }
                 out.add(m);
             }
-        }finally{if(c!=null)c.disconnect();}
         return out;
     }
 

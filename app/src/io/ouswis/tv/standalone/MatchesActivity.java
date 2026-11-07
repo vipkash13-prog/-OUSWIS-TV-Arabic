@@ -51,11 +51,11 @@ public final class MatchesActivity extends Activity {
                     if(firstLoad){
                         firstLoad=false;
                         // Nothing live right now: show what is coming instead of an empty window.
-                        if("live".equals(requested)&&result.matches.isEmpty()&&!result.unavailable()){select(1);return;}
+                        if("live".equals(requested)&&result.matches.isEmpty()&&result.answered>0){select(1);return;}
                     }
                     carousel.setMatches(result.matches);
                     if(result.matches.isEmpty())carousel.setMessage(result.unavailable()
-                            ?"تعذّر الاتصال بمصدر المباريات. تحقق من الإنترنت"
+                            ?"تعذّر تحميل بعض الدوريات. تحقق من الإنترنت وحاول مجددًا"
                             :"live".equals(requested)?"لا توجد مباريات مباشرة الآن":"لا توجد مباريات في هذا القسم");
                     heading.setText(titles[selectedTab]+(result.matches.isEmpty()?"":"  •  "+result.matches.size()));
                     main.postDelayed(refresh,"live".equals(requested)?60*1000:15*60*1000);
@@ -76,24 +76,24 @@ public final class MatchesActivity extends Activity {
         window.setGravity(Gravity.CENTER_HORIZONTAL);
         int pad=Math.round(18*scale);
         window.setPadding(pad,pad,pad,Math.round(10*scale));
-        GradientDrawable bg=new GradientDrawable(GradientDrawable.Orientation.TL_BR,new int[]{0xF01B2740,0xF00E1424});
+        GradientDrawable bg=new GradientDrawable(GradientDrawable.Orientation.TL_BR,new int[]{0xF5EEEEF0,0xF5D3D3D8});
         bg.setCornerRadius(34*scale);bg.setStroke(Math.max(1,Math.round(1.5f*scale)),0x66FFFFFF);
         window.setBackground(bg);
         window.setClickable(true);
         heading=new TextView(this);
-        heading.setTextColor(0xFFFFFFFF);heading.setTextSize(22*scale);heading.setGravity(Gravity.CENTER);
+        heading.setTextColor(0xFF242428);heading.setTextSize(22*scale);heading.setGravity(Gravity.CENTER);
         window.addView(heading,new LinearLayout.LayoutParams(-1,-2));
         LinearLayout tabs=new LinearLayout(this);tabs.setGravity(Gravity.CENTER);
         for(int i=0;i<keys.length;i++){
             final int index=i;
             TextView tab=new TextView(this);
             tabViews[i]=tab;tab.setId(ids[i]);
-            tab.setText(titles[i]);tab.setTextColor(0xFFFFFFFF);tab.setTextSize(15*scale);
+            tab.setText(titles[i]);tab.setTextColor(0xFF242428);tab.setTextSize(15*scale);
             tab.setGravity(Gravity.CENTER);tab.setFocusable(true);
             tab.setPadding(Math.round(6*scale),Math.round(8*scale),Math.round(6*scale),Math.round(8*scale));
             StateListDrawable look=new StateListDrawable();
-            look.addState(new int[]{android.R.attr.state_focused},chip(0x66FFFFFF,scale));
-            look.addState(new int[]{android.R.attr.state_selected},chip(0x33FFFFFF,scale));
+            look.addState(new int[]{android.R.attr.state_focused},chip(0xFFFFFFFF,scale));
+            look.addState(new int[]{android.R.attr.state_selected},chip(0xA0FFFFFF,scale));
             look.addState(new int[]{},chip(0x00000000,scale));
             tab.setBackground(look);
             tab.setOnClickListener(v->select(index));
@@ -106,7 +106,7 @@ public final class MatchesActivity extends Activity {
         window.addView(carousel,new LinearLayout.LayoutParams(-1,0,1));
         TextView note=new TextView(this);
         note.setText("يمين / يسار للتنقل  •  توقيت السعودية  •  مصدر ESPN غير رسمي");
-        note.setTextColor(0xAAFFFFFF);note.setTextSize(12*scale);note.setGravity(Gravity.CENTER);
+        note.setTextColor(0xFF606068);note.setTextSize(12*scale);note.setGravity(Gravity.CENTER);
         window.addView(note,new LinearLayout.LayoutParams(-1,-2));
         FrameLayout.LayoutParams lp=new FrameLayout.LayoutParams(Math.round(screenW*0.66f),Math.round(screenH*0.68f),Gravity.CENTER);
         root.addView(window,lp);

@@ -94,6 +94,7 @@ jobs:
           bash tools/test-remote.sh
           bash tools/test-order.sh
           bash tools/test-video-fit.sh
+          bash tools/test-matches-feed.sh --live
       - name: Playback test image reader
         run: |
           sudo apt-get update -qq
