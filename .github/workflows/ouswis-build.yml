@@ -87,6 +87,8 @@ jobs:
           bash tools/test-video-fit.sh
       - name: Playback test image reader
         run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg > /dev/null
           python3 -m pip install --target "$RUNNER_TEMP/video-test-libs" Pillow
           echo "PYTHONPATH=$RUNNER_TEMP/video-test-libs" >> "$GITHUB_ENV"
           ffmpeg -version > /dev/null
