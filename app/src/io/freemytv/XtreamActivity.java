@@ -40,7 +40,7 @@ public final class XtreamActivity extends Activity {
         server=getPreferences(0).getString("server","");
         user=getPreferences(0).getString("user","");
         pass=getPreferences(0).getString("pass","");
-        if (server.isEmpty()) login(); else load();
+        if (server.isEmpty() || user.isEmpty() || pass.isEmpty()) login(); else load();
     }
     private TextView title(String text, int size) {
         TextView t=new TextView(this); t.setText(text); t.setTextColor(Color.WHITE);
@@ -113,7 +113,7 @@ public final class XtreamActivity extends Activity {
         TextView heading=title("البث المباشر  |  Live TV ("+channels.size()+")",22);
         header.addView(heading,new LinearLayout.LayoutParams(0,-2,1));
         Button account=new Button(this);account.setText("Account");header.addView(account);
-        account.setOnClickListener(v->login());
+        account.setOnClickListener(v->{if(video!=null){video.stopPlayback();video=null;}login();});
         ListView list=new ListView(this);root.addView(list,new LinearLayout.LayoutParams(-1,0,1));
         ArrayList<String> names=new ArrayList<>();for(Channel c:channels)names.add(c.name);
         ArrayAdapter<String> adapter=new ArrayAdapter<>(this,android.R.layout.simple_list_item_1,names);
@@ -129,7 +129,7 @@ public final class XtreamActivity extends Activity {
         try {
             String url=server+"/live/"+enc(user)+"/"+enc(pass)+"/"+enc(c.id)+"."+ext;
             video.setVideoURI(Uri.parse(url));
-            video.setOnPreparedListener(mp->video.start());
+            video.setOnPreparedListener(mp->{if(video!=null)video.start();});
             video.setOnErrorListener((mp,what,extra)->{Toast.makeText(this,"Playback error / تعذر تشغيل القناة",Toast.LENGTH_LONG).show();return true;});
             video.requestFocus();
         } catch(Exception e){Toast.makeText(this,e.getMessage(),Toast.LENGTH_LONG).show();}
@@ -143,6 +143,6 @@ public final class XtreamActivity extends Activity {
         return super.onKeyDown(key,event);
     }
     @Override public void onBackPressed(){if(current>=0)showChannels();else super.onBackPressed();}
-    @Override protected void onStop(){super.onStop();if(video!=null)video.pause();}
+    @Override protected void onStop(){if(video!=null && video.isPlaying())video.pause();super.onStop();}
     @Override protected void onDestroy(){if(video!=null)video.stopPlayback();super.onDestroy();}
 }
