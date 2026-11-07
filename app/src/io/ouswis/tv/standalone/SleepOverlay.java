@@ -116,7 +116,7 @@ public class SleepOverlay extends Service {
         // In the foreground first: a quick stop right after the start must not find it still in the background.
         NotificationManager nm = getSystemService(NotificationManager.class);
         nm.createNotificationChannel(new NotificationChannel("sleep", Ui.tr("Sleep Timer"), NotificationManager.IMPORTANCE_MIN));
-        startForeground(1, new Notification.Builder(this, "sleep").setSmallIcon(R.drawable.icon)
+        startForeground(1, new Notification.Builder(this, "sleep").setSmallIcon(R.drawable.sleep_status)
                 .setContentTitle(Ui.tr("Sleep Timer")).build());
         Ui.init(this);   // its own process: the app's font isn't loaded here yet
         SleepTimer.listen(this);

@@ -1047,7 +1047,7 @@ public class SettingsActivity extends Activity {
         private static final int CLOCK_ROW = 3, PHOTOS_ROW = 4, TOP_ROW = 6, PICKS_ROW = 7, WATCH_ROW = 8,
                 SAVER_ROW = 9, ANDROID_APPS_ROW = 10, STATUS_ICONS_ROW = 11, RECENTS_ROW = 12, POWER_ON_ROW = 13,
                 WEATHER_ROW = 14, CITY_ROW = 15, FORECAST_ROW = 16, PLAYING_ROW = 17, HOME_ROW = Config.HOME_ASSISTANT ? 18 : -1,
-                QUOTES_ROW = Config.HOME_ASSISTANT ? 19 : 18, COIN_ROWS = QUOTES_ROW + 1;
+                PRAYER_ROW = Config.HOME_ASSISTANT ? 19 : 18;
         /** No "home" on Xiaomi TVs: their remote sends one Home press as a burst of presses (HomeView.BURST_MS). */
         private static final String[] RECENTS = RemoteKeys.XIAOMI ? new String[] {"off", "drawer"}
                 : new String[] {"off", "drawer", "home"};
@@ -1079,11 +1079,7 @@ public class SettingsActivity extends Activity {
             l.add(Ui.tr("Forecast"));
             l.add(Ui.tr("Now Playing widget"));
             if (HOME_ROW >= 0) l.add("Home Assistant");
-            l.add(Ui.tr("Quotes widget"));
-            l.add("Bitcoin");
-            l.add("Ethereum");
-            l.add("Solana");
-            if (dollar()) l.add(Ui.tr("Dollar"));
+            l.add(Ui.tr("Prayer times widget"));
             l.add(Ui.tr("TMDB key"));
             l.add(Ui.tr("Watchmode key"));
             l.add(Ui.tr("Updates"));
@@ -1188,9 +1184,7 @@ public class SettingsActivity extends Activity {
             v[FORECAST_ROW] = Prefs.forecast().equals("days") ? Ui.tr("Next days") : Ui.tr("Next hours");
             v[PLAYING_ROW] = onOff(Prefs.nowPlaying());
             if (HOME_ROW >= 0) v[HOME_ROW] = onOff(HomeAssistant.on(getContext()));
-            v[QUOTES_ROW] = onOff(Prefs.quotes());
-            // No quotes widget, nowhere to show prices: the coins read as off (and stay locked) until it is back on.
-            for (int i = COIN_ROWS; i < v.length - 3; i++) v[i] = onOff(Prefs.quotes() && Prefs.coin(i - COIN_ROWS));
+            v[PRAYER_ROW] = onOff(Prefs.prayers());
             v[v.length - 3] = keyValue(Recs.key());
             v[v.length - 2] = keyValue(Recs.watchmodeKey());
             v[v.length - 1] = updatesValue();
@@ -1242,9 +1236,7 @@ public class SettingsActivity extends Activity {
                 whyScroll = pickScroll;
                 for (int r = 0; r < n; r++) {
                     String need = need(r);
-                    whyRows[r] = screen == HOME_SETTINGS && pickScroll + r >= COIN_ROWS && pickScroll + r < keyRow() && !Prefs.quotes()
-                            ? Ui.tr("Turn on the Quotes widget to pick its coins.")
-                            : need == null ? null : Capabilities.missing(getContext(), need);
+                    whyRows[r] = need == null ? null : Capabilities.missing(getContext(), need);
                 }
             }
             return whyRows[i];
@@ -1554,13 +1546,12 @@ public class SettingsActivity extends Activity {
                     Prefs.setHomeAssistant(!Prefs.homeAssistant());
                     if (!Prefs.homeAssistant()) HomeAssistant.forget(getContext());
                     return;
-                case QUOTES_ROW: Prefs.setQuotes(!Prefs.quotes()); break;
+                case PRAYER_ROW: Prefs.setPrayers(!Prefs.prayers()); break;
                 default:
-                    if (row >= keyRow() || !Prefs.quotes()) return;   // the keys and Updates act on OK only
-                    Prefs.setCoin(row - COIN_ROWS, !Prefs.coin(row - COIN_ROWS));
-                    break;
+                    return;
             }
             HomeData.get(getContext()).settingsChanged();
+            PrayerTimes.get(getContext()).refreshIfStale();
         }
 
         private void askCity() {

@@ -343,7 +343,10 @@ final class Prefs {
     static boolean homeAssistant() { return sp().getBoolean("homeAssistant", false); }
     static void setHomeAssistant(boolean on) { put("homeAssistant", on); }
 
-    static boolean quotes() { return sp().getBoolean("quotes", Config.SHOW_CRYPTO); }
+    /** Retired on Android: the prayer card replaces crypto and its network requests. */
+    static boolean quotes() { return false; }
+    static boolean prayers() { return sp().getBoolean("prayers", true); }
+    static void setPrayers(boolean on) { put("prayers", on); }
     static void setQuotes(boolean on) { put("quotes", on); }
 
     /** Your photos (Photos, sent from a computer) on the screensaver and behind the home screen, once imported. */
