@@ -101,7 +101,8 @@ with tempfile.TemporaryDirectory() as temp:
     x1,y1,x2,y2 = map(int,re.findall(r'\d+',entries[0].get('bounds')))
     adb('shell','input','tap',str((x1+x2)//2),str((y1+y2)//2))
     time.sleep(3)
-    keys('DPAD_CENTER')
+    # The tile was tapped: leave Android touch mode and select the first list row before OK.
+    keys('DPAD_UP','DPAD_CENTER')
 
     def complete_frame(vw, vh, filename, percent=100, color=None):
         for _ in range(25):
@@ -152,7 +153,11 @@ with tempfile.TemporaryDirectory() as temp:
     keys('DPAD_UP')
     complete_frame(640, 360, 'live-fit-16x9.png')
     note('PASS: UP at the first channel stays there without jumping to the bottom.')
+    keys('DPAD_DOWN')
+    complete_frame(640, 480, 'live-fit-4x3.png')
     keys('BACK')
+    assert any(n.get('text') == 'Test 4:3' and n.get('selected') == 'true' for n in ui().iter('node'))
+    note('PASS: BACK restores the channel list selection to the watched second channel.')
     server.shutdown()
     adb('reverse', '--remove', 'tcp:'+str(port))
 note('Synthetic local streams only; no real subscription or provider availability was tested.')
