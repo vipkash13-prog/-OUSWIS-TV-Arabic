@@ -57,3 +57,10 @@ jobs:
           name: OUSWIS-TV-1.0-SIGNED
           path: FreeMyTV.apk
           if-no-files-found: error
+      - name: Publish direct APK download
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          cp FreeMyTV.apk OUSWIS-TV-1.0.apk
+          gh release view v1.0 >/dev/null 2>&1 && gh release upload v1.0 OUSWIS-TV-1.0.apk --clobber || gh release create v1.0 OUSWIS-TV-1.0.apk --title "OUSWIS TV 1.0" --notes "Independent Android TV Arabic build, signed with persistent OUSWIS release key."
