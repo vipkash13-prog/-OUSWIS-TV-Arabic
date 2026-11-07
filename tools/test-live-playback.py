@@ -208,6 +208,39 @@ with tempfile.TemporaryDirectory() as temp:
     keys('DPAD_UP')
     complete_frame(640, 480, 'live-fit-4x3.png')
     keys('BACK')
+    def tap(node):
+        x1,y1,x2,y2 = map(int,re.findall(r'\d+', node.get('bounds')))
+        adb('shell','input','tap',str((x1+x2)//2),str((y1+y2)//2))
+
+    def search_channels(query):
+        tap(next(n for n in ui().iter('node') if n.get('content-desc') == 'مسح البحث / Clear search'))
+        tap(next(n for n in ui().iter('node') if n.get('class') == 'android.widget.EditText'))
+        adb('shell', 'input', 'text', query)
+        keys('ENTER')
+
+    search_channels('tEsT')
+    texts = [n.get('text') for n in ui().iter('node')]
+    assert all(name in texts for name in ('Test 16:9','Test 4:3','Test third')), texts
+    search_channels('4:3')
+    texts = [n.get('text') for n in ui().iter('node')]
+    assert 'Test 4:3' in texts and 'Test 16:9' not in texts and 'Test third' not in texts, texts
+    (OUT / 'live-channel-search.png').write_bytes(subprocess.check_output([ADB,'exec-out','screencap','-p']))
+    keys('DPAD_CENTER')
+    complete_frame(640, 480, 'live-search-selection.png')
+    keys('BACK')
+    nodes = list(ui().iter('node'))
+    assert any(n.get('class') == 'android.widget.EditText' and n.get('text') == '4:3' for n in nodes)
+    assert any(n.get('text') == 'Test 4:3' and n.get('selected') == 'true' for n in nodes)
+    search_channels('zzzx')
+    assert 'No matching channels' in ET.tostring(ui(), encoding='unicode')
+    tap(next(n for n in ui().iter('node') if n.get('content-desc') == 'مسح البحث / Clear search'))
+    texts = [n.get('text') for n in ui().iter('node')]
+    assert all(name in texts for name in ('Test 16:9','Test 4:3','Test third')), texts
+    keys('DPAD_DOWN')
+    assert any(n.get('class') == 'android.widget.ListView' and n.get('focused') == 'true' for n in ui().iter('node'))
+    keys('DPAD_UP','DPAD_UP')
+    assert any(n.get('class') == 'android.widget.EditText' and n.get('focused') == 'true' for n in ui().iter('node'))
+    note('PASS: case-insensitive channel search, filtered playback of the correct original channel, BACK retention, empty results, clear and remote focus.')
     server.shutdown()
     adb('reverse', '--remove', 'tcp:'+str(port))
 note('Synthetic local streams only; no real subscription or provider availability was tested.')

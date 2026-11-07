@@ -9,6 +9,10 @@ import android.content.Intent;
 import android.graphics.Color;
 import android.media.MediaPlayer;
 import android.net.Uri;
+import android.text.Editable;
+import android.text.TextWatcher;
+import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputMethodManager;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
@@ -21,6 +25,7 @@ import java.net.URLEncoder;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
+import java.util.Locale;
 
 /** Remote-friendly, live-only Xtream Codes player. Credentials never enter the source repository. */
 public final class XtreamActivity extends Activity {
@@ -31,6 +36,7 @@ public final class XtreamActivity extends Activity {
     private TextView status;
     private String server, user, pass;
     private int current = -1;
+    private String channelSearch="";
     private TextView channelLabel;
     private FrameLayout player;
     private int picturePercent;
@@ -56,8 +62,8 @@ public final class XtreamActivity extends Activity {
         }
     }
     private static final class Channel {
-        String name, id, extension;
-        Channel(String n, String i, String e) { name=n; id=i; extension=e; }
+        String name, id, extension, searchName;
+        Channel(String n, String i, String e) { name=n; id=i; extension=e; searchName=n.toLowerCase(Locale.ROOT); }
     }
     @Override public void onCreate(Bundle b) {
         super.onCreate(b);
@@ -141,8 +147,31 @@ public final class XtreamActivity extends Activity {
         header.addView(heading,new LinearLayout.LayoutParams(0,-2,1));
         Button account=new Button(this);account.setText("Account");header.addView(account);
         account.setOnClickListener(v->{stopPlayer();login();});
-        ListView list=new ListView(this);root.addView(list,new LinearLayout.LayoutParams(-1,0,1));
-        ArrayList<String> names=new ArrayList<>();for(Channel c:channels)names.add(c.name);
+        LinearLayout searchRow=new LinearLayout(this);
+        searchRow.setPadding(24,0,24,8);
+        root.addView(searchRow);
+        EditText search=new EditText(this);
+        search.setId(View.generateViewId());
+        search.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        search.setSingleLine(true);
+        search.setHint(Ui.tr("Search")+" (OSN…)");
+        search.setTextColor(Ui.pageInk(this));search.setHintTextColor(Ui.pageMuted(this));
+        search.setImeOptions(EditorInfo.IME_ACTION_SEARCH|EditorInfo.IME_FLAG_NO_EXTRACT_UI);
+        search.setText(channelSearch);
+        searchRow.addView(search,new LinearLayout.LayoutParams(0,-2,1));
+        Button clear=new Button(this);clear.setText("×");
+        clear.setContentDescription("مسح البحث / Clear search");
+        searchRow.addView(clear,new LinearLayout.LayoutParams(-2,-2));
+        ListView list=new ListView(this);list.setId(View.generateViewId());
+        root.addView(list,new LinearLayout.LayoutParams(-1,0,1));
+        TextView empty=title("لا توجد قنوات مطابقة / No matching channels",20);
+        empty.setGravity(Gravity.CENTER);
+        empty.setVisibility(View.GONE);
+        root.addView(empty,new LinearLayout.LayoutParams(-1,0,1));
+        list.setEmptyView(empty);
+        ArrayList<String> names=new ArrayList<>();
+        // Display positions change while filtering; playback always uses the original channel index.
+        ArrayList<Integer> visible=new ArrayList<>();
         ArrayAdapter<String> adapter=new ArrayAdapter<String>(this,android.R.layout.simple_list_item_1,names) {
             @Override public View getView(int position,View recycled,android.view.ViewGroup parent) {
                 TextView row=(TextView)super.getView(position,recycled,parent);
@@ -150,10 +179,52 @@ public final class XtreamActivity extends Activity {
                 return row;
             }
         };
-        list.setAdapter(adapter);list.setOnItemClickListener((parent,view,pos,id)->play(pos));
-        list.setSelection(selected);
-        list.requestFocus();
+        list.setAdapter(adapter);
+        Runnable filter=()->{
+            String query=channelSearch.trim().toLowerCase(Locale.ROOT);
+            names.clear();visible.clear();
+            for(int i=0;i<channels.size();i++){
+                Channel channel=channels.get(i);
+                if(channel.searchName.contains(query)){names.add(channel.name);visible.add(i);}
+            }
+            adapter.notifyDataSetChanged();
+            heading.setText("البث المباشر  |  Live TV ("+visible.size()+"/"+channels.size()+")");
+            list.setSelection(Math.max(0,visible.indexOf(selected)));
+        };
+        search.addTextChangedListener(new TextWatcher(){
+            @Override public void beforeTextChanged(CharSequence text,int start,int count,int after){}
+            @Override public void onTextChanged(CharSequence text,int start,int before,int count){
+                channelSearch=text.toString();filter.run();
+            }
+            @Override public void afterTextChanged(Editable text){}
+        });
+        Runnable results=()->{
+            InputMethodManager ime=(InputMethodManager)getSystemService(INPUT_METHOD_SERVICE);
+            if(ime!=null)ime.hideSoftInputFromWindow(search.getWindowToken(),0);
+            if(!visible.isEmpty())list.requestFocus();
+        };
+        search.setOnEditorActionListener((view,action,event)->{
+            if(action==EditorInfo.IME_ACTION_SEARCH||action==EditorInfo.IME_ACTION_DONE
+                    ||(event!=null&&event.getKeyCode()==KeyEvent.KEYCODE_ENTER)){
+                results.run();return true;
+            }
+            return false;
+        });
+        search.setOnKeyListener((view,key,event)->{
+            if(key==KeyEvent.KEYCODE_DPAD_DOWN&&event.getAction()==KeyEvent.ACTION_DOWN){
+                results.run();return true;
+            }
+            return false;
+        });
+        clear.setOnClickListener(view->{search.setText("");search.requestFocus();});
+        search.setNextFocusDownId(list.getId());list.setNextFocusUpId(search.getId());
+        list.setOnItemClickListener((parent,view,pos,id)->{
+            if(pos>=0&&pos<visible.size())play(visible.get(pos));
+        });
+        filter.run();
+        if(visible.isEmpty())search.requestFocus();else list.requestFocus();
     }
+
     private void stopPlayer() {
         playbackGeneration++;
         cancelPlaybackTimeout();
