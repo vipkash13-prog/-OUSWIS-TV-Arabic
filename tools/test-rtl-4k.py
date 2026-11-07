@@ -35,7 +35,9 @@ adb('root')
 adb('wait-for-device')
 adb('shell', 'am', 'force-stop', PKG)
 prefs = '/data/user/0/' + PKG + '/shared_prefs/settings.xml'
-saved = adb('shell', 'cat', prefs, binary=True)
+# A fresh app can use only defaults and never have written settings.xml.
+saved = adb('shell', 'if [ -f ' + prefs + ' ]; then cat ' + prefs
+            + "; else echo '<map/>'; fi", binary=True)
 uid = re.search(r'userId=(\d+)', adb('shell', 'dumpsys', 'package', PKG)).group(1)
 size = adb('shell', 'wm', 'size')
 override = re.search(r'Override size: (\d+x\d+)', size)
