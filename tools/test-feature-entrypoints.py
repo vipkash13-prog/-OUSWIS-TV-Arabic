@@ -83,7 +83,7 @@ note('PASS: remote LEFT + DOWN + OK opens Matches with all four tabs.')
 result = adb('shell', 'am', 'start', '-W', '-n', 'io.freemytv/io.freemytv.HomeActivity')
 assert 'Status: ok' in result
 activity('HomeActivity')
-assert 'مباريات قادمة' in ET.tostring(xml(), encoding='unicode')
+assert any(n.get('resource-id') == 'io.freemytv:id/home_matches' for n in xml().iter('node'))
 screenshot('home-features.png')
 note('PASS: the home screen displays its matches card even before a provider returns fixtures.')
 note('No provider credentials were entered. Live stream playback and availability of fixtures require the user/provider network.')

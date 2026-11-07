@@ -62,6 +62,7 @@ public class HomeActivity extends Activity {
         FrameLayout stage=new FrameLayout(this);
         stage.addView(home,new FrameLayout.LayoutParams(-1,-1));
         matchPreview=new MatchCarouselView(this);
+        matchPreview.setId(io.freemytv.R.id.home_matches);
         FrameLayout.LayoutParams previewParams=new FrameLayout.LayoutParams(
                 (int)(getResources().getDisplayMetrics().widthPixels*.37f),
                 (int)(getResources().getDisplayMetrics().heightPixels*.29f),
