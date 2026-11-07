@@ -67,7 +67,7 @@ public final class XtreamActivity extends Activity {
             getPreferences(0).edit().putString("server",server).putString("user",user).putString("pass",pass).apply();
             load();
         });
-        connect.requestFocus();
+        host.requestFocus();
     }
     private EditText field(LinearLayout form,String hint,String value) {
         EditText e=new EditText(this); e.setSingleLine(true); e.setHint(hint); e.setText(value);
