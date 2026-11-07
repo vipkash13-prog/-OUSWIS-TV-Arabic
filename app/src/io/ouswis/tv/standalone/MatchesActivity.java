@@ -33,7 +33,7 @@ public final class MatchesActivity extends Activity {
     private TextView heading;
     private LinearLayout window;
     private volatile boolean active;
-    private boolean closing, firstLoad=true;
+    private boolean closing, firstLoad=true, initialFocus=true;
     private int selectedTab;
     private Future<?> request;
     private final Runnable refresh=new Runnable(){
@@ -70,6 +70,8 @@ public final class MatchesActivity extends Activity {
         final float scale=Math.max(0.65f,Math.min(1.5f,getResources().getDisplayMetrics().heightPixels/720f));
         int screenW=getResources().getDisplayMetrics().widthPixels,screenH=getResources().getDisplayMetrics().heightPixels;
         FrameLayout root=new FrameLayout(this);
+        // Follow the selected application language, even when the system language differs.
+        root.setLayoutDirection(Ui.isRtl()?View.LAYOUT_DIRECTION_RTL:View.LAYOUT_DIRECTION_LTR);
         root.setOnClickListener(v->close());
         window=new LinearLayout(this);
         window.setOrientation(LinearLayout.VERTICAL);
@@ -117,6 +119,15 @@ public final class MatchesActivity extends Activity {
         window.animate().scaleX(1f).scaleY(1f).alpha(1f).setDuration(260).start();
     }
 
+    @Override public void onWindowFocusChanged(boolean hasFocus){
+        super.onWindowFocusChanged(hasFocus);
+        if(hasFocus&&initialFocus&&carousel!=null){
+            initialFocus=false;
+            // RTL layout resolution can otherwise give the first tab the initial window focus.
+            carousel.post(()->carousel.requestFocus());
+        }
+    }
+
     private GradientDrawable chip(int color,float scale){
         GradientDrawable d=new GradientDrawable();d.setColor(color);d.setCornerRadius(14*scale);return d;
     }
@@ -149,8 +160,9 @@ public final class MatchesActivity extends Activity {
         }else{
             int focused=selectedTab;
             for(int i=0;i<tabViews.length;i++)if(tabViews[i].hasFocus())focused=i;
-            if(key==KeyEvent.KEYCODE_DPAD_LEFT)tabViews[Math.max(0,focused-1)].requestFocus();
-            else if(key==KeyEvent.KEYCODE_DPAD_RIGHT)tabViews[Math.min(3,focused+1)].requestFocus();
+            int step=Ui.isRtl()?-1:1;
+            if(key==KeyEvent.KEYCODE_DPAD_LEFT)tabViews[Math.max(0,Math.min(3,focused-step))].requestFocus();
+            else if(key==KeyEvent.KEYCODE_DPAD_RIGHT)tabViews[Math.max(0,Math.min(3,focused+step))].requestFocus();
             else if(key==KeyEvent.KEYCODE_DPAD_DOWN)carousel.requestFocus();
             else if((key==KeyEvent.KEYCODE_DPAD_CENTER||key==KeyEvent.KEYCODE_ENTER)&&event.getRepeatCount()==0)tabViews[focused].performClick();
         }

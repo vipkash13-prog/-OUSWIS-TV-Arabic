@@ -120,6 +120,21 @@ jobs:
             python3 tools/test-prayer-widget.py install-evidence
             python3 tools/test-live-playback.py install-evidence
             python3 tools/test-coexistence.py verify install-evidence
+      - name: Native 4K Arabic remote test
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: default
+          arch: x86_64
+          profile: tv_4k
+          avd-name: ouswis-4k
+          ram-size: 4096M
+          heap-size: 512M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -skin 3840x2160
+          script: |
+            adb install --no-streaming FreeMyTV.apk
+            python3 tools/test-rtl-4k.py install-evidence
       - name: Save install evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -128,6 +143,7 @@ jobs:
           path: install-evidence/
           if-no-files-found: warn
       - name: Publish only after successful installation
+        if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash

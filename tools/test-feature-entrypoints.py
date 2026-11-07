@@ -96,8 +96,10 @@ def key(name):
     adb('shell','input','keyevent','KEYCODE_DPAD_'+name)
 
 def focused(identifier):
+    state = xml()
+    (OUT / 'feature-focus.xml').write_bytes(ET.tostring(state, encoding='utf-8'))
     assert any(n.get('resource-id') == 'io.ouswis.tv.standalone:id/'+identifier and n.get('focused') == 'true'
-               for n in xml().iter('node')), 'Expected remote focus: '+identifier
+               for n in state.iter('node')), 'Expected remote focus: '+identifier
 
 focused('matches_carousel')
 key('UP')
