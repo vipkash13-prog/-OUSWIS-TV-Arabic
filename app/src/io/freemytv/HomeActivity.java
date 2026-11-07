@@ -63,7 +63,7 @@ public class HomeActivity extends Activity {
                 (int)(getResources().getDisplayMetrics().heightPixels*.29f),
                 Gravity.RIGHT|Gravity.CENTER_VERTICAL);
         previewParams.rightMargin=(int)(getResources().getDisplayMetrics().density*22);
-        matchPreview.setFocusable(false);
+        matchPreview.setFocusable(true);
         matchPreview.setClickable(true);
         matchPreview.setOnClickListener(v->startActivity(new Intent(this,MatchesActivity.class)));
         stage.addView(matchPreview,previewParams);
@@ -148,6 +148,7 @@ public class HomeActivity extends Activity {
     @Override public boolean dispatchKeyEvent(KeyEvent event) {
         keyPressed = true;
         if (RemoteKeys.onKey(this, event)) return true;
+        if (matchPreview != null && matchPreview.hasFocus() && event.getAction()==KeyEvent.ACTION_DOWN && matchPreview.onKeyDown(event.getKeyCode(),event)) return true;
         if (home != null && home.onKey(event)) return true;
         return super.dispatchKeyEvent(event);
     }
