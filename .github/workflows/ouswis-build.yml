@@ -31,6 +31,7 @@ jobs:
         env:
           KEY_PASS: ${{ secrets.OUSWIS_SIGNING_PASSWORD }}
         run: |
+          KEY_PASS="$(printf %s "$KEY_PASS" | sha256sum | cut -d " " -f1)"
           mkdir -p signing
           if [ -f signing/ouswis-release.jks.b64 ]; then
             base64 -d signing/ouswis-release.jks.b64 > "$RUNNER_TEMP/ouswis-release.jks"
@@ -44,9 +45,8 @@ jobs:
             git push
           fi
           echo "FREEMYTV_KEYSTORE=$RUNNER_TEMP/ouswis-release.jks" >> "$GITHUB_ENV"
+          echo "FREEMYTV_KEYSTORE_PASS=$KEY_PASS" >> "$GITHUB_ENV"
       - name: Build signed APK
-        env:
-          FREEMYTV_KEYSTORE_PASS: ${{ secrets.OUSWIS_SIGNING_PASSWORD }}
         run: ./build.sh --generic
       - name: Verify APK signature
         run: |
