@@ -107,13 +107,14 @@ public final class UpcomingMatches {
                         }
                         if(!hs.isEmpty()&&!as.isEmpty())display=hs+" - "+as+"  •  "+display;
                     }
-                    out.add(new MatchCarouselView.Match(competition,home,away,display));
+                    out.add(new MatchCarouselView.Match(competition,home,away,display,kickoff));
                 }
             }catch(Exception ignored){
                 // Unavailable competition must not prevent other competitions from loading.
             }finally{if(c!=null)c.disconnect();}
         }
-        // Kickoff strings are formatted day/month; preserve the provider order until a typed timestamp model is introduced.
+        // Chronological fixtures across all leagues, not grouped by provider response order.
+        java.util.Collections.sort(out,(a,b)->Long.compare(a.kickoffMillis,b.kickoffMillis));
         return out;
     }
 }
