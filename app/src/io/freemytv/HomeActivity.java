@@ -71,6 +71,7 @@ public class HomeActivity extends Activity {
         matchPreview.setVisibility(android.view.View.GONE);
         matchPreview.setClickable(true);
         matchPreview.setOnClickListener(v->startActivity(new Intent(this,MatchesActivity.class)));
+        matchPreview.setOnMatchSelected(match->startActivity(new Intent(this,MatchesActivity.class)));
         stage.addView(matchPreview,previewParams);
         setContentView(stage);
         getWindow().setBackgroundDrawable(null);
@@ -156,7 +157,9 @@ public class HomeActivity extends Activity {
         if (matchPreview != null && matchPreview.hasFocus()
                 && event.getAction()==KeyEvent.ACTION_DOWN
                 && (event.getKeyCode()==KeyEvent.KEYCODE_DPAD_LEFT
-                    || event.getKeyCode()==KeyEvent.KEYCODE_DPAD_RIGHT)
+                    || event.getKeyCode()==KeyEvent.KEYCODE_DPAD_RIGHT
+                    || event.getKeyCode()==KeyEvent.KEYCODE_DPAD_CENTER
+                    || event.getKeyCode()==KeyEvent.KEYCODE_ENTER)
                 && matchPreview.onKeyDown(event.getKeyCode(),event)) return true;
         if (RemoteKeys.onKey(this, event)) return true;
         if (home != null && home.onKey(event)) return true;
