@@ -63,6 +63,11 @@ public final class MatchesActivity extends Activity {
         }
         root.addView(tabs,new LinearLayout.LayoutParams(-1,70));
         carousel=new MatchCarouselView(this);
+        carousel.setOnMatchSelected(match->new android.app.AlertDialog.Builder(this)
+                .setTitle(match.competition)
+                .setMessage(match.home+"  VS  "+match.away+"\n"+match.kickoff+"  •  بتوقيت السعودية")
+                .setPositiveButton("إغلاق",(dialog,which)->carousel.requestFocus())
+                .show());
         root.addView(carousel,new LinearLayout.LayoutParams(-1,320));
         TextView note=new TextView(this);
         note.setText("يمين ويسار للتنقل  •  مواعيد السعودية  •  مصدر ESPN غير رسمي");
