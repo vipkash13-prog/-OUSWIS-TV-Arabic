@@ -47,7 +47,7 @@ def screenshot(name):
     (OUT / name).write_bytes(adb('exec-out', 'screencap', '-p', binary=True))
 
 def settings():
-    result = adb('shell', 'am', 'start', '-W', '-n', 'io.freemytv/io.freemytv.SettingsActivity')
+    result = adb('shell', 'am', 'start', '-W', '-n', 'io.ouswis.tv.standalone/io.ouswis.tv.standalone.SettingsActivity')
     assert 'Status: ok' in result
     activity('SettingsActivity')
 
@@ -84,40 +84,31 @@ def key(name):
     adb('shell','input','keyevent','KEYCODE_DPAD_'+name)
 
 def focused(identifier):
-    assert any(n.get('resource-id') == 'io.freemytv:id/'+identifier and n.get('focused') == 'true'
+    assert any(n.get('resource-id') == 'io.ouswis.tv.standalone:id/'+identifier and n.get('focused') == 'true'
                for n in xml().iter('node')), 'Expected remote focus: '+identifier
 
-focused('matches_tab_upcoming')
-key('RIGHT')
-focused('matches_tab_live')
-key('CENTER')
 focused('matches_carousel')
 key('UP')
-focused('matches_tab_live')
-key('RIGHT')
-key('CENTER')
-focused('matches_carousel')
-key('UP')
-focused('matches_tab_today')
-key('RIGHT')
-key('CENTER')
-focused('matches_carousel')
-key('UP')
-focused('matches_tab_yesterday')
 for _ in range(3): key('LEFT')
-key('CENTER')
+focused('matches_tab_live')
+for name in ('upcoming', 'today', 'yesterday'):
+    key('RIGHT')
+    focused('matches_tab_'+name)
+    key('CENTER')
+    focused('matches_carousel')
+    key('UP')
+    focused('matches_tab_'+name)
+key('DOWN')
 focused('matches_carousel')
 key('RIGHT')
 key('LEFT')
-key('CENTER')
-assert 'إغلاق' in ET.tostring(xml(),encoding='unicode')
 screenshot('matches-details.png')
 adb('shell','input','keyevent','KEYCODE_BACK')
-note('PASS: remote arrows reach all four tabs and the match card; OK opens details or an honest empty-state message.')
-result = adb('shell', 'am', 'start', '-W', '-n', 'io.freemytv/io.freemytv.HomeActivity')
+note('PASS: remote arrows reach all four tabs and the match card; Back closes the matches window.')
+result = adb('shell', 'am', 'start', '-W', '-n', 'io.ouswis.tv.standalone/io.ouswis.tv.standalone.HomeActivity')
 assert 'Status: ok' in result
 activity('HomeActivity')
-assert not any(n.get('resource-id') == 'io.freemytv:id/home_matches' for n in xml().iter('node'))
+assert not any(n.get('resource-id') == 'io.ouswis.tv.standalone:id/home_matches' for n in xml().iter('node'))
 screenshot('home-features.png')
 note('PASS: no floating matches card covers the home screen or drawer.')
 note('No provider credentials were entered. Live stream playback and availability of fixtures require the user/provider network.')

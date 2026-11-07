@@ -2,7 +2,7 @@
 
 ## One permanent identity
 
-The official package is `io.freemytv`, with visible name OUSWIS TV and visible version 1.0. Every official APK uses the repository's already-existing encrypted key, `signing/ouswis-release.jks.b64`, and the existing `OUSWIS_SIGNING_PASSWORD` Actions secret. The workflow uses the same SHA-256 password normalization as the workflow which originally created this key.
+The official standalone package is `io.ouswis.tv.standalone`, with visible name OUSWIS TV and visible version 1.0. Every official APK uses the repository's already-existing encrypted key, `signing/ouswis-release.jks.b64`, and the existing `OUSWIS_SIGNING_PASSWORD` Actions secret. The workflow uses the same SHA-256 password normalization as the workflow which originally created this key.
 
 The official signing certificate SHA-256 is:
 
@@ -57,4 +57,12 @@ The launch/settings screen has native, focusable Xtream Codes and Matches button
 
 ### Matches screen and colors
 
-The home screen has no floating matches preview. Matches opens its separate screen through the existing control. Remote focus is explicit: LEFT/RIGHT move across tabs or cards, DOWN enters the card, UP returns to the selected tab, and OK selects a section or opens details (an empty section reports that no matches are available). Focus and selected-tab states remain visible. Requests are cancelled when switching sections/leaving the screen. The added screens/cards use the home screen’s day/night base colors instead of a fixed blue palette. Video remains on black to preserve full-frame aspect fitting.
+The home screen has no floating matches preview. Matches opens the centred glass window from `matches-preview-1` through the existing control. Remote focus is explicit: LEFT/RIGHT move across tabs or cards, DOWN enters the card, UP returns to the selected tab, and OK selects a section or opens details (an empty section reports that no matches are available). Focus and selected-tab states remain visible. Requests are cancelled when switching sections/leaving the screen. The added screens/cards use the home screen’s day/night base colors instead of a fixed blue palette. Video remains on black to preserve full-frame aspect fitting.
+
+### Independent Android identity
+
+The supplied `matches-preview-1/OUSWIS-TV-preview.apk` contains package `io.freemytv`, versionName 1.0, versionCode 10004 and the same permanent AA97 certificate. That package identity causes Android to treat it as an update to the legacy app, regardless of its visible name. The standalone release uses `io.ouswis.tv.standalone` for the manifest, Java/resource namespace, services, provider authorities, task affinities, app-specific actions and maintenance tools. Android sources are under `app/src/io/ouswis/tv/standalone`. The legacy identity is protected against disable/stop in HomeMode. No old app removal or repository change is required. The display name/version and permanent signing key are unchanged. The new package has separate private settings; it does not read or overwrite the legacy app’s data.
+
+The Android 14 gate installs the exact supplied preview APK first, records its hash/path/version/UID/first-install time and a private sentinel, installs/updates the standalone app, exercises its features, then verifies both apps still launch with distinct app IDs and unchanged legacy evidence. `coexistence.log` is published with the APK. On the first namespace migration, the updater must reject the still-published legacy APK even though it uses the same certificate. A rerun after the standalone APK is published exercises the full in-app download/consent/install flow between standalone builds.
+
+The three matches Java files, icons/banner and window styles are preserved from the supplied `matches-preview-1` tag; source comparison verifies no feature/UI changes beyond namespace substitution. The main branch’s unrelated preview workflow is not imported.

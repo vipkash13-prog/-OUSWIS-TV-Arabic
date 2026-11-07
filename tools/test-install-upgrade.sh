@@ -16,11 +16,20 @@ exec > >(tee "$evidence/install-upgrade.log") 2>&1
   echo "Android 14 / API 34 is required."; exit 1;
 }
 "$adb_bin" shell getprop ro.build.fingerprint
-if "$adb_bin" shell pm path io.freemytv | tr -d '\r' | grep -q '^package:'; then
-  echo "Refusing: emulator already contains io.freemytv. Use a fresh emulator, without uninstalling it."
+if "$adb_bin" shell pm path io.ouswis.tv.standalone | tr -d '\r' | grep -q '^package:'; then
+  echo "Refusing: emulator already contains io.ouswis.tv.standalone. Use a fresh emulator, without uninstalling it."
   exit 1
 fi
 
+if [ -n "${LEGACY_APK:-}" ]; then
+  if "$adb_bin" shell pm path io.freemytv | tr -d '\r' | grep -q '^package:'; then
+    echo "Refusing: legacy app already exists on this emulator; it will not be replaced."; exit 1
+  fi
+  "$adb_bin" install --no-streaming "$LEGACY_APK"
+  "$adb_bin" root
+  "$adb_bin" wait-for-device
+  python3 tools/test-coexistence.py prepare "$evidence"
+fi
 "$adb_bin" install --no-streaming "$previous"
 for rejected in "${REJECTED_APK:-}" "${DOWNGRADE_APK:-}"; do
   [ -n "$rejected" ] || continue
@@ -35,26 +44,26 @@ done
 [ "$("$adb_bin" shell id -u | tr -d '\r')" = 0 ] || {
   echo "A rootable AOSP emulator is required to verify private data preservation."; exit 1;
 }
-"$adb_bin" shell dumpsys package io.freemytv > "$evidence/before.txt"
+"$adb_bin" shell dumpsys package io.ouswis.tv.standalone > "$evidence/before.txt"
 uid_before="$(sed -nE 's/^ *(userId|appId)=([0-9]+).*$/\2/p' "$evidence/before.txt" | head -1)"
 first_before="$(sed -n 's/^ *firstInstallTime=//p' "$evidence/before.txt" | head -1)"
 [ -n "$uid_before" ]
 [ -n "$first_before" ]
-"$adb_bin" shell "mkdir -p /data/user/0/io.freemytv/files; echo ouswis-preserved > /data/user/0/io.freemytv/files/upgrade-probe; chown $uid_before:$uid_before /data/user/0/io.freemytv/files /data/user/0/io.freemytv/files/upgrade-probe"
+"$adb_bin" shell "mkdir -p /data/user/0/io.ouswis.tv.standalone/files; echo ouswis-preserved > /data/user/0/io.ouswis.tv.standalone/files/upgrade-probe; chown $uid_before:$uid_before /data/user/0/io.ouswis.tv.standalone/files /data/user/0/io.ouswis.tv.standalone/files/upgrade-probe"
 
 if [ -n "${INAPP_RELEASE_CODE:-}" ]; then
   python3 tools/test-inapp-update.py "$evidence"
 fi
 "$adb_bin" install --no-streaming -r "$update"
-"$adb_bin" shell dumpsys package io.freemytv > "$evidence/after.txt"
+"$adb_bin" shell dumpsys package io.ouswis.tv.standalone > "$evidence/after.txt"
 uid_after="$(sed -nE 's/^ *(userId|appId)=([0-9]+).*$/\2/p' "$evidence/after.txt" | head -1)"
 first_after="$(sed -n 's/^ *firstInstallTime=//p' "$evidence/after.txt" | head -1)"
 [ -n "$uid_after" ]
 [ "$uid_before" = "$uid_after" ]
 [ "$first_before" = "$first_after" ]
-[ "$("$adb_bin" shell cat /data/user/0/io.freemytv/files/upgrade-probe | tr -d '\r')" = ouswis-preserved ]
-"$adb_bin" shell pm path io.freemytv
+[ "$("$adb_bin" shell cat /data/user/0/io.ouswis.tv.standalone/files/upgrade-probe | tr -d '\r')" = ouswis-preserved ]
+"$adb_bin" shell pm path io.ouswis.tv.standalone
 "$adb_bin" logcat -c
-"$adb_bin" shell am start -W -n io.freemytv/io.freemytv.SettingsActivity | tee "$evidence/launch.txt"
+"$adb_bin" shell am start -W -n io.ouswis.tv.standalone/io.ouswis.tv.standalone.SettingsActivity | tee "$evidence/launch.txt"
 grep -q 'Status: ok' "$evidence/launch.txt"
 echo "PASS: Android 14 installed the update; UID, first-install time and private app data survived. No uninstall or data clear was used."

@@ -27,7 +27,7 @@ import time
 import urllib.error
 import urllib.request
 
-URI = 'content://io.freemytv.secrets/'
+URI = 'content://io.ouswis.tv.standalone.secrets/'
 NAMES = ('immich_api_key', 'home_assistant_token')
 SERIAL = []   # -s <ip>:5555 once connected, so a phone or another TV on adb doesn't get in the way
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -199,11 +199,11 @@ def main():
         print('Which key? One of: ' + ', '.join(NAMES))
         return 2
     name = args[0]
-    listed = adb('shell', 'pm', 'list', 'packages', 'io.freemytv', text=True)
+    listed = adb('shell', 'pm', 'list', 'packages', 'io.ouswis.tv.standalone', text=True)
     if listed.returncode != 0:
         print('No TV connected: give its IP address first (adb devices lists the connected ones).')
         return 1
-    if 'package:io.freemytv' not in listed.stdout.split():
+    if 'package:io.ouswis.tv.standalone' not in listed.stdout.split():
         print('Free My TV is not installed on this TV.')
         return 1
     sdk = adb('shell', 'getprop', 'ro.build.version.sdk', text=True).stdout.strip()

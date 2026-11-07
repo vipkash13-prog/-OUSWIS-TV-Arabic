@@ -39,16 +39,25 @@ def shot(name):
     (OUT / name).write_bytes(subprocess.check_output([ADB, 'exec-out', 'screencap', '-p'], timeout=60))
 
 assert adb('shell', 'getprop', 'ro.kernel.qemu').strip() == '1'
-adb('shell', 'am', 'start', '-W', '-n', 'io.freemytv/io.freemytv.SettingsActivity')
+adb('shell', 'am', 'start', '-W', '-n', 'io.ouswis.tv.standalone/io.ouswis.tv.standalone.SettingsActivity')
 for key in ('RIGHT', 'LEFT', 'DOWN', 'DOWN', 'CENTER'):
     adb('shell', 'input', 'keyevent', 'KEYCODE_DPAD_' + key)
 for _ in range(90):
     try:
-        state = json.loads(adb('shell', 'cat', '/data/user/0/io.freemytv/files/update.json'))
+        state = json.loads(adb('shell', 'cat', '/data/user/0/io.ouswis.tv.standalone/files/update.json'))
     except (subprocess.CalledProcessError, ValueError):
         state = {}
     if state.get('state') == 'ready':
         break
+    if state.get('state') == 'failed' and os.environ.get('INAPP_EXPECT_LEGACY_REJECTION') == '1':
+        assert state.get('refused'), state
+        assert state.get('error') == 'other', state
+        assert int(state['version']) == EXPECTED, state
+        assert not '.apk' in adb('shell','ls','/data/user/0/io.ouswis.tv.standalone/no_backup/update')
+        shot('inapp-legacy-rejected.png')
+        note('PASS: standalone updater rejected the published legacy io.freemytv APK despite its matching signing certificate.')
+        note('Bootstrap: there is not yet a published standalone APK to download. Standalone installation/update is tested separately; re-run after publication to test the full in-app download/install flow.')
+        sys.exit(0)
     if state.get('state') in ('failed', 'build', 'current'):
         raise AssertionError('Expected a newer signed download: ' + str(state))
     time.sleep(2)
@@ -67,7 +76,7 @@ assert any('com.android.settings' in line and ('mResumedActivity' in line or 'to
 shot('inapp-source-permission.png')
 note('PASS: Android asks to allow OUSWIS TV as an installation source; the app does not bypass consent.')
 # Simulate granting that one permission on the disposable emulator, then return to the app.
-adb('shell', 'appops', 'set', 'io.freemytv', 'REQUEST_INSTALL_PACKAGES', 'allow')
+adb('shell', 'appops', 'set', 'io.ouswis.tv.standalone', 'REQUEST_INSTALL_PACKAGES', 'allow')
 adb('shell', 'input', 'keyevent', 'KEYCODE_BACK')
 time.sleep(2)
 click(next(n for n in ui().iter('node') if n.get('class') == 'android.widget.Button' and n.get('enabled') == 'true'))
@@ -86,11 +95,11 @@ shot('inapp-install-confirmation.png')
 note('PASS: the app opened Android\'s update confirmation with the downloaded APK.')
 click(install)
 for _ in range(60):
-    package = adb('shell', 'dumpsys', 'package', 'io.freemytv')
+    package = adb('shell', 'dumpsys', 'package', 'io.ouswis.tv.standalone')
     if re.search(r'versionCode=' + str(EXPECTED) + r'\b', package):
         break
     time.sleep(1)
 else:
     raise AssertionError('The in-app update was not installed')
-assert adb('shell', 'cat', '/data/user/0/io.freemytv/files/upgrade-probe').strip() == 'ouswis-preserved'
+assert adb('shell', 'cat', '/data/user/0/io.ouswis.tv.standalone/files/upgrade-probe').strip() == 'ouswis-preserved'
 note('PASS: Android installed the downloaded official build ' + str(EXPECTED) + ' and retained private app data.')

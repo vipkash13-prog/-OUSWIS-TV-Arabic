@@ -18,11 +18,16 @@ def main():
     badging = subprocess.check_output([str(tools / "aapt2"), "dump", "badging", str(args.apk)], text=True)
     package = re.search(r"^package: name='([^']+)' versionCode='(\d+)' versionName='([^']+)'", badging, re.M)
     assert package, "Package metadata unavailable"
-    assert package[1] == "io.freemytv", "Package must remain io.freemytv for an in-place update"
+    assert package[1] == "io.ouswis.tv.standalone", "OUSWIS must use its independent package identity"
     assert int(package[2]) >= 10003, "versionCode must exceed the official-release baseline"
     assert package[3] == "1.0", "Display version must stay 1.0"
     assert "application-label:'OUSWIS TV'" in badging, "Application label must be OUSWIS TV"
-    assert "launchable-activity: name='io.freemytv.SettingsActivity'" in badging
+    assert "launchable-activity: name='io.ouswis.tv.standalone.SettingsActivity'" in badging
+    manifest = subprocess.check_output([str(tools / "aapt2"), "dump", "xmltree", str(args.apk), "--file", "AndroidManifest.xml"], text=True)
+    assert "io.freemytv" not in manifest, "Legacy identity remains in the packaged manifest"
+    assert "android:sharedUserId" not in manifest, "The standalone app must have its own Android app ID"
+    assert "io.ouswis.tv.standalone.photos" in manifest
+    assert "io.ouswis.tv.standalone.secrets" in manifest
     signature = subprocess.check_output([str(tools / "apksigner"), "verify", "--verbose", "--print-certs", str(args.apk)], text=True)
     assert "Signer #1 certificate SHA-256 digest: " + CERT in signature, "Wrong signing key: existing app would reject this update"
     print(package[0])

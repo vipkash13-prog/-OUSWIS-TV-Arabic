@@ -5,7 +5,7 @@
     python3 tools/photos.py beach.jpg              # the TV adb is already connected to
 
 The photos go, in the order given (a folder's in name order), to the app's own folder on the TV
-(Android/data/io.freemytv/files/photos: adb can write there, and the app needs no permission); where the TV keeps adb
+(Android/data/io.ouswis.tv.standalone/files/photos: adb can write there, and the app needs no permission); where the TV keeps adb
 out of it (Android 11, Fire OS 8), they go through the app itself (pushed to /data/local/tmp, then `content write` to
 its PhotoInbox, which only adb may use). The next time the home screen, the screensaver or Free My TV's settings
 open, the app imports each one (upright, cropped to 16:9, at the screensaver's size, without its GPS and other tags)
@@ -18,7 +18,7 @@ import subprocess
 import sys
 import urllib.parse
 
-INBOX = '/sdcard/Android/data/io.freemytv/files/photos'
+INBOX = '/sdcard/Android/data/io.ouswis.tv.standalone/files/photos'
 STAGED = '/data/local/tmp/freemytv-photo'   # each photo on its way to PhotoInbox (adb's shell can always write here)
 KINDS = ('.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif')
 SERIAL = []   # -s <ip>:5555 once connected, so a phone or another TV on adb doesn't get in the way
@@ -63,18 +63,18 @@ def main():
     if not found:
         print('No photos to send.')
         return 1
-    listed = adb('shell', 'pm', 'list', 'packages', 'io.freemytv')
+    listed = adb('shell', 'pm', 'list', 'packages', 'io.ouswis.tv.standalone')
     if listed.returncode != 0:
         print('No TV connected: give its IP address first (adb devices lists the connected ones).')
         return 1
-    if 'package:io.freemytv' not in listed.stdout.split():
+    if 'package:io.ouswis.tv.standalone' not in listed.stdout.split():
         print('Free My TV is not installed on this TV.')
         return 1
     # Android 11 (Fire OS 8 too) keeps adb out of other apps' Android/data folders: then through the app itself.
     direct = adb('shell', 'mkdir', '-p', INBOX).returncode == 0
     if not direct:
         # Check once that its Free My TV has the way in.
-        probe = adb('shell', 'content', 'query', '--uri', 'content://io.freemytv.photos/')
+        probe = adb('shell', 'content', 'query', '--uri', 'content://io.ouswis.tv.standalone.photos/')
         if 'Could not find provider' in probe.stdout + probe.stderr:
             print('This TV keeps adb out of the app\'s folder, and the Free My TV on it is too old for the other way '
                   'in: install the new FreeMyTV.apk (see Install), then send them again.')
@@ -88,7 +88,7 @@ def main():
             # Encoded (a # or ? would cut the name; quote leaves no ' for the shell), and with its size, so the app
             # drops a send cut short. Read from a file on the TV: fed by `adb exec-in`, `content write` read a terminal
             # that adb hangs up as soon as this side is done, and the photo could be lost while this said Sent (#380).
-            uri = f'content://io.freemytv.photos/{urllib.parse.quote(name)}?size={os.path.getsize(path)}'
+            uri = f'content://io.ouswis.tv.standalone.photos/{urllib.parse.quote(name)}?size={os.path.getsize(path)}'
             r = adb('push', path, STAGED)
             if r.returncode == 0:
                 r = adb('shell', f"content write --uri '{uri}' < {STAGED}; rm -f {STAGED}")

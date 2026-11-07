@@ -1,4 +1,4 @@
-package io.freemytv;
+package io.ouswis.tv.standalone;
 
 public final class SkyworthRemoteTest {
     private static int assertions;

@@ -1,4 +1,4 @@
-package io.freemytv;
+package io.ouswis.tv.standalone;
 
 public final class VideoFitTest {
     private static void fit(int vw, int vh, int w, int h, int ew, int eh) {

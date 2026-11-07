@@ -79,17 +79,17 @@ with tempfile.TemporaryDirectory() as temp:
     threading.Thread(target=server.serve_forever, daemon=True).start()
     adb('reverse', 'tcp:'+str(port), 'tcp:'+str(port))
     # Only the synthetic account on this disposable emulator; never use real subscription credentials.
-    adb('shell', 'am', 'force-stop', 'io.freemytv')
-    package = adb('shell', 'dumpsys', 'package', 'io.freemytv')
+    adb('shell', 'am', 'force-stop', 'io.ouswis.tv.standalone')
+    package = adb('shell', 'dumpsys', 'package', 'io.ouswis.tv.standalone')
     uid = re.search(r'^\s*(?:userId|appId)=(\d+)', package, re.M)[1]
-    folder = '/data/user/0/io.freemytv/shared_prefs'
+    folder = '/data/user/0/io.ouswis.tv.standalone/shared_prefs'
     pref = folder + '/XtreamActivity.xml'
     adb('shell', 'mkdir', '-p', folder)
     content = ('<?xml version="1.0" encoding="utf-8"?><map><string name="server">http://127.0.0.1:'+str(port)+
                '</string><string name="user">demo</string><string name="pass">demo</string></map>')
     subprocess.run([ADB, 'shell', 'cat > '+pref], input=content.encode(), check=True)
     adb('shell', 'chown', uid+':'+uid, folder, pref)
-    adb('shell', 'am', 'start', '-W', '-n', 'io.freemytv/io.freemytv.HomeActivity')
+    adb('shell', 'am', 'start', '-W', '-n', 'io.ouswis.tv.standalone/io.ouswis.tv.standalone.HomeActivity')
     keys('DPAD_DOWN')
     nodes = list(ui().iter('node'))
     height = Image.open(BytesIO(subprocess.check_output([ADB, 'exec-out', 'screencap', '-p']))).height

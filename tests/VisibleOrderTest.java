@@ -1,4 +1,4 @@
-package io.freemytv;
+package io.ouswis.tv.standalone;
 
 import java.util.ArrayList;
 import java.util.Arrays;
