@@ -44,6 +44,11 @@ with tempfile.TemporaryDirectory() as temp:
                         '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-f', 'mpegts', str(path)], check=True)
         clips.append(path.read_bytes())
 
+    subprocess.run(['ffmpeg', '-v', 'error', '-i', str(Path(temp) / '0.ts'), '-c', 'copy',
+                    '-hls_time', '2', '-hls_list_size', '0', '-hls_segment_filename',
+                    str(Path(temp) / 'recovery%03d.ts'), str(Path(temp) / 'recovery.m3u8')], check=True)
+    faults = {'ts': False, 'all': False, 'ts_failures': 0, 'hls': 0}
+
     class Provider(BaseHTTPRequestHandler):
         def log_message(self, *args):
             pass  # Synthetic credentials stay out of HTTP logs too.
@@ -60,7 +65,21 @@ with tempfile.TemporaryDirectory() as temp:
                 data = json.dumps(body).encode()
                 kind = 'application/json'
             elif url.path in ('/live/demo/demo/1.ts', '/live/demo/demo/2.ts', '/live/demo/demo/3.ts'):
+                if url.path.endswith('/1.ts') and (faults['ts'] or faults['all']):
+                    faults['ts_failures'] += 1
+                    self.send_error(503)
+                    return
                 data = clips[int(url.path.rsplit('/',1)[1].split('.')[0])-1]
+                kind = 'video/mp2t'
+            elif url.path == '/live/demo/demo/1.m3u8':
+                faults['hls'] += 1
+                if faults['all']:
+                    self.send_error(503)
+                    return
+                data = (Path(temp) / 'recovery.m3u8').read_bytes()
+                kind = 'application/vnd.apple.mpegurl'
+            elif re.fullmatch(r'/live/demo/demo/recovery[0-9]+\.ts', url.path):
+                data = (Path(temp) / url.path.rsplit('/', 1)[1]).read_bytes()
                 kind = 'video/mp2t'
             else:
                 self.send_error(404)
@@ -159,6 +178,36 @@ with tempfile.TemporaryDirectory() as temp:
     keys('BACK')
     assert any(n.get('text') == 'Test 4:3' and n.get('selected') == 'true' for n in ui().iter('node'))
     note('PASS: BACK restores the channel list selection to the watched second channel.')
+    # Reproduce a provider that lists a channel but refuses its advertised TS endpoint.
+    faults['ts'] = True
+    first = next(n for n in ui().iter('node') if n.get('text') == 'Test 16:9')
+    x1,y1,x2,y2 = map(int,re.findall(r'\d+', first.get('bounds')))
+    adb('shell','input','tap',str((x1+x2)//2),str((y1+y2)//2))
+    complete_frame(640, 360, 'live-hls-recovery.png')
+    assert faults['ts_failures'] > 0 and faults['hls'] > 0, faults
+    note('PASS: refused TS endpoint automatically falls back to HLS and Android decodes the complete frame.')
+    keys('BACK')
+    faults['all'] = True
+    first = next(n for n in ui().iter('node') if n.get('text') == 'Test 16:9')
+    x1,y1,x2,y2 = map(int,re.findall(r'\d+', first.get('bounds')))
+    adb('shell','input','tap',str((x1+x2)//2),str((y1+y2)//2))
+    for _ in range(20):
+        if 'Playback error (' in ET.tostring(ui(), encoding='unicode'):
+            break
+        time.sleep(1)
+    else:
+        raise AssertionError('Both formats failed without bounded retries and visible error codes')
+    count = faults['ts_failures'] + faults['hls']
+    time.sleep(3)
+    assert faults['ts_failures'] + faults['hls'] == count, 'Retries must stop after exhaustion'
+    faults['all'] = False
+    keys('DPAD_CENTER')
+    complete_frame(640, 360, 'live-manual-recovery.png')
+    note('PASS: both-format failures stop retrying, show numeric diagnostics, and OK retries successfully.')
+    # Switching cancels any pending reconnect for the previous channel.
+    keys('DPAD_UP')
+    complete_frame(640, 480, 'live-fit-4x3.png')
+    keys('BACK')
     server.shutdown()
     adb('reverse', '--remove', 'tcp:'+str(port))
 note('Synthetic local streams only; no real subscription or provider availability was tested.')

@@ -38,7 +38,7 @@ prefs = '/data/user/0/' + PKG + '/shared_prefs/settings.xml'
 # A fresh app can use only defaults and never have written settings.xml.
 saved = adb('shell', 'if [ -f ' + prefs + ' ]; then cat ' + prefs
             + "; else echo '<map/>'; fi", binary=True)
-uid = re.search(r'userId=(\d+)', adb('shell', 'dumpsys', 'package', PKG)).group(1)
+uid = re.search(r'(?:userId|appId)=(\d+)', adb('shell', 'dumpsys', 'package', PKG)).group(1)
 size = adb('shell', 'wm', 'size')
 override = re.search(r'Override size: (\d+x\d+)', size)
 

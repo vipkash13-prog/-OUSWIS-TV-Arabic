@@ -34,6 +34,10 @@ public final class XtreamActivity extends Activity {
     private TextView channelLabel;
     private FrameLayout player;
     private int picturePercent;
+    private int playbackGeneration;
+    private long renderedAt;
+    private Runnable recovery;
+    private boolean playbackFailed, foreground;
     private final Runnable hideLabel = () -> { if (channelLabel != null) channelLabel.setVisibility(View.GONE); };
 
     /** Explicit fit sizing also covers streams whose dimensions arrive after preparation. */
@@ -131,12 +135,12 @@ public final class XtreamActivity extends Activity {
     }
     private void showChannels() {
         int selected=Math.max(0,current);
-        if(video!=null){video.stopPlayback();video=null;} current=-1; shell();
+        stopPlayer(); current=-1; shell();
         LinearLayout header=new LinearLayout(this); root.addView(header);
         TextView heading=title("البث المباشر  |  Live TV ("+channels.size()+")",22);
         header.addView(heading,new LinearLayout.LayoutParams(0,-2,1));
         Button account=new Button(this);account.setText("Account");header.addView(account);
-        account.setOnClickListener(v->{if(video!=null){video.stopPlayback();video=null;}login();});
+        account.setOnClickListener(v->{stopPlayer();login();});
         ListView list=new ListView(this);root.addView(list,new LinearLayout.LayoutParams(-1,0,1));
         ArrayList<String> names=new ArrayList<>();for(Channel c:channels)names.add(c.name);
         ArrayAdapter<String> adapter=new ArrayAdapter<String>(this,android.R.layout.simple_list_item_1,names) {
@@ -150,9 +154,25 @@ public final class XtreamActivity extends Activity {
         list.setSelection(selected);
         list.requestFocus();
     }
-    private void play(int index) {
+    private void stopPlayer() {
+        playbackGeneration++;
+        if(recovery!=null){main.removeCallbacks(recovery);recovery=null;}
+        VideoView previous=video;
+        video=null;
+        if(previous!=null){
+            previous.setOnPreparedListener(null);
+            previous.setOnCompletionListener(null);
+            previous.setOnErrorListener((mp,what,extra)->true);
+            previous.stopPlayback();
+        }
+    }
+    private void play(int index) { play(index,0); }
+    private void play(int index,int attempt) {
         if(index<0||index>=channels.size())return;
-        if(video!=null)video.stopPlayback();
+        stopPlayer();
+        playbackFailed=false;
+        renderedAt=0;
+        final int generation=playbackGeneration;
         main.removeCallbacks(hideLabel);
         current=index; Channel c=channels.get(index);
         player=new FrameLayout(this);
@@ -168,21 +188,57 @@ public final class XtreamActivity extends Activity {
         labelPosition.topMargin=Math.round(getResources().getDisplayMetrics().heightPixels*0.05f);
         player.addView(channelLabel,labelPosition);
         applyPictureSize();
-        String ext=c.extension; if(!"m3u8".equalsIgnoreCase(ext))ext="ts";
+        String preferred="m3u8".equalsIgnoreCase(c.extension)?"m3u8":"ts";
+        final String ext=attempt%2==0?preferred:("ts".equals(preferred)?"m3u8":"ts");
         try {
             String url=server+"/live/"+enc(user)+"/"+enc(pass)+"/"+enc(c.id)+"."+ext;
-            video.setVideoURI(Uri.parse(url));
-            video.setOnPreparedListener(mp->{
-                if(video!=fitted)return;
+            // Register before opening: preparation or failure can arrive immediately.
+            fitted.setOnInfoListener((mp,what,extra)->{
+                if(video==fitted&&what==MediaPlayer.MEDIA_INFO_VIDEO_RENDERING_START)
+                    renderedAt=android.os.SystemClock.elapsedRealtime();
+                return false;
+            });
+            fitted.setOnPreparedListener(mp->{
+                if(video!=fitted||generation!=playbackGeneration)return;
                 mp.setVideoScalingMode(MediaPlayer.VIDEO_SCALING_MODE_SCALE_TO_FIT);
                 fitted.frameSize(mp.getVideoWidth(),mp.getVideoHeight());
-                mp.setOnVideoSizeChangedListener((media,width,height)->fitted.frameSize(width,height));
+                mp.setOnVideoSizeChangedListener((media,width,height)->{
+                    if(video==fitted)fitted.frameSize(width,height);
+                });
                 fitted.start();
             });
-            video.setOnErrorListener((mp,what,extra)->{Toast.makeText(this,"Playback error / تعذر تشغيل القناة",Toast.LENGTH_LONG).show();return true;});
-            video.requestFocus();
-        } catch(Exception e){Toast.makeText(this,e.getMessage(),Toast.LENGTH_LONG).show();}
+            fitted.setOnErrorListener((mp,what,extra)->{
+                if(video==fitted&&generation==playbackGeneration)
+                    recover(index,attempt,ext,what,extra);
+                return true;
+            });
+            fitted.setOnCompletionListener(mp->{
+                // Live streams should reconnect when a server closes the connection.
+                if(video==fitted&&generation==playbackGeneration)recover(index,attempt,ext,0,0);
+            });
+            fitted.setVideoURI(Uri.parse(url));
+            fitted.requestFocus();
+        } catch(Exception e){recover(index,attempt,ext,MediaPlayer.MEDIA_ERROR_UNKNOWN,0);}
     }
+    private void recover(int index,int attempt,String format,int what,int extra) {
+        // Numeric diagnostics only: provider URLs contain the viewer's credentials.
+        AppLog.w("Xtream playback: what="+what+", extra="+extra+", format="+format+", attempt="+attempt);
+        if(renderedAt>0&&android.os.SystemClock.elapsedRealtime()-renderedAt>=15000)attempt=0;
+        stopPlayer();
+        main.removeCallbacks(hideLabel);
+        if(!foreground||isFinishing())return;
+        channelLabel.setVisibility(View.VISIBLE);
+        if(attempt<3){
+            channelLabel.setText("إعادة الاتصال / Reconnecting… ("+(attempt+1)+"/3)");
+            final int generation=playbackGeneration, nextAttempt=attempt+1;
+            recovery=()->{if(foreground&&generation==playbackGeneration&&current==index)play(index,nextAttempt);};
+            main.postDelayed(recovery,attempt==0?500:1500);
+        }else{
+            playbackFailed=true;
+            channelLabel.setText("تعذّر تشغيل القناة / Playback error ("+what+", "+extra+")  •  OK: إعادة المحاولة / Retry");
+        }
+    }
+
     private void applyPictureSize() {
         if(player==null||current<0)return;
         player.post(()->{
@@ -214,6 +270,7 @@ public final class XtreamActivity extends Activity {
                         getPreferences(0).edit().putInt("picturePercent",picturePercent).apply();
                         applyPictureSize();
                     }
+                    else if(playbackFailed){play(current);}
                     else if(video!=null){if(video.isPlaying())video.pause();else video.start();}
                 }
                 return true;
@@ -222,6 +279,12 @@ public final class XtreamActivity extends Activity {
         return super.dispatchKeyEvent(event);
     }
     @Override public void onBackPressed(){if(current>=0)showChannels();else super.onBackPressed();}
-    @Override protected void onStop(){if(video!=null && video.isPlaying())video.pause();super.onStop();}
-    @Override protected void onDestroy(){main.removeCallbacks(hideLabel);if(video!=null)video.stopPlayback();super.onDestroy();}
+    @Override protected void onResume(){super.onResume();foreground=true;}
+    @Override protected void onStop(){
+        foreground=false;
+        if(recovery!=null){main.removeCallbacks(recovery);recovery=null;playbackFailed=true;}
+        if(video!=null&&video.isPlaying())video.pause();
+        super.onStop();
+    }
+    @Override protected void onDestroy(){main.removeCallbacks(hideLabel);stopPlayer();super.onDestroy();}
 }
