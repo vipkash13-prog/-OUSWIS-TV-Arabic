@@ -37,6 +37,12 @@ Matches 3D, upcoming matches, Xtream Codes player, Arabic catalogue and remote c
 
 An emulator installation test is not a physical MECOOL KM2 Plus Deluxe test or a test of its Google Play Protect/file manager. Minimum SDK remains 26 and target SDK 33 to avoid unrelated runtime behavior changes. The original attribution and licence remain intact. No other repository is involved.
 
+### Updates inside OUSWIS TV
+
+The launch screen's Updates button and Home Settings > Updates open the same foreground screen. It checks this repository's latest official release, downloads `OUSWIS-TV-1.0.apk`, verifies size/digest, package, build number and the pinned permanent certificate, then offers Android's installation confirmation. The first install from this source requires Android's Allow from this source setting; after returning, press Install again. No automatic confirmation, uninstall or data clear is used. Builds compare `versionCode` from the official release tag because the visible version remains 1.0. The weekly background check uses the same source and validation.
+
+The Android 14 release gate also installs an earlier-build fixture of the updater, uses the visible Updates control to fetch the currently published official APK over HTTPS, checks the source-permission screen, accepts Android's update confirmation on the disposable emulator, and verifies the downloaded build and private-data sentinel. It then installs and verifies the new final APK, retaining the original app identity/data throughout. The release includes `inapp-update.log` and the install-confirmation screenshot. The older 10040 APK needs one manual update to gain these corrected updater settings; subsequent official builds can be downloaded from the app.
+
 ## Visible features and remote navigation
 
 The launch/settings screen has native, focusable Xtream Codes and Matches buttons. LEFT moves from the main settings list to Xtream; DOWN selects Matches; RIGHT or Back returns focus to the settings list. Both features also appear in drawer shortcuts; the home Live TV button launches Xtream and Matches is a default top button. Neither feature requires a hardware TV tuner. The home match preview stays visible with an honest empty state if fixtures are unavailable.

@@ -57,7 +57,7 @@ public class SettingsActivity extends Activity {
     private SettingsView view;
     private DreamView preview;   // "Screensaver": the screensaver right here, without changing the system setting
     private FrameLayout settingsPage;
-    private Button channelsButton, matchesButton;
+    private Button channelsButton, matchesButton, updatesButton;
     private int featureReturnKey;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
@@ -76,6 +76,13 @@ public class SettingsActivity extends Activity {
         features.setOrientation(LinearLayout.VERTICAL);
         channelsButton = new Button(this);
         matchesButton = new Button(this);
+        updatesButton = new Button(this);
+        updatesButton.setId(View.generateViewId());
+        updatesButton.setAllCaps(false);
+        updatesButton.setPadding(0, 0, 0, 0);
+        updatesButton.setTextColor(0xFFFFFFFF);
+        updatesButton.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, 24 * scale);
+        updatesButton.setOnClickListener(v -> startActivity(new Intent(this, UpdatesActivity.class)));
         channelsButton.setId(View.generateViewId());
         matchesButton.setId(View.generateViewId());
         channelsButton.setAllCaps(false);
@@ -90,11 +97,14 @@ public class SettingsActivity extends Activity {
         matchesButton.setOnClickListener(v -> startActivity(new Intent(this, MatchesActivity.class)));
         channelsButton.setNextFocusDownId(matchesButton.getId());
         matchesButton.setNextFocusUpId(channelsButton.getId());
+        matchesButton.setNextFocusDownId(updatesButton.getId());
+        updatesButton.setNextFocusUpId(matchesButton.getId());
         features.addView(channelsButton, new LinearLayout.LayoutParams(-1, Math.round(76 * scale)));
         features.addView(matchesButton, new LinearLayout.LayoutParams(-1, Math.round(76 * scale)));
+        features.addView(updatesButton, new LinearLayout.LayoutParams(-1, Math.round(76 * scale)));
         FrameLayout.LayoutParams position = new FrameLayout.LayoutParams(Math.round(400 * scale), -2, Gravity.LEFT | Gravity.BOTTOM);
         position.leftMargin = Math.round(300 * scale);
-        position.bottomMargin = Math.round(120 * scale);
+        position.bottomMargin = Math.round(44 * scale);
         settingsPage.addView(features, position);
         refreshFeatureLabels();
         setContentView(settingsPage);
@@ -105,6 +115,7 @@ public class SettingsActivity extends Activity {
         if (channelsButton == null) return;
         channelsButton.setText("Xtream Codes");
         matchesButton.setText(Ui.tr("Matches"));
+        updatesButton.setText(Ui.tr("Updates"));
     }
 
     /**
@@ -178,7 +189,7 @@ public class SettingsActivity extends Activity {
             featureReturnKey = 0;
             return true;
         }
-        boolean featureFocused = channelsButton.hasFocus() || matchesButton.hasFocus();
+        boolean featureFocused = channelsButton.hasFocus() || matchesButton.hasFocus() || updatesButton.hasFocus();
         if (event.getAction() == KeyEvent.ACTION_DOWN) {
             if (featureFocused && (event.getKeyCode() == KeyEvent.KEYCODE_DPAD_RIGHT || event.getKeyCode() == KeyEvent.KEYCODE_BACK)) {
                 featureReturnKey = event.getKeyCode();
@@ -247,7 +258,7 @@ public class SettingsActivity extends Activity {
         private String cityStatus = "";
         private JSONObject updates = new JSONObject();   // Updates' file (the main process writes it), read in poll
         private long checkAskedAt, installAskedAt;       // OK on Updates, on the wall clock as the file's "at"
-        private String installed = "";                   // this app's version (an update starts a new process)
+        private String installed = "";                   // this app's build number (an update starts a new process)
         // TMDB key: the page a phone opens (KeyPage), its QR code and what the screen says, all made when they change,
         // never while drawing.
         private KeyPage keyPage;
@@ -347,7 +358,7 @@ public class SettingsActivity extends Activity {
             scene.applyPalette();
             setFocusable(true);
             setContentDescription("OUSWIS TV");
-            installed = Updates.installedVersion(a);
+            installed = Updates.installedBuild(a);
             // TalkBack: one item per row, id = row + 1.
             spoken = new Spoken(this, new Spoken.Source() {
                 @Override public void items(List<Integer> out) { for (int i = 1; i <= rowCount(); i++) out.add(i); }
@@ -1579,22 +1590,7 @@ public class SettingsActivity extends Activity {
          * check does, so one process writes the state; this screen reads it in poll.
          */
         private void updateNow() {
-            Context c = getContext();
-            updates = Updates.state(c);
-            long now = System.currentTimeMillis();
-            if (Updates.ready(updates, installed)) {
-                if (now - installAskedAt < 5000) return;   // Android's installer is on its way
-                installAskedAt = now;
-                ModeJob.schedule(c, ModeJob.INSTALL, "", 0);
-            } else {
-                if (Updates.busy(updates) || checkAsked()) return;
-                checkAskedAt = now;
-                ModeJob.schedule(c, ModeJob.UPDATE, "", 0);
-            }
-            handler.removeCallbacks(poll);
-            handler.postDelayed(poll, 500);
-            invalidate();
-            spoken.focusMoved();
+            getContext().startActivity(new Intent(getContext(), UpdatesActivity.class));
         }
 
         /** OK asked for a check that hasn't started yet (the job writes "checking" as it starts). */

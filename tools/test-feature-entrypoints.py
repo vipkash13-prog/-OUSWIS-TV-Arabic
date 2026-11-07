@@ -56,6 +56,7 @@ settings()
 nodes = list(xml().iter('node'))
 assert any(n.get('text') == 'Xtream Codes' and n.get('clickable') == 'true' for n in nodes)
 assert any(n.get('text') in ('Matches', 'المباريات') and n.get('clickable') == 'true' for n in nodes)
+assert any(n.get('text') in ('Updates', 'التحديثات') and n.get('clickable') == 'true' for n in nodes)
 screenshot('settings-features.png')
 note('PASS: Xtream Codes and Matches are visible, clickable controls on the launch screen.')
 

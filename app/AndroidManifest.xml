@@ -111,6 +111,7 @@
 
         <activity android:name="io.freemytv.MatchesActivity" android:process=":home" android:exported="false" android:screenOrientation="landscape" android:theme="@style/FreeMyTV.Home" />
         <activity android:name="io.freemytv.XtreamActivity" android:process=":home" android:exported="false" android:screenOrientation="landscape" android:theme="@style/FreeMyTV.Home" />
+        <activity android:name="io.freemytv.UpdatesActivity" android:exported="false" android:screenOrientation="landscape" android:theme="@style/FreeMyTV.Home" />
 
         <!-- The app's icon opens the settings (switch between Free My TV and the original home screen). -->
         <activity

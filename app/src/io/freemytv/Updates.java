@@ -32,7 +32,7 @@ import java.security.MessageDigest;
 
 /**
  * Updates from GitHub's releases (Android only). Once a week, and from Home Settings > Updates, the latest release is
- * looked up; a newer one's FreeMyTV.apk is downloaded and checked (GitHub's size and SHA-256, a newer version, the
+ * looked up; a newer one's OUSWIS-TV-1.0.apk is downloaded and checked (GitHub's size and SHA-256, a newer version, the
  * project's key), then handed on OK to Android's installer, which asks before installing. Only the APK from the
  * releases (--generic, the project's key) takes them: a build made on a computer has its own key and config, so it's
  * only told that a new version is out, and only when asked (nothing in the background could come of it).
@@ -43,12 +43,12 @@ import java.security.MessageDigest;
 final class Updates {
     private Updates() {}
 
-    private static final String LATEST = "https://api.github.com/repos/simbasjungles/free-my-tv/releases/latest";
+    private static final String LATEST = "https://api.github.com/repos/vipkash13-prog/-OUSWIS-TV-Arabic/releases/latest";
     // The only place the APK may come from: this repository's releases (github.com redirects to its download host).
-    private static final String RELEASES = "https://github.com/simbasjungles/free-my-tv/releases/download/";
+    private static final String RELEASES = "https://github.com/vipkash13-prog/-OUSWIS-TV-Arabic/releases/download/";
     // The release key's certificate, as `apksigner verify --print-certs` shows it: only APKs signed with it come in.
-    private static final String RELEASE_CERT = "b85d4ff69cb42bfb1837ee0279506363954470b16402a4165f2f095886d19204";
-    private static final String ASSET = "FreeMyTV.apk";
+    private static final String RELEASE_CERT = "aa97cc826f59fa9ba8d37f4ba3978bd968bcc8f94a0f5aa9b458f55151a177b7";
+    private static final String ASSET = "OUSWIS-TV-1.0.apk";
     private static final long MAX_SIZE = 30L << 20;   // the APK is about 1.5 MB
     private static final long WEEK = 7 * 24 * 3600_000L;
     static final int JOB = 2900;
@@ -150,15 +150,14 @@ final class Updates {
 
     /** Home Settings' Updates row: what the last check found, or what to press. */
     static String summary(JSONObject o, String installed) {
-        String v = o.optString("version");
         if (READY.equals(o.optString("state")) && !ready(o, installed)) return Ui.tr("Up to date");
         switch (o.optString("state")) {
             case CHECKING: return busy(o) ? Ui.tr("Checking…") : Ui.tr("Check now");
             case DOWNLOADING: return busy(o) ? Ui.tr("Downloading…") : Ui.tr("Check now");
             // No check for over a week (no network for the week's, or a build made on a computer): asks again.
             case CURRENT: return System.currentTimeMillis() - o.optLong("at") < WEEK + 24 * 3600_000L ? Ui.tr("Up to date") : Ui.tr("Check now");
-            case BUILD: return Ui.trf("{version} is out: build it again", "version", v);
-            case READY: return Ui.trf("Install {version}", "version", v);
+            case BUILD: return Ui.trf("{version} is out: build it again", "version", "1.0");
+            case READY: return Ui.trf("Install {version}", "version", "1.0");
             case FAILED: return OFFLINE.equals(o.optString("error")) ? Ui.tr("No connection") : Ui.tr("Couldn't update");
             default: return Ui.tr("Check now");
         }
@@ -174,12 +173,12 @@ final class Updates {
         JSONObject o = state(a);
         String v = o.optString("version");
         File told = new File(a.getFilesDir(), "update-told");
-        if (!ready(o, installedVersion(a)) || v.equals(text(told))) return;
+        if (!ready(o, installedBuild(a)) || v.equals(text(told))) return;
         try (OutputStream out = new FileOutputStream(told)) {
             out.write(v.getBytes(StandardCharsets.UTF_8));
         } catch (IOException ignored) {
         }
-        Toast.makeText(a, Ui.trf("Free My TV {version} is ready: Home Settings > Updates.", "version", v), Toast.LENGTH_LONG).show();
+        Toast.makeText(a, Ui.trf("Free My TV {version} is ready: Home Settings > Updates.", "version", "1.0").replace("Free My TV", "OUSWIS TV"), Toast.LENGTH_LONG).show();
     }
 
     // MARK: - Check and download
@@ -194,9 +193,9 @@ final class Updates {
         try {
             set(c, CHECKING, "", "");
             JSONObject release = new JSONObject(get(LATEST));
-            version = release.optString("tag_name").replaceFirst("^[vV]", "");
+            version = String.valueOf(UpdateRelease.code(release.optString("tag_name")));
             if (version.isEmpty()) throw new IOException("the latest release has no tag");
-            String installed = installedVersion(c);
+            String installed = installedBuild(c);
             AppLog.w("update: latest release " + version + ", installed " + installed);
             if (compare(version, installed) <= 0) {
                 set(c, CURRENT, version, "");
@@ -229,7 +228,7 @@ final class Updates {
                 download(c, version, url, digest, size, apk);
                 AppLog.w("update: downloaded " + version + " (" + apk.length() / 1024 + " KB), size and SHA-256 as GitHub's");
             }
-            String wrong = misfit(c, apk);
+            String wrong = misfit(c, apk, Long.parseLong(version));
             if (wrong != null) {
                 AppLog.w("update: " + version + "'s " + ASSET + " " + wrong);
                 //noinspection ResultOfMethodCallIgnored
@@ -243,7 +242,7 @@ final class Updates {
             return false;
         } catch (Exception e) {
             AppLog.w("update: " + e);
-            if (ready(before, installedVersion(c)) && new File(dir(c), before.optString("file")).isFile()) {
+            if (ready(before, installedBuild(c)) && new File(dir(c), before.optString("file")).isFile()) {
                 save(c, before);   // the one downloaded before can still be installed
             } else {
                 set(c, FAILED, version, offline(e) ? OFFLINE : OTHER);
@@ -270,14 +269,16 @@ final class Updates {
     static synchronized void cleanUp(Context c) {
         deleteDownloads(c, null);
         JSONObject o = state(c);
-        String installed = installedVersion(c);
+        String installed = installedBuild(c);
         if (READY.equals(o.optString("state")) && compare(o.optString("version"), installed) <= 0) set(c, CURRENT, installed, "");
         else save(c, new JSONObject());   // installed from a computer: unknown until the next check
     }
 
-    static String installedVersion(Context c) {
+    /** Internal build number: display version deliberately stays 1.0 across updates. */
+    @SuppressWarnings("deprecation")
+    static String installedBuild(Context c) {
         try {
-            return c.getPackageManager().getPackageInfo(c.getPackageName(), 0).versionName;
+            return String.valueOf(c.getPackageManager().getPackageInfo(c.getPackageName(), 0).versionCode);
         } catch (PackageManager.NameNotFoundException e) {
             return "";
         }
@@ -340,23 +341,22 @@ final class Updates {
 
     /**
      * Why the downloaded APK can't update this app, or null if it can: it must be this app, newer (Android refuses a
-     * lower versionCode, and an equal versionName would be offered again and again) and signed with the release key.
-     * A signature that can't be read here is left to Android's installer, which refuses another key.
+     * lower or equal versionCode), match the official release build number, and use the permanent signing key.
+     * Display version stays 1.0 for every official build.
      */
     @SuppressWarnings("deprecation")   // versionCode: getLongVersionCode is Android 9+
-    private static String misfit(Context c, File apk) throws PackageManager.NameNotFoundException {
+    private static String misfit(Context c, File apk, long expectedCode) throws PackageManager.NameNotFoundException {
         PackageManager pm = c.getPackageManager();
         PackageInfo theirs = pm.getPackageArchiveInfo(apk.getPath(), PackageManager.GET_SIGNATURES);
         PackageInfo ours = pm.getPackageInfo(c.getPackageName(), 0);
         if (theirs == null) return "can't be read";
         if (!c.getPackageName().equals(theirs.packageName)) return "is another app, " + theirs.packageName;
         String name = theirs.versionName == null ? "" : theirs.versionName;
-        if (theirs.versionCode < ours.versionCode || compare(name, ours.versionName) <= 0) {
+        if (theirs.versionCode <= ours.versionCode || theirs.versionCode != expectedCode || !"1.0".equals(name)) {
             return "isn't newer than this app: " + name + " (" + theirs.versionCode + ")";
         }
         String cert = cert(theirs);
-        if (cert == null) AppLog.w("update: couldn't read the APK's signature; Android's installer checks it");
-        else if (!RELEASE_CERT.equals(cert)) return "isn't signed with the project's key";
+        if (!RELEASE_CERT.equals(cert)) return "isn't signed with the project's key";
         return null;
     }
 
@@ -388,7 +388,7 @@ final class Updates {
     static synchronized void install(Context c) {
         JSONObject o = state(c);
         String version = o.optString("version"), name = o.optString("file");
-        if (!ready(o, installedVersion(c))) return;
+        if (!ready(o, installedBuild(c))) return;
         File apk = new File(dir(c), name);
         if (name.isEmpty() || !apk.isFile()) {
             check(c);
@@ -396,6 +396,8 @@ final class Updates {
         }
         PackageInstaller installer = c.getPackageManager().getPackageInstaller();
         try {
+            String wrong = misfit(c, apk, Long.parseLong(version));
+            if (wrong != null) throw new IOException(wrong);
             // One at a time: a session an earlier OK left waiting (its question closed unanswered) goes.
             for (PackageInstaller.SessionInfo s : installer.getMySessions()) installer.abandonSession(s.getSessionId());
             PackageInstaller.SessionParams params = new PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL);

@@ -42,6 +42,9 @@ first_before="$(sed -n 's/^ *firstInstallTime=//p' "$evidence/before.txt" | head
 [ -n "$first_before" ]
 "$adb_bin" shell "mkdir -p /data/user/0/io.freemytv/files; echo ouswis-preserved > /data/user/0/io.freemytv/files/upgrade-probe; chown $uid_before:$uid_before /data/user/0/io.freemytv/files /data/user/0/io.freemytv/files/upgrade-probe"
 
+if [ -n "${INAPP_RELEASE_CODE:-}" ]; then
+  python3 tools/test-inapp-update.py "$evidence"
+fi
 "$adb_bin" install --no-streaming -r "$update"
 "$adb_bin" shell dumpsys package io.freemytv > "$evidence/after.txt"
 uid_after="$(sed -nE 's/^ *(userId|appId)=([0-9]+).*$/\2/p' "$evidence/after.txt" | head -1)"
