@@ -43,6 +43,12 @@ The launch screen's Updates button and Home Settings > Updates open the same for
 
 The Android 14 release gate also installs an earlier-build fixture of the updater, uses the visible Updates control to fetch the currently published official APK over HTTPS, checks the source-permission screen, accepts Android's update confirmation on the disposable emulator, and verifies the downloaded build and private-data sentinel. It then installs and verifies the new final APK, retaining the original app identity/data throughout. The release includes `inapp-update.log` and the install-confirmation screenshot. The older 10040 APK needs one manual update to gain these corrected updater settings; subsequent official builds can be downloaded from the app.
 
+### Live TV picture and entry point
+
+Live TV opens the existing Xtream account/player directly, using the same saved account. There is no separate Xtream-labelled launcher tile. During playback the complete video frame is fitted and centered on a black fullscreen surface; the channel label overlays it briefly rather than reserving screen height. UP/DOWN (and channel keys) change channels. LEFT/RIGHT decrease/increase the picture area in 5% steps between 80% and 100% to compensate for a TV's overscan; the choice persists across channels/restarts. OK pauses/resumes and BACK returns to the list.
+
+`test-live-playback.py` serves two synthetic H.264 transport streams on the test runner, reverses a loopback port into the disposable emulator, and opens Live TV through its visible control. It checks all four green frame borders in decoded screenshots for 16:9, 4:3 and a 95% picture area, plus UP/DOWN channel changes. Its demo account exists only in emulator preferences, never in the APK. This verifies real decoding/layout with test content, not a user's subscription or physical TV overscan.
+
 ## Visible features and remote navigation
 
 The launch/settings screen has native, focusable Xtream Codes and Matches buttons. LEFT moves from the main settings list to Xtream; DOWN selects Matches; RIGHT or Back returns focus to the settings list. Both features also appear in drawer shortcuts; the home Live TV button launches Xtream and Matches is a default top button. Neither feature requires a hardware TV tuner. The home match preview stays visible with an honest empty state if fixtures are unavailable.

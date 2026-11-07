@@ -327,7 +327,7 @@ final class HomeApps {
     /** Live TV, the HDMI inputs with a device sending a signal, and All Apps. */
     static List<Item> shortcuts(Context c) {
         List<Item> items = new ArrayList<>();
-        items.add(shortcut(XTREAM_LIVE, "xtream_live", "Xtream Codes", "tv"));
+        items.add(shortcut(XTREAM_LIVE, TOP_LIVE, Ui.tr("Live TV"), "live_tv"));
         items.add(shortcut(MATCHES, TOP_MATCHES, Ui.tr("Matches"), "tv"));
         items.addAll(inputs(c));
         items.add(shortcut(ALL_APPS, "all", Ui.tr("All Apps"), "apps"));
@@ -368,7 +368,7 @@ final class HomeApps {
     /** Shortcuts in the bottom drawer. */
     static List<Item> drawerShortcuts(Context c) {
         List<Item> items = new ArrayList<>();
-        items.add(shortcut(XTREAM_LIVE, "xtream_live", "Xtream Codes", "tv"));
+        items.add(shortcut(XTREAM_LIVE, TOP_LIVE, Ui.tr("Live TV"), "live_tv"));
         items.add(shortcut(MATCHES, TOP_MATCHES, Ui.tr("Matches"), "tv"));
         items.add(shortcut(ALL_APPS, "all", Ui.tr("All Apps"), "apps"));
         items.add(shortcut(SETTINGS, "settings", Ui.tr("Home Settings"), "settings"));

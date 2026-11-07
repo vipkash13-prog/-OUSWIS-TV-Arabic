@@ -54,11 +54,11 @@ def settings():
 assert adb('shell', 'getprop', 'ro.kernel.qemu').strip() == '1', 'Emulator required'
 settings()
 nodes = list(xml().iter('node'))
-assert any(n.get('text') == 'Xtream Codes' and n.get('clickable') == 'true' for n in nodes)
+assert any(n.get('text') in ('Live TV', 'البث التلفزيوني المباشر') and n.get('clickable') == 'true' for n in nodes)
 assert any(n.get('text') in ('Matches', 'المباريات') and n.get('clickable') == 'true' for n in nodes)
 assert any(n.get('text') in ('Updates', 'التحديثات') and n.get('clickable') == 'true' for n in nodes)
 screenshot('settings-features.png')
-note('PASS: Xtream Codes and Matches are visible, clickable controls on the launch screen.')
+note('PASS: Live TV and Matches are visible, clickable controls on the launch screen.')
 
 # RIGHT returns to the settings canvas even if focus was restored to a feature button.
 adb('shell', 'input', 'keyevent', 'KEYCODE_DPAD_RIGHT')

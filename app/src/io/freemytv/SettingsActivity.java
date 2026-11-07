@@ -113,7 +113,7 @@ public class SettingsActivity extends Activity {
 
     private void refreshFeatureLabels() {
         if (channelsButton == null) return;
-        channelsButton.setText("Xtream Codes");
+        channelsButton.setText(Ui.tr("Live TV"));
         matchesButton.setText(Ui.tr("Matches"));
         updatesButton.setText(Ui.tr("Updates"));
     }

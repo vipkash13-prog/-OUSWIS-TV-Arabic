@@ -7,6 +7,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.content.Intent;
 import android.graphics.Color;
+import android.media.MediaPlayer;
 import android.net.Uri;
 import android.view.Gravity;
 import android.view.KeyEvent;
@@ -30,6 +31,26 @@ public final class XtreamActivity extends Activity {
     private TextView status;
     private String server, user, pass;
     private int current = -1;
+    private TextView channelLabel;
+    private FrameLayout player;
+    private int picturePercent;
+    private final Runnable hideLabel = () -> { if (channelLabel != null) channelLabel.setVisibility(View.GONE); };
+
+    /** Explicit fit sizing also covers streams whose dimensions arrive after preparation. */
+    private static final class FitVideoView extends VideoView {
+        private int frameWidth, frameHeight;
+        FitVideoView(android.content.Context context) { super(context); }
+        void frameSize(int width, int height) {
+            frameWidth = width;
+            frameHeight = height;
+            requestLayout();
+        }
+        @Override protected void onMeasure(int widthSpec, int heightSpec) {
+            int[] size = VideoFit.size(frameWidth, frameHeight,
+                    View.MeasureSpec.getSize(widthSpec), View.MeasureSpec.getSize(heightSpec));
+            setMeasuredDimension(size[0], size[1]);
+        }
+    }
     private static final class Channel {
         String name, id, extension;
         Channel(String n, String i, String e) { name=n; id=i; extension=e; }
@@ -40,6 +61,7 @@ public final class XtreamActivity extends Activity {
         server=getPreferences(0).getString("server","");
         user=getPreferences(0).getString("user","");
         pass=getPreferences(0).getString("pass","");
+        picturePercent=Math.max(80,Math.min(100,getPreferences(0).getInt("picturePercent",100)));
         if (server.isEmpty() || user.isEmpty() || pass.isEmpty()) login(); else load();
     }
     private TextView title(String text, int size) {
@@ -51,7 +73,7 @@ public final class XtreamActivity extends Activity {
         root.setBackgroundColor(Color.rgb(12,14,28)); setContentView(root);
     }
     private void login() {
-        shell(); root.addView(title("OUSWIS TV  |  Xtream Codes",26));
+        shell(); root.addView(title(Ui.tr("Live TV")+"  |  Xtream Codes",26));
         LinearLayout form=new LinearLayout(this); form.setOrientation(LinearLayout.VERTICAL);
         form.setPadding(40,15,40,15); root.addView(form);
         EditText host=field(form,"Server URL (http://...:port)",server);
@@ -122,27 +144,73 @@ public final class XtreamActivity extends Activity {
     }
     private void play(int index) {
         if(index<0||index>=channels.size())return;
-        current=index; Channel c=channels.get(index);shell();
-        TextView label=title(c.name+"    (↑↓ Channels • Back List)",20);root.addView(label);
-        video=new VideoView(this);root.addView(video,new LinearLayout.LayoutParams(-1,0,1));
+        if(video!=null)video.stopPlayback();
+        main.removeCallbacks(hideLabel);
+        current=index; Channel c=channels.get(index);
+        player=new FrameLayout(this);
+        player.setBackgroundColor(Color.BLACK);
+        setContentView(player);
+        FitVideoView fitted=new FitVideoView(this);
+        video=fitted;
+        player.addView(video,new FrameLayout.LayoutParams(-1,-1,Gravity.CENTER));
+        channelLabel=title(c.name,20);
+        channelLabel.setBackgroundColor(0xB0000000);
+        FrameLayout.LayoutParams labelPosition=new FrameLayout.LayoutParams(-2,-2,Gravity.TOP|Gravity.CENTER_HORIZONTAL);
+        labelPosition.topMargin=Math.round(getResources().getDisplayMetrics().heightPixels*0.05f);
+        player.addView(channelLabel,labelPosition);
+        applyPictureSize();
         String ext=c.extension; if(!"m3u8".equalsIgnoreCase(ext))ext="ts";
         try {
             String url=server+"/live/"+enc(user)+"/"+enc(pass)+"/"+enc(c.id)+"."+ext;
             video.setVideoURI(Uri.parse(url));
-            video.setOnPreparedListener(mp->{if(video!=null)video.start();});
+            video.setOnPreparedListener(mp->{
+                if(video!=fitted)return;
+                mp.setVideoScalingMode(MediaPlayer.VIDEO_SCALING_MODE_SCALE_TO_FIT);
+                fitted.frameSize(mp.getVideoWidth(),mp.getVideoHeight());
+                mp.setOnVideoSizeChangedListener((media,width,height)->fitted.frameSize(width,height));
+                fitted.start();
+            });
             video.setOnErrorListener((mp,what,extra)->{Toast.makeText(this,"Playback error / تعذر تشغيل القناة",Toast.LENGTH_LONG).show();return true;});
             video.requestFocus();
         } catch(Exception e){Toast.makeText(this,e.getMessage(),Toast.LENGTH_LONG).show();}
     }
-    @Override public boolean onKeyDown(int key,KeyEvent event) {
+    private void applyPictureSize() {
+        if(player==null||current<0)return;
+        player.post(()->{
+            if(player==null||current<0)return;
+            int x=Math.round(player.getWidth()*(100-picturePercent)/200f);
+            int y=Math.round(player.getHeight()*(100-picturePercent)/200f);
+            player.setPadding(x,y,x,y);
+        });
+        channelLabel.setText(channels.get(current).name+"  •  "+picturePercent+"%  •  ←→ الحجم / Size  •  ↑↓ القنوات");
+        channelLabel.setVisibility(View.VISIBLE);
+        main.removeCallbacks(hideLabel);
+        main.postDelayed(hideLabel,3000);
+    }
+    @Override public boolean dispatchKeyEvent(KeyEvent event) {
+        int key=event.getKeyCode();
         if(current>=0){
-            if(key==KeyEvent.KEYCODE_DPAD_UP){play((current+channels.size()-1)%channels.size());return true;}
-            if(key==KeyEvent.KEYCODE_DPAD_DOWN){play((current+1)%channels.size());return true;}
-            if(key==KeyEvent.KEYCODE_DPAD_CENTER||key==KeyEvent.KEYCODE_ENTER){if(video!=null){if(video.isPlaying())video.pause();else video.start();}return true;}
+            boolean previous=key==KeyEvent.KEYCODE_DPAD_UP||key==KeyEvent.KEYCODE_CHANNEL_UP;
+            boolean next=key==KeyEvent.KEYCODE_DPAD_DOWN||key==KeyEvent.KEYCODE_CHANNEL_DOWN;
+            boolean pause=key==KeyEvent.KEYCODE_DPAD_CENTER||key==KeyEvent.KEYCODE_ENTER;
+            boolean resize=key==KeyEvent.KEYCODE_DPAD_LEFT||key==KeyEvent.KEYCODE_DPAD_RIGHT;
+            if(previous||next||pause||resize){
+                if(event.getAction()==KeyEvent.ACTION_DOWN&&event.getRepeatCount()==0){
+                    if(previous)play((current+channels.size()-1)%channels.size());
+                    else if(next)play((current+1)%channels.size());
+                    else if(resize){
+                        picturePercent=Math.max(80,Math.min(100,picturePercent+(key==KeyEvent.KEYCODE_DPAD_LEFT?-5:5)));
+                        getPreferences(0).edit().putInt("picturePercent",picturePercent).apply();
+                        applyPictureSize();
+                    }
+                    else if(video!=null){if(video.isPlaying())video.pause();else video.start();}
+                }
+                return true;
+            }
         }
-        return super.onKeyDown(key,event);
+        return super.dispatchKeyEvent(event);
     }
     @Override public void onBackPressed(){if(current>=0)showChannels();else super.onBackPressed();}
     @Override protected void onStop(){if(video!=null && video.isPlaying())video.pause();super.onStop();}
-    @Override protected void onDestroy(){if(video!=null)video.stopPlayback();super.onDestroy();}
+    @Override protected void onDestroy(){main.removeCallbacks(hideLabel);if(video!=null)video.stopPlayback();super.onDestroy();}
 }

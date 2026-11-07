@@ -84,6 +84,12 @@ jobs:
           python3 tools/verify-release-apk.py FreeMyTV.apk
           bash tools/test-remote.sh
           bash tools/test-order.sh
+          bash tools/test-video-fit.sh
+      - name: Playback test image reader
+        run: |
+          python3 -m pip install --target "$RUNNER_TEMP/video-test-libs" Pillow
+          echo "PYTHONPATH=$RUNNER_TEMP/video-test-libs" >> "$GITHUB_ENV"
+          ffmpeg -version > /dev/null
       - name: Enable emulator hardware acceleration
         run: sudo chmod 666 /dev/kvm
       - name: Actual Android 14 installation and update test
@@ -98,6 +104,7 @@ jobs:
           script: |
             bash tools/test-install-upgrade.sh "$RUNNER_TEMP/previous.apk" FreeMyTV.apk install-evidence
             python3 tools/test-feature-entrypoints.py install-evidence
+            python3 tools/test-live-playback.py install-evidence
       - name: Save install evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -113,7 +120,7 @@ jobs:
           cp FreeMyTV.apk OUSWIS-TV-1.0.apk
           code=$(sed -n 's/.*android:versionCode="\([0-9]*\)".*/\1/p' app/AndroidManifest.xml)
           tag="v1.0-official-${code}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          gh release create "$tag" OUSWIS-TV-1.0.apk install-evidence/install-upgrade.log install-evidence/inapp-update.log install-evidence/inapp-install-confirmation.png install-evidence/feature-navigation.log install-evidence/settings-features.png install-evidence/xtream-login.png install-evidence/matches-screen.png install-evidence/home-features.png \
+          gh release create "$tag" OUSWIS-TV-1.0.apk install-evidence/install-upgrade.log install-evidence/inapp-update.log install-evidence/inapp-install-confirmation.png install-evidence/feature-navigation.log install-evidence/live-playback.log install-evidence/live-fit-16x9.png install-evidence/live-fit-4x3.png install-evidence/settings-features.png install-evidence/xtream-login.png install-evidence/matches-screen.png install-evidence/home-features.png \
             --target "$GITHUB_SHA" --title "OUSWIS TV 1.0 — Official" \
             --notes "Android 14 emulator installation and in-place upgrade passed. Permanent repository signing certificate aa97cc826f59fa9ba8d37f4ba3978bd968bcc8f94a0f5aa9b458f55151a177b7. Install once after replacing an older differently-signed build; future official APKs update this identity in place. Package io.freemytv, display version 1.0. Physical MECOOL testing is separate."
           echo "https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/OUSWIS-TV-1.0.apk" >> "$GITHUB_STEP_SUMMARY"
