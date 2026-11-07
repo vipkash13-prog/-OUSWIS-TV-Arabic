@@ -1,0 +1,68 @@
+name: OUSWIS TV preview build (branch)
+on:
+  push:
+    branches: [feature/matches-glass-window]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: ouswis-preview
+  cancel-in-progress: false
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Android SDK
+        shell: bash
+        run: |
+          set +o pipefail
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$RUNNER_TEMP/sdk" "build-tools;34.0.0" "platforms;android-34" > /dev/null
+          echo "ANDROID_HOME=$RUNNER_TEMP/sdk" >> "$GITHUB_ENV"
+      - name: Restore the permanent repository signing key
+        env:
+          KEY_PASS: ${{ secrets.OUSWIS_SIGNING_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KEY_PASS" || { echo "OUSWIS_SIGNING_PASSWORD is required. No replacement key will be generated."; exit 1; }
+          test -s signing/ouswis-release.jks.b64 || { echo "Permanent signing key is missing. Restore it; do not create a new one."; exit 1; }
+          umask 077
+          base64 --decode signing/ouswis-release.jks.b64 > "$RUNNER_TEMP/ouswis-official.keystore"
+          derived=$(printf '%s' "$KEY_PASS" | sha256sum | cut -d ' ' -f1)
+          echo "::add-mask::$derived"
+          echo "FREEMYTV_KEYSTORE=$RUNNER_TEMP/ouswis-official.keystore" >> "$GITHUB_ENV"
+          echo "FREEMYTV_KEYSTORE_PASS=$derived" >> "$GITHUB_ENV"
+      - name: Assign increasing internal build number
+        shell: python
+        run: |
+          import os, re
+          from pathlib import Path
+          p = Path('app/AndroidManifest.xml')
+          s = p.read_text()
+          base = int(re.search(r'android:versionCode="(\d+)"', s)[1])
+          code = base + int(os.environ['GITHUB_RUN_NUMBER'])
+          s = re.sub(r'android:versionCode="\d+"', f'android:versionCode="{code}"', s, count=1)
+          p.write_text(s)
+      - name: Check and build
+        run: |
+          python3 tools/translate.py --check
+          ./build.sh --generic --release
+          python3 tools/verify-release-apk.py FreeMyTV.apk
+      - name: Publish as a pre-release (not the latest release)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp FreeMyTV.apk OUSWIS-TV-preview.apk
+          tag="matches-preview-${GITHUB_RUN_NUMBER}"
+          gh release create "$tag" OUSWIS-TV-preview.apk --prerelease --target "$GITHUB_SHA" \
+            --title "OUSWIS TV matches window (preview ${GITHUB_RUN_NUMBER})" \
+            --notes "Preview of the new Matches window. Signed with the permanent key, so it installs over the current app. Built only; not emulator-tested."
+          echo "https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/OUSWIS-TV-preview.apk" >> "$GITHUB_STEP_SUMMARY"
+      - name: Remove runner signing key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/ouswis-official.keystore"
