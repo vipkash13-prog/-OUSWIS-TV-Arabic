@@ -147,8 +147,13 @@ public class HomeActivity extends Activity {
 
     @Override public boolean dispatchKeyEvent(KeyEvent event) {
         keyPressed = true;
+        // The carousel owns left/right only while focused; keep Home and system keys intact.
+        if (matchPreview != null && matchPreview.hasFocus()
+                && event.getAction()==KeyEvent.ACTION_DOWN
+                && (event.getKeyCode()==KeyEvent.KEYCODE_DPAD_LEFT
+                    || event.getKeyCode()==KeyEvent.KEYCODE_DPAD_RIGHT)
+                && matchPreview.onKeyDown(event.getKeyCode(),event)) return true;
         if (RemoteKeys.onKey(this, event)) return true;
-        if (matchPreview != null && matchPreview.hasFocus() && event.getAction()==KeyEvent.ACTION_DOWN && matchPreview.onKeyDown(event.getKeyCode(),event)) return true;
         if (home != null && home.onKey(event)) return true;
         return super.dispatchKeyEvent(event);
     }
