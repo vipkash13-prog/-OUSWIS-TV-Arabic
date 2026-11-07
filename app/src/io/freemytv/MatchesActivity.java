@@ -20,16 +20,21 @@ public final class MatchesActivity extends Activity {
     private MatchCarouselView carousel;
     private TextView heading;
     private volatile boolean active;
+    private volatile String section="upcoming";
+    private LinearLayout tabs;
+    private final String[] keys={"upcoming","live","today","yesterday"};
+    private final String[] titles={"مباريات قادمة","مباشر الآن","نتائج اليوم","نتائج أمس"};
     private final Runnable refresh=new Runnable(){
         @Override public void run(){
             if(!active)return;
             worker.execute(()->{
-                List<MatchCarouselView.Match> fixtures=UpcomingMatches.fetch(null);
+                String requested=section;
+                List<MatchCarouselView.Match> fixtures=UpcomingMatches.fetch(null,requested);
                 main.post(()->{
-                    if(!active)return;
+                    if(!active||!requested.equals(section))return;
                     carousel.setMatches(fixtures);
-                    heading.setText("مباريات قادمة  •  "+fixtures.size());
-                    main.postDelayed(refresh,15*60*1000);
+                    heading.setText(titles[java.util.Arrays.asList(keys).indexOf(section)]+"  •  "+fixtures.size());
+                    main.postDelayed(refresh,"live".equals(section)?60*1000:15*60*1000);
                 });
             });
         }
@@ -46,6 +51,17 @@ public final class MatchesActivity extends Activity {
         heading.setTextColor(-1);heading.setTextSize(26);
         heading.setGravity(Gravity.CENTER);
         root.addView(heading,new LinearLayout.LayoutParams(-1,80));
+        tabs=new LinearLayout(this);tabs.setGravity(Gravity.CENTER);
+        for(int i=0;i<keys.length;i++){
+            final String key=keys[i];
+            TextView tab=new TextView(this);
+            tab.setText(titles[i]);tab.setTextColor(-1);tab.setTextSize(17);
+            tab.setGravity(Gravity.CENTER);tab.setFocusable(true);
+            tab.setPadding(18,12,18,12);
+            tab.setOnClickListener(v->{section=key;main.removeCallbacks(refresh);main.post(refresh);carousel.requestFocus();});
+            tabs.addView(tab,new LinearLayout.LayoutParams(0,65,1));
+        }
+        root.addView(tabs,new LinearLayout.LayoutParams(-1,70));
         carousel=new MatchCarouselView(this);
         root.addView(carousel,new LinearLayout.LayoutParams(-1,320));
         TextView note=new TextView(this);
