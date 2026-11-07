@@ -163,7 +163,8 @@ public final class XtreamActivity extends Activity {
             previous.setOnPreparedListener(null);
             previous.setOnCompletionListener(null);
             previous.setOnErrorListener((mp,what,extra)->true);
-            previous.stopPlayback();
+            // Release directly: stop() is invalid for some decoders already in the error state.
+            previous.suspend();
         }
     }
     private void play(int index) { play(index,0); }
@@ -226,7 +227,7 @@ public final class XtreamActivity extends Activity {
         if(renderedAt>0&&android.os.SystemClock.elapsedRealtime()-renderedAt>=15000)attempt=0;
         stopPlayer();
         main.removeCallbacks(hideLabel);
-        if(!foreground||isFinishing())return;
+        if(!foreground||isFinishing()){playbackFailed=true;return;}
         channelLabel.setVisibility(View.VISIBLE);
         if(attempt<3){
             channelLabel.setText("إعادة الاتصال / Reconnecting… ("+(attempt+1)+"/3)");
