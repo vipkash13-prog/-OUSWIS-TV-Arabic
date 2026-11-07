@@ -43,13 +43,14 @@ pkg_info = adb('shell', 'dumpsys', 'package', PKG)
 uid_m = re.search(r'(?:userId|appId)=(\d+)', pkg_info)
 assert uid_m, 'Cannot identify installed app UID; refusing to guess file ownership'
 uid = uid_m.group(1)
-size = adb('shell', 'wm', 'size')
-override = re.search(r'Override size: (\d+x\d+)', size)
+(OUT / 'rtl-display.txt').write_text(adb('shell', 'wm', 'size') + adb('shell', 'dumpsys', 'display'))
 
 def write_prefs(data):
     local = OUT / 'rtl-test-settings.tmp'
     local.write_bytes(data)
     try:
+        adb('shell', 'mkdir', '-p', prefs.rsplit('/', 1)[0])
+        adb('shell', 'chown', uid + ':' + uid, prefs.rsplit('/', 1)[0])
         adb('push', str(local), '/data/local/tmp/rtl-settings.xml')
         adb('shell', 'cp', '/data/local/tmp/rtl-settings.xml', prefs)
         adb('shell', 'chown', uid + ':' + uid, prefs)
@@ -64,7 +65,10 @@ try:
             settings.remove(node)
     ET.SubElement(settings, 'string', {'name': 'language'}).text = 'ar'
     write_prefs(ET.tostring(settings, encoding='utf-8'))
-    adb('shell', 'wm', 'size', '3840x2160')
+    from PIL import Image
+    from io import BytesIO
+    actual = Image.open(BytesIO(adb('exec-out', 'screencap', '-p', binary=True))).size
+    assert actual == (3840, 2160), 'Native 4K emulator required, got ' + str(actual)
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.' + 'MatchesActivity')
     time.sleep(3)
     key('UP')
@@ -86,9 +90,12 @@ try:
     (OUT / 'rtl-matches-4k.png').write_bytes(adb('exec-out', 'screencap', '-p', binary=True))
     from PIL import Image
     assert Image.open(OUT / 'rtl-matches-4k.png').size == (3840, 2160)
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.HomeActivity')
+    time.sleep(3)
+    assert any(n.get('package') == PKG for n in tree().iter('node'))
+    (OUT / 'home-4k.png').write_bytes(adb('exec-out', 'screencap', '-p', binary=True))
     (OUT / 'rtl-4k.log').write_text('PASS: Arabic app language with English system; RTL tab positions and physical LEFT/RIGHT focus, OK and UP tested at 3840x2160 on Android emulator.\nPhysical TV performance was not measured.\n')
     print((OUT / 'rtl-4k.log').read_text(), flush=True)
 finally:
     adb('shell', 'am', 'force-stop', PKG)
     write_prefs(saved)
-    adb('shell', 'wm', 'size', override.group(1) if override else 'reset')
