@@ -88,6 +88,10 @@ public final class XtreamActivity extends Activity {
         root.setBackgroundColor(Ui.pageBackground(this)); setContentView(root);
     }
     private void login() {
+        // Editing an account must detach the old catalogue job from the login screen.
+        catalogGeneration++;if(catalogThread!=null)catalogThread.interrupt();
+        channels.clear();activeAccount="";pendingCatalog=null;
+        catalogFilter=null;catalogMessage=null;catalogLoading=false;
         shell(); root.addView(title(Ui.tr("Live TV")+"  |  Xtream Codes",26));
         LinearLayout form=new LinearLayout(this); form.setOrientation(LinearLayout.VERTICAL);
         form.setPadding(40,15,40,15); root.addView(form);
