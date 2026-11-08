@@ -146,7 +146,7 @@ with tempfile.TemporaryDirectory() as temp:
     pref = folder + '/XtreamActivity.xml'
     adb('shell', 'mkdir', '-p', folder)
     content = ('<?xml version="1.0" encoding="utf-8"?><map><string name="server">http://127.0.0.1:'+str(port)+
-               '</string><string name="user">demo</string><string name="pass">demo</string></map>')
+               '</string><string name="user">demo</string><string name="pass">demo</string><boolean name="autoplay" value="false" /></map>')
     subprocess.run([ADB, 'shell', 'cat > '+pref], input=content.encode(), check=True)
     adb('shell', 'chown', uid+':'+uid, folder, pref)
     adb('shell', 'am', 'start', '-W', '-n', 'io.ouswis.tv.standalone/io.ouswis.tv.standalone.HomeActivity')

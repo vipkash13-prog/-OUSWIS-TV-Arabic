@@ -52,7 +52,7 @@ public final class XtreamActivity extends Activity {
     private int playbackGeneration;
     private long renderedAt;
     private Runnable recovery, playbackTimeout;
-    private boolean playbackFailed, foreground;
+    private boolean playbackFailed, foreground, autoStarted;
     private final Runnable hideLabel = () -> { if (channelLabel != null) channelLabel.setVisibility(View.GONE); };
 
     /** Explicit fit sizing also covers streams whose dimensions arrive after preparation. */
@@ -91,7 +91,7 @@ public final class XtreamActivity extends Activity {
         // Editing an account must detach the old catalogue job from the login screen.
         catalogGeneration++;if(catalogThread!=null)catalogThread.interrupt();
         channels.clear();activeAccount="";pendingCatalog=null;
-        catalogFilter=null;catalogMessage=null;catalogLoading=false;
+        catalogFilter=null;catalogMessage=null;catalogLoading=false;autoStarted=false;
         shell(); root.addView(title(Ui.tr("Live TV")+"  |  Xtream Codes",26));
         LinearLayout form=new LinearLayout(this); form.setOrientation(LinearLayout.VERTICAL);
         form.setPadding(40,15,40,15); root.addView(form);
@@ -169,6 +169,16 @@ public final class XtreamActivity extends Activity {
         }
         applyCatalog(result,complete);
         if(catalogFilter==null)showChannels();else{catalogFilter.run();catalogMessage();}
+        autoPlay();
+    }
+    /** Entering Live TV plays the last watched channel (or the first) at once; Back shows the list. */
+    private void autoPlay() {
+        if(autoStarted||channels.isEmpty()||current>=0||!getPreferences(0).getBoolean("autoplay",true))return;
+        autoStarted=true;
+        String last=getPreferences(0).getString("lastChannel","");
+        int index=0;
+        for(int i=0;i<channels.size();i++)if(channels.get(i).id.equals(last)){index=i;break;}
+        play(index);
     }
     private void load(){load(false);}
     private void load(boolean force) {
@@ -357,6 +367,7 @@ public final class XtreamActivity extends Activity {
         final int generation=playbackGeneration;
         main.removeCallbacks(hideLabel);
         current=index; XtreamCatalog.Entry c=channels.get(index);
+        getPreferences(0).edit().putString("lastChannel",c.id).apply();
         player=new FrameLayout(this);
         player.setBackgroundColor(Color.BLACK);
         setContentView(player);
