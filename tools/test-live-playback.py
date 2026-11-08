@@ -49,7 +49,10 @@ with tempfile.TemporaryDirectory() as temp:
     subprocess.run(['ffmpeg', '-v', 'error', '-i', str(Path(temp) / '0.ts'), '-c', 'copy',
                     '-hls_time', '2', '-hls_list_size', '0', '-hls_segment_filename',
                     str(Path(temp) / 'recovery%03d.ts'), str(Path(temp) / 'recovery.m3u8')], check=True)
-    faults = {'ts': False, 'all': False, 'ts_failures': 0, 'hls': 0, 'catalog': False, 'group_error': False}
+    faults = {'ts': False, 'all': False, 'ts_failures': 0, 'hls': 0, 'catalog': False, 'group_error': False, 'hold_groups': False, 'api_down': False}
+
+    groups_started = threading.Event()
+    groups_release = threading.Event()
 
     class Provider(BaseHTTPRequestHandler):
         def log_message(self, *args):
@@ -58,6 +61,9 @@ with tempfile.TemporaryDirectory() as temp:
         def do_GET(self):
             url = urlparse(self.path)
             if url.path == '/player_api.php':
+                if faults['api_down']:
+                    self.send_error(503)
+                    return
                 query = parse_qs(url.query)
                 action = query.get('action', [''])[0]
                 if action == 'get_live_categories':
@@ -66,6 +72,11 @@ with tempfile.TemporaryDirectory() as temp:
                 elif action == 'get_live_streams':
                     if faults['catalog']:
                         group = query.get('category_id', [''])[0]
+                        if group and faults['hold_groups']:
+                            groups_started.set()
+                            if not groups_release.wait(90):
+                                self.send_error(503)
+                                return
                         if group == '11' and faults['group_error']:
                             self.send_error(503)
                             return
@@ -264,6 +275,7 @@ with tempfile.TemporaryDirectory() as temp:
     note('PASS: case-insensitive channel search, filtered playback of the correct original channel, BACK retention, empty results, clear and remote focus.')
     # The global provider response has only two rows. Category responses contain six distinct streams.
     faults['catalog'] = True
+    faults['hold_groups'] = True
     adb('shell','am','force-stop','io.ouswis.tv.standalone')
     adb('shell','am','start','-W','-n','io.ouswis.tv.standalone/.XtreamActivity')
 
@@ -275,6 +287,30 @@ with tempfile.TemporaryDirectory() as temp:
             time.sleep(0.5)
         raise AssertionError('Missing catalogue/search count: '+count)
 
+    wait_count('3/3')  # The saved list is usable before contacting the provider again.
+    tap(next(n for n in ui().iter('node') if n.get('content-desc') == 'تحديث القنوات / Reload channels'))
+    assert groups_started.wait(5), 'Expected deliberately blocked group requests'
+    search_channels('osn')
+    wait_count('2/3')
+    (OUT / 'live-progressive-catalog.png').write_bytes(subprocess.check_output([ADB,'exec-out','screencap','-p']))
+    # Open a channel while the groups are still blocked, then let the background refresh finish.
+    second = next(n for n in ui().iter('node') if n.get('text') == 'Ｏ.Ｓ.Ｎ Cinema')
+    tap(second)
+    complete_frame(640,480,'live-during-group-load.png')
+    faults['hold_groups'] = False
+    groups_release.set()
+    cache_file = '/data/user/0/io.ouswis.tv.standalone/files/xtream-catalog-cache.json'
+    for _ in range(20):
+        cached = json.loads(adb('shell','cat',cache_file))
+        if cached.get('complete') and len(cached.get('channels',[])) == 6:
+            break
+        time.sleep(0.3)
+    else:
+        raise AssertionError('Final complete catalogue was not saved')
+    complete_frame(640,480,'live-after-group-load.png')
+    keys('BACK')
+    wait_count('5/6')
+    tap(next(n for n in ui().iter('node') if n.get('content-desc') == 'مسح البحث / Clear search'))
     tree = wait_count('6/6')
     field = next(n for n in tree.iter('node') if n.get('class') == 'android.widget.EditText')
     assert 'OSN' not in field.get('text',''), 'Search must not contain the old OSN example'
@@ -296,6 +332,13 @@ with tempfile.TemporaryDirectory() as temp:
     wait_count('2/6')
     search_channels('osn')
     wait_count('5/6')
+    faults['api_down'] = True
+    adb('shell','am','force-stop','io.ouswis.tv.standalone')
+    adb('shell','am','start','-W','-n','io.ouswis.tv.standalone/.XtreamActivity')
+    wait_count('6/6')
+    search_channels('osn')
+    wait_count('5/6')
+    note('PASS: saved catalogue opens while provider API is offline; first channels/search/playback remain available during blocked group loading; background completion does not interrupt the watched channel.')
     note('PASS: truncated global catalogue reconciled with all live groups; OSN finds five members instead of two name matches; decorated names, duplicate-name streams, no example text, partial-load warning and reload recovery verified.')
     server.shutdown()
     adb('reverse', '--remove', 'tcp:'+str(port))

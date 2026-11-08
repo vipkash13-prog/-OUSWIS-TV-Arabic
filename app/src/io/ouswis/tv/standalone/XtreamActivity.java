@@ -23,6 +23,7 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLEncoder;
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
 
@@ -33,7 +34,12 @@ public final class XtreamActivity extends Activity {
     private final ArrayList<XtreamCatalog.Entry> channels = new ArrayList<>();
     private volatile int catalogGeneration;
     private Thread catalogThread;
-    private String catalogWarning="";
+    private String catalogWarning="",catalogProgress="",activeAccount="";
+    private boolean catalogLoading;
+    private Runnable catalogFilter;
+    private TextView catalogMessage;
+    private XtreamCatalog.Result pendingCatalog;
+    private boolean pendingComplete;
     private LinearLayout root;
     private VideoView video;
     private TextView status;
@@ -116,54 +122,106 @@ public final class XtreamActivity extends Activity {
             r.close(); return s.toString();
         } finally {c.disconnect();}
     }
-    private void load() {
+    private void catalogMessage() {
+        String text=catalogLoading?"تحديث القنوات في الخلفية / Updating channels… "+catalogProgress:catalogWarning;
+        if(catalogMessage!=null){
+            catalogMessage.setText(text);
+            catalogMessage.setVisibility(text.isEmpty()?View.GONE:View.VISIBLE);
+        }
+        if(channels.isEmpty()&&status!=null)status.setText(text.isEmpty()?"تحميل القنوات / Loading channels…":text);
+    }
+    private void applyCatalog(XtreamCatalog.Result result,boolean complete) {
+        boolean authoritative=complete&&result.failedGroups==0&&!result.groupsUnavailable;
+        if(authoritative){channels.clear();channels.addAll(result.channels);}
+        else{
+            XtreamCatalog.Result merged=XtreamCatalog.accumulate(channels,result);
+            channels.clear();channels.addAll(merged.channels);
+        }
+    }
+    private void acceptCatalog(XtreamCatalog.Result result,boolean complete) {
+        catalogLoading=!complete;
+        catalogWarning=result.failedGroups>0?"تعذّر تحميل "+result.failedGroups+" مجموعات / Some groups failed to load"
+                :result.groupsUnavailable?"تعذّر تحميل أسماء المجموعات / Group names unavailable":"";
+        if(current>=0){
+            // Keep the playback list and its numbering unchanged until the viewer returns.
+            pendingCatalog=result;pendingComplete=complete;return;
+        }
+        applyCatalog(result,complete);
+        if(catalogFilter==null)showChannels();else{catalogFilter.run();catalogMessage();}
+    }
+    private void load(){load(false);}
+    private void load(boolean force) {
         if(catalogThread!=null)catalogThread.interrupt();
         final int generation=++catalogGeneration;
-        final String base=server, username=user, password=pass;
-        shell();status=title("تحميل القنوات والمجموعات / Loading channels and groups…",22);root.addView(status);
+        final String base=server,username=user,password=pass;
+        final String key;
+        try{key=XtreamCatalog.accountKey(base,username,password);}catch(Exception e){return;}
+        if(!key.equals(activeAccount)){
+            activeAccount=key;channels.clear();pendingCatalog=null;catalogFilter=null;catalogMessage=null;
+        }
+        catalogLoading=true;catalogWarning="";catalogProgress="";
+        if(channels.isEmpty()){
+            catalogFilter=null;catalogMessage=null;
+            shell();status=title("تحميل القنوات / Loading channels…",22);root.addView(status);
+        }else catalogMessage();
+        File cache=new File(getFilesDir(),"xtream-catalog-cache.json");
         catalogThread=new Thread(()->{
             try {
+                XtreamCatalog.Cached saved=XtreamCatalog.readCache(cache,key);
+                boolean fresh=saved!=null&&saved.fresh(System.currentTimeMillis())&&!force;
+                if(saved!=null)main.post(()->{
+                    if(generation==catalogGeneration)acceptCatalog(saved.result,fresh);
+                });
+                if(fresh)return;
                 String endpoint=base+"/player_api.php?username="+enc(username)+"&password="+enc(password);
                 JSONObject account=new JSONObject(request(endpoint));
                 JSONObject info=account.optJSONObject("user_info");
                 if(info==null||!"Active".equalsIgnoreCase(info.optString("status")))throw new Exception("Account is not active");
+                final long[] checkpointAt={0};
                 XtreamCatalog.Result result=XtreamCatalog.load((action,category)->{
                     if(generation!=catalogGeneration)throw new InterruptedException();
                     return new JSONArray(request(endpoint+"&action="+action+(category==null?"":"&category_id="+enc(category))));
                 },(done,total)->main.post(()->{
-                    if(generation==catalogGeneration)status.setText("تحميل المجموعات / Loading groups: "+done+"/"+total);
-                }));
-                main.post(()->{
+                    if(generation==catalogGeneration){catalogProgress=done+"/"+total;catalogMessage();}
+                }),(snapshot,complete)->{
                     if(generation!=catalogGeneration)return;
-                    channels.clear();channels.addAll(result.channels);
-                    catalogWarning=result.failedGroups>0?"تعذّر تحميل "+result.failedGroups+" مجموعات / Some groups failed to load"
-                            :result.groupsUnavailable?"تعذّر تحميل أسماء المجموعات / Group names unavailable":"";
-                    showChannels();
+                    main.post(()->{if(generation==catalogGeneration)acceptCatalog(snapshot,complete);});
+                    long now=System.currentTimeMillis();
+                    if((saved==null||!saved.complete)&&!snapshot.channels.isEmpty()
+                            &&(checkpointAt[0]==0||now-checkpointAt[0]>=10_000L)){
+                        checkpointAt[0]=now;
+                        XtreamCatalog.Result checkpoint=saved==null?snapshot:XtreamCatalog.accumulate(saved.result.channels,snapshot);
+                        try{XtreamCatalog.writeCache(cache,key,checkpoint,false,now);}catch(Exception ignored){}
+                    }
                 });
+                if(generation==catalogGeneration&&result.failedGroups==0&&!result.groupsUnavailable)
+                    try{XtreamCatalog.writeCache(cache,key,result,true,System.currentTimeMillis());}catch(Exception ignored){}
             }catch(InterruptedException ignored){Thread.currentThread().interrupt();}
             catch(Exception e){main.post(()->{
                 if(generation!=catalogGeneration)return;
-                status.setText("تعذّر تحميل القنوات. تحقق من الاتصال وأعد المحاولة / Couldn't load channels");
-                Button retry=new Button(this);retry.setText("إعادة المحاولة / Retry");root.addView(retry);retry.setOnClickListener(v->load());
+                catalogLoading=false;
+                catalogWarning="تعذّر تحديث القنوات • ↻ لإعادة المحاولة / Couldn't refresh channels";
+                if(!channels.isEmpty()||current>=0){catalogMessage();return;}
+                status.setText(catalogWarning);
+                Button retry=new Button(this);retry.setText("إعادة المحاولة / Retry");root.addView(retry);retry.setOnClickListener(v->load(true));
                 Button account=new Button(this);account.setText("تعديل الحساب / Edit account");root.addView(account);account.setOnClickListener(v->login());
             });}
         },"Xtream-catalog");
         catalogThread.start();
     }
     private void showChannels() {
-        int selected=Math.max(0,current);
-        stopPlayer(); current=-1; shell();
+        String selected=current>=0&&current<channels.size()?channels.get(current).id:null;
+        stopPlayer();current=-1;
+        if(pendingCatalog!=null){applyCatalog(pendingCatalog,pendingComplete);pendingCatalog=null;}
+        shell();
         LinearLayout header=new LinearLayout(this); root.addView(header);
         TextView heading=title("البث المباشر  |  Live TV ("+channels.size()+")",22);
         header.addView(heading,new LinearLayout.LayoutParams(0,-2,1));
         Button reload=new Button(this);reload.setText("↻");
         reload.setContentDescription("تحديث القنوات / Reload channels");header.addView(reload);
-        reload.setOnClickListener(v->load());
+        reload.setOnClickListener(v->load(true));
         Button account=new Button(this);account.setText("Account");header.addView(account);
-        if(!catalogWarning.isEmpty()){
-            TextView warning=title(catalogWarning+" • اضغط ↻ لإعادة المحاولة",14);
-            root.addView(warning);
-        }
+        catalogMessage=title("",14);root.addView(catalogMessage);catalogMessage();
         account.setOnClickListener(v->{stopPlayer();login();});
         LinearLayout searchRow=new LinearLayout(this);
         searchRow.setPadding(24,0,24,8);
@@ -189,7 +247,7 @@ public final class XtreamActivity extends Activity {
         list.setEmptyView(empty);
         ArrayList<String> names=new ArrayList<>();
         // Display positions change while filtering; playback always uses the original channel index.
-        ArrayList<Integer> visible=new ArrayList<>();
+        ArrayList<String> visible=new ArrayList<>();
         ArrayAdapter<String> adapter=new ArrayAdapter<String>(this,android.R.layout.simple_list_item_1,names) {
             @Override public View getView(int position,View recycled,android.view.ViewGroup parent) {
                 TextView row=(TextView)super.getView(position,recycled,parent);
@@ -199,15 +257,17 @@ public final class XtreamActivity extends Activity {
         };
         list.setAdapter(adapter);
         Runnable filter=()->{
+            int row=list.getSelectedItemPosition();
+            String keep=row>=0&&row<visible.size()?visible.get(row):selected;
             String query=XtreamCatalog.normalize(channelSearch);
             names.clear();visible.clear();
             for(int i=0;i<channels.size();i++){
                 XtreamCatalog.Entry channel=channels.get(i);
-                if(channel.matches(query)){names.add(channel.name);visible.add(i);}
+                if(channel.matches(query)){names.add(channel.name);visible.add(channel.id);}
             }
             adapter.notifyDataSetChanged();
             heading.setText("البث المباشر  |  Live TV ("+visible.size()+"/"+channels.size()+")");
-            list.setSelection(Math.max(0,visible.indexOf(selected)));
+            list.setSelection(Math.max(0,visible.indexOf(keep)));
         };
         search.addTextChangedListener(new TextWatcher(){
             @Override public void beforeTextChanged(CharSequence text,int start,int count,int after){}
@@ -237,9 +297,12 @@ public final class XtreamActivity extends Activity {
         clear.setOnClickListener(view->{search.setText("");search.requestFocus();});
         search.setNextFocusDownId(list.getId());list.setNextFocusUpId(search.getId());
         list.setOnItemClickListener((parent,view,pos,id)->{
-            if(pos>=0&&pos<visible.size()){results.run();play(visible.get(pos));}
+            if(pos>=0&&pos<visible.size()){
+                String channelId=visible.get(pos);
+                for(int i=0;i<channels.size();i++)if(channels.get(i).id.equals(channelId)){results.run();play(i);break;}
+            }
         });
-        filter.run();
+        catalogFilter=filter;filter.run();
         if(visible.isEmpty())search.requestFocus();else list.requestFocus();
     }
 

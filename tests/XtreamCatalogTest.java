@@ -55,6 +55,33 @@ public final class XtreamCatalogTest {
         JSONArray unfiltered=rows("10").put(channel(6,"Sports","11"));
         XtreamCatalog.Result ignoredFilter=XtreamCatalog.load((action,category)->action.equals("get_live_categories")?groups():unfiltered,(done,total)->{});
         require(!ignoredFilter.channels.get(5).matches("osn"),"Do not attach unrelated groups when a server ignores category_id");
+        List<XtreamCatalog.Result> snapshots=new ArrayList<>();
+        XtreamCatalog.Result incremental=XtreamCatalog.load((action,category)->{
+            if(action.equals("get_live_categories")){
+                require(!snapshots.isEmpty(),"First channels must publish before group metadata is requested");
+                return groups();
+            }
+            return rows(category);
+        },(done,total)->{},(snapshot,complete)->snapshots.add(snapshot));
+        require(snapshots.get(0).channels.size()==2&&incremental.channels.size()==6,"Publish initial and complete catalogues");
+        require(!snapshots.get(0).channels.get(0).matches("arosn"),"Published entry terms must not be mutated by background merges");
+        require(incremental.channels.get(0).matches("arosn"),"Final entries include group metadata");
+        java.io.File directory=java.nio.file.Files.createTempDirectory("ouswis-catalog-test").toFile();
+        java.io.File cache=new java.io.File(directory,"cache.json");
+        try{
+            String key=XtreamCatalog.accountKey("https://provider.invalid","private-user","private-password");
+            XtreamCatalog.writeCache(cache,key,incremental,true,1_000_000L);
+            XtreamCatalog.Cached saved=XtreamCatalog.readCache(cache,key);
+            require(saved!=null&&saved.result.channels.size()==6&&saved.result.channels.get(2).matches("osn"),"Cached channels preserve group search");
+            require(saved.fresh(1_000_001L)&&!saved.fresh(4_600_001L)&&!saved.fresh(999_999L),"Bound cache freshness, expiry and clock reversal");
+            require(XtreamCatalog.readCache(cache,"another-account")==null,"Never show another account's cached channels");
+            String body=new String(java.nio.file.Files.readAllBytes(cache.toPath()),java.nio.charset.StandardCharsets.UTF_8);
+            require(!body.contains("private-user")&&!body.contains("private-password")&&!body.contains("provider.invalid"),"Cache must not duplicate credentials");
+            XtreamCatalog.writeCache(cache,key,incremental,false,1_000_000L);
+            require(!XtreamCatalog.readCache(cache,key).fresh(1_000_001L),"An incomplete snapshot must still revalidate");
+            java.nio.file.Files.write(cache.toPath(),"invalid".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            require(XtreamCatalog.readCache(cache,key)==null,"Corrupt cache falls back to network");
+        }finally{cache.delete();new java.io.File(cache.getPath()+".tmp").delete();directory.delete();}
         JSONArray large=new JSONArray();
         for(int i=0;i<1500;i++)large.put(channel(i,"Channel "+i,""));
         XtreamCatalog.Result bulk=XtreamCatalog.load((action,category)->action.equals("get_live_categories")?new JSONArray():large,(done,total)->{});
@@ -68,6 +95,6 @@ public final class XtreamCatalogTest {
         try{XtreamCatalog.load((action,category)->{throw new IOException("HTTP 503");},(done,total)->{});}
         catch(IOException e){refused=true;}
         require(refused,"Total provider failure must not look like a successful empty catalogue");
-        System.out.println("PASS: per-group completeness, ID deduplication, duplicate names, normalized/group search, 1500 channels, bounded concurrency and partial/provider failures.");
+        System.out.println("PASS: per-group completeness, ID deduplication, duplicate names, normalized/group search, 1500 channels, bounded concurrency, progressive snapshots, account-scoped cache and partial/provider failures.");
     }
 }
