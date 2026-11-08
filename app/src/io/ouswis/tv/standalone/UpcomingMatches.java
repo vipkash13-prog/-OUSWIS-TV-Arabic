@@ -29,9 +29,31 @@ import java.time.OffsetDateTime;
 public final class UpcomingMatches {
     private UpcomingMatches(){}
     public static final String[] LEAGUES={
-        "ksa.1", "afc.champions", "uefa.champions",
-        "eng.1", "esp.1", "ita.1", "ger.1", "fra.1", "por.1"
+        "ksa.1", "ksa.kings.cup", "afc.champions", "afc.cup", "afc.asian.cup", "fifa.worldq.afc", "fifa.world",
+        "uefa.champions", "uefa.europa", "uefa.europa.conf", "uefa.nations",
+        "eng.1", "eng.fa", "eng.league_cup", "esp.1", "esp.copa_del_rey", "ita.1", "ita.coppa_italia",
+        "ger.1", "ger.dfb_pokal", "fra.1", "fra.coupe_de_france", "por.1", "ned.1", "tur.1", "caf.nations"
     };
+    private static final String[][] COMPETITIONS={
+        {"Saudi Pro League","دوري روشن السعودي"},{"Saudi Kings Cup","كأس الملك"},{"King's Cup","كأس الملك"},
+        {"AFC Champions League Elite","دوري أبطال آسيا للنخبة"},{"AFC Champions League","دوري أبطال آسيا"},
+        {"AFC Champions League Two","دوري أبطال آسيا 2"},{"AFC Asian Cup","كأس آسيا"},
+        {"FIFA World Cup","كأس العالم"},{"UEFA Champions League","دوري أبطال أوروبا"},
+        {"UEFA Europa League","الدوري الأوروبي"},{"UEFA Conference League","دوري المؤتمر الأوروبي"},
+        {"UEFA Europa Conference League","دوري المؤتمر الأوروبي"},{"UEFA Nations League","دوري الأمم الأوروبية"},
+        {"English Premier League","الدوري الإنجليزي الممتاز"},{"English FA Cup","كأس الاتحاد الإنجليزي"},
+        {"English League Cup","كأس الرابطة الإنجليزية"},{"Spanish LALIGA","الدوري الإسباني"},
+        {"Spanish Copa del Rey","كأس ملك إسبانيا"},{"Italian Serie A","الدوري الإيطالي"},
+        {"Italian Coppa Italia","كأس إيطاليا"},{"German Bundesliga","الدوري الألماني"},
+        {"German DFB-Pokal","كأس ألمانيا"},{"French Ligue 1","الدوري الفرنسي"},
+        {"French Coupe de France","كأس فرنسا"},{"Portuguese Primeira Liga","الدوري البرتغالي"},
+        {"Dutch Eredivisie","الدوري الهولندي"},{"Turkish Super Lig","الدوري التركي"},
+        {"Africa Cup of Nations","كأس الأمم الأفريقية"}};
+    static String arabicCompetition(String name){
+        for(String[] c:COMPETITIONS)if(c[0].equalsIgnoreCase(name))return c[1];
+        if(name.startsWith("FIFA World Cup"))return "تصفيات كأس العالم"+(name.contains("AFC")?" - آسيا":"");
+        return name;
+    }
     /** What a load found: the matches, and how many competitions answered or didn't. */
     public static final class Result {
         public final List<MatchCarouselView.Match> matches=new ArrayList<>();
@@ -71,7 +93,7 @@ public final class UpcomingMatches {
         SimpleDateFormat day=new SimpleDateFormat("yyyyMMdd",Locale.US);
         day.setTimeZone(TimeZone.getTimeZone("UTC"));
         final String from=day.format(new Date(now-2L*24*60*60*1000)),to=day.format(new Date(now+14L*24*60*60*1000));
-        ExecutorService pool=Executors.newFixedThreadPool(4);
+        ExecutorService pool=Executors.newFixedThreadPool(6);
         List<Future<List<MatchCarouselView.Match>>> jobs=new ArrayList<>();
         final String sec=section;
         for(final String league:leagues){
@@ -162,7 +184,7 @@ public final class UpcomingMatches {
             JSONObject first=leagueList==null?null:leagueList.optJSONObject(0);
             JSONArray logos=first==null?null:first.optJSONArray("logos");
             if(logos!=null&&logos.optJSONObject(0)!=null)leagueLogo=logos.optJSONObject(0).optString("href");
-            String competition=first==null?league:first.optString("name",league);
+            String competition=arabicCompetition(first==null?league:first.optString("name",league));
             JSONArray events=root.optJSONArray("events");
             if(events==null)return out;
             for(int i=0;i<events.length();i++){

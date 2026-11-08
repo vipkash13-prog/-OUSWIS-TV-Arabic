@@ -78,26 +78,27 @@ public final class MatchesActivity extends Activity {
         window.setGravity(Gravity.CENTER_HORIZONTAL);
         int pad=Math.round(18*scale);
         window.setPadding(pad,pad,pad,Math.round(10*scale));
-        GradientDrawable bg=new GradientDrawable(GradientDrawable.Orientation.TL_BR,new int[]{0xF5EEEEF0,0xF5D3D3D8});
-        bg.setCornerRadius(34*scale);bg.setStroke(Math.max(1,Math.round(1.5f*scale)),0x66FFFFFF);
+        GradientDrawable bg=new GradientDrawable(GradientDrawable.Orientation.TL_BR,new int[]{0xFF14151A,0xFF050507});
+        bg.setCornerRadius(34*scale);bg.setStroke(Math.max(1,Math.round(1.5f*scale)),0x55FFC857);
         window.setBackground(bg);
         window.setClickable(true);
         heading=new TextView(this);
-        heading.setTextColor(0xFF242428);heading.setTextSize(22*scale);heading.setGravity(Gravity.CENTER);
+        heading.setTextColor(0xFFFFFFFF);heading.setTextSize(22*scale);heading.setGravity(Gravity.CENTER);
         window.addView(heading,new LinearLayout.LayoutParams(-1,-2));
         LinearLayout tabs=new LinearLayout(this);tabs.setGravity(Gravity.CENTER);
         for(int i=0;i<keys.length;i++){
             final int index=i;
             TextView tab=new TextView(this);
             tabViews[i]=tab;tab.setId(ids[i]);
-            tab.setText(titles[i]);tab.setTextColor(0xFF242428);tab.setTextSize(15*scale);
+            tab.setText(titles[i]);tab.setTextColor(0xFFE6E9F0);tab.setTextSize(15*scale);
             tab.setGravity(Gravity.CENTER);tab.setFocusable(true);
             tab.setPadding(Math.round(6*scale),Math.round(8*scale),Math.round(6*scale),Math.round(8*scale));
             StateListDrawable look=new StateListDrawable();
-            look.addState(new int[]{android.R.attr.state_focused},chip(0xFFFFFFFF,scale));
-            look.addState(new int[]{android.R.attr.state_selected},chip(0xA0FFFFFF,scale));
+            look.addState(new int[]{android.R.attr.state_focused},chip(0xFFFFC857,scale));
+            look.addState(new int[]{android.R.attr.state_selected},chip(0x44FFC857,scale));
             look.addState(new int[]{},chip(0x00000000,scale));
             tab.setBackground(look);
+            tab.setOnFocusChangeListener((v,focused)->tab.setTextColor(focused?0xFF111218:0xFFE6E9F0));
             tab.setOnClickListener(v->select(index));
             tabs.addView(tab,new LinearLayout.LayoutParams(0,-2,1));
         }
@@ -108,7 +109,7 @@ public final class MatchesActivity extends Activity {
         window.addView(carousel,new LinearLayout.LayoutParams(-1,0,1));
         TextView note=new TextView(this);
         note.setText("يمين / يسار للتنقل  •  توقيت السعودية  •  مصدر ESPN غير رسمي");
-        note.setTextColor(0xFF606068);note.setTextSize(12*scale);note.setGravity(Gravity.CENTER);
+        note.setTextColor(0xFF9AA3B2);note.setTextSize(12*scale);note.setGravity(Gravity.CENTER);
         window.addView(note,new LinearLayout.LayoutParams(-1,-2));
         FrameLayout.LayoutParams lp=new FrameLayout.LayoutParams(Math.round(screenW*0.66f),Math.round(screenH*0.68f),Gravity.CENTER);
         root.addView(window,lp);
