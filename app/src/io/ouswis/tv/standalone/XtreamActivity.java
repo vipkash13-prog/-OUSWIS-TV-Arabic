@@ -25,12 +25,15 @@ import java.net.URLEncoder;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
-import java.util.Locale;
+
 
 /** Remote-friendly, live-only Xtream Codes player. Credentials never enter the source repository. */
 public final class XtreamActivity extends Activity {
     private final Handler main = new Handler(Looper.getMainLooper());
-    private final ArrayList<Channel> channels = new ArrayList<>();
+    private final ArrayList<XtreamCatalog.Entry> channels = new ArrayList<>();
+    private volatile int catalogGeneration;
+    private Thread catalogThread;
+    private String catalogWarning="";
     private LinearLayout root;
     private VideoView video;
     private TextView status;
@@ -60,10 +63,6 @@ public final class XtreamActivity extends Activity {
                     View.MeasureSpec.getSize(widthSpec), View.MeasureSpec.getSize(heightSpec));
             setMeasuredDimension(size[0], size[1]);
         }
-    }
-    private static final class Channel {
-        String name, id, extension, searchName;
-        Channel(String n, String i, String e) { name=n; id=i; extension=e; searchName=n.toLowerCase(Locale.ROOT); }
     }
     @Override public void onCreate(Bundle b) {
         super.onCreate(b);
@@ -106,9 +105,6 @@ public final class XtreamActivity extends Activity {
         e.setTextColor(Ui.pageInk(this)); e.setHintTextColor(Ui.pageMuted(this)); form.addView(e); return e;
     }
     private String enc(String s) throws Exception {return URLEncoder.encode(s,"UTF-8");}
-    private String api(String action) throws Exception {
-        return server+"/player_api.php?username="+enc(user)+"&password="+enc(pass)+"&action="+action;
-    }
     private String request(String address) throws Exception {
         HttpURLConnection c=(HttpURLConnection)new URL(address).openConnection();
         c.setConnectTimeout(12000); c.setReadTimeout(15000); c.setInstanceFollowRedirects(true);
@@ -121,23 +117,38 @@ public final class XtreamActivity extends Activity {
         } finally {c.disconnect();}
     }
     private void load() {
-        shell(); status=title("Loading live channels / تحميل القنوات...",22); root.addView(status);
-        new Thread(()->{
+        if(catalogThread!=null)catalogThread.interrupt();
+        final int generation=++catalogGeneration;
+        final String base=server, username=user, password=pass;
+        shell();status=title("تحميل القنوات والمجموعات / Loading channels and groups…",22);root.addView(status);
+        catalogThread=new Thread(()->{
             try {
-                JSONObject account=new JSONObject(request(api(""))); 
+                String endpoint=base+"/player_api.php?username="+enc(username)+"&password="+enc(password);
+                JSONObject account=new JSONObject(request(endpoint));
                 JSONObject info=account.optJSONObject("user_info");
-                if(info==null || !"Active".equalsIgnoreCase(info.optString("status"))) throw new Exception("Account is not active");
-                JSONArray data=new JSONArray(request(api("get_live_streams")));
-                ArrayList<Channel> found=new ArrayList<>();
-                for(int i=0;i<data.length();i++){
-                    JSONObject x=data.optJSONObject(i); if(x==null)continue;
-                    String id=x.optString("stream_id"); if(id.isEmpty())continue;
-                    found.add(new Channel(x.optString("name","Channel"),id,x.optString("container_extension","ts")));
-                }
-                main.post(()->{channels.clear();channels.addAll(found);showChannels();});
-            } catch(Exception e){main.post(()->{status.setText("Connection failed / فشل الاتصال: "+e.getMessage());
-                Button retry=new Button(this);retry.setText("Edit account / تعديل الحساب");root.addView(retry);retry.setOnClickListener(v->login());});}
-        }).start();
+                if(info==null||!"Active".equalsIgnoreCase(info.optString("status")))throw new Exception("Account is not active");
+                XtreamCatalog.Result result=XtreamCatalog.load((action,category)->{
+                    if(generation!=catalogGeneration)throw new InterruptedException();
+                    return new JSONArray(request(endpoint+"&action="+action+(category==null?"":"&category_id="+enc(category))));
+                },(done,total)->main.post(()->{
+                    if(generation==catalogGeneration)status.setText("تحميل المجموعات / Loading groups: "+done+"/"+total);
+                }));
+                main.post(()->{
+                    if(generation!=catalogGeneration)return;
+                    channels.clear();channels.addAll(result.channels);
+                    catalogWarning=result.failedGroups>0?"تعذّر تحميل "+result.failedGroups+" مجموعات / Some groups failed to load"
+                            :result.groupsUnavailable?"تعذّر تحميل أسماء المجموعات / Group names unavailable":"";
+                    showChannels();
+                });
+            }catch(InterruptedException ignored){Thread.currentThread().interrupt();}
+            catch(Exception e){main.post(()->{
+                if(generation!=catalogGeneration)return;
+                status.setText("تعذّر تحميل القنوات. تحقق من الاتصال وأعد المحاولة / Couldn't load channels");
+                Button retry=new Button(this);retry.setText("إعادة المحاولة / Retry");root.addView(retry);retry.setOnClickListener(v->load());
+                Button account=new Button(this);account.setText("تعديل الحساب / Edit account");root.addView(account);account.setOnClickListener(v->login());
+            });}
+        },"Xtream-catalog");
+        catalogThread.start();
     }
     private void showChannels() {
         int selected=Math.max(0,current);
@@ -145,7 +156,14 @@ public final class XtreamActivity extends Activity {
         LinearLayout header=new LinearLayout(this); root.addView(header);
         TextView heading=title("البث المباشر  |  Live TV ("+channels.size()+")",22);
         header.addView(heading,new LinearLayout.LayoutParams(0,-2,1));
+        Button reload=new Button(this);reload.setText("↻");
+        reload.setContentDescription("تحديث القنوات / Reload channels");header.addView(reload);
+        reload.setOnClickListener(v->load());
         Button account=new Button(this);account.setText("Account");header.addView(account);
+        if(!catalogWarning.isEmpty()){
+            TextView warning=title(catalogWarning+" • اضغط ↻ لإعادة المحاولة",14);
+            root.addView(warning);
+        }
         account.setOnClickListener(v->{stopPlayer();login();});
         LinearLayout searchRow=new LinearLayout(this);
         searchRow.setPadding(24,0,24,8);
@@ -154,7 +172,7 @@ public final class XtreamActivity extends Activity {
         search.setId(View.generateViewId());
         search.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
         search.setSingleLine(true);
-        search.setHint(Ui.tr("Search")+" (OSN…)");
+        search.setHint(Ui.tr("Search"));
         search.setTextColor(Ui.pageInk(this));search.setHintTextColor(Ui.pageMuted(this));
         search.setImeOptions(EditorInfo.IME_ACTION_SEARCH|EditorInfo.IME_FLAG_NO_EXTRACT_UI);
         search.setText(channelSearch);
@@ -181,11 +199,11 @@ public final class XtreamActivity extends Activity {
         };
         list.setAdapter(adapter);
         Runnable filter=()->{
-            String query=channelSearch.trim().toLowerCase(Locale.ROOT);
+            String query=XtreamCatalog.normalize(channelSearch);
             names.clear();visible.clear();
             for(int i=0;i<channels.size();i++){
-                Channel channel=channels.get(i);
-                if(channel.searchName.contains(query)){names.add(channel.name);visible.add(i);}
+                XtreamCatalog.Entry channel=channels.get(i);
+                if(channel.matches(query)){names.add(channel.name);visible.add(i);}
             }
             adapter.notifyDataSetChanged();
             heading.setText("البث المباشر  |  Live TV ("+visible.size()+"/"+channels.size()+")");
@@ -247,7 +265,7 @@ public final class XtreamActivity extends Activity {
         renderedAt=0;
         final int generation=playbackGeneration;
         main.removeCallbacks(hideLabel);
-        current=index; Channel c=channels.get(index);
+        current=index; XtreamCatalog.Entry c=channels.get(index);
         player=new FrameLayout(this);
         player.setBackgroundColor(Color.BLACK);
         setContentView(player);
@@ -381,5 +399,5 @@ public final class XtreamActivity extends Activity {
         if(video!=null&&video.isPlaying())video.pause();
         super.onStop();
     }
-    @Override protected void onDestroy(){main.removeCallbacks(hideLabel);stopPlayer();super.onDestroy();}
+    @Override protected void onDestroy(){catalogGeneration++;if(catalogThread!=null)catalogThread.interrupt();main.removeCallbacks(hideLabel);stopPlayer();super.onDestroy();}
 }

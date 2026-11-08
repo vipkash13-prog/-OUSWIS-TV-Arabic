@@ -32,7 +32,9 @@ def keys(*names):
 
 def ui():
     adb('shell', 'uiautomator', 'dump', '/data/local/tmp/live-ui.xml')
-    return ET.fromstring(adb('shell', 'cat', '/data/local/tmp/live-ui.xml'))
+    text = adb('shell', 'cat', '/data/local/tmp/live-ui.xml')
+    (OUT / 'live-ui.xml').write_text(text)
+    return ET.fromstring(text)
 
 assert adb('shell', 'getprop', 'ro.kernel.qemu').strip() == '1'
 with tempfile.TemporaryDirectory() as temp:
@@ -47,7 +49,7 @@ with tempfile.TemporaryDirectory() as temp:
     subprocess.run(['ffmpeg', '-v', 'error', '-i', str(Path(temp) / '0.ts'), '-c', 'copy',
                     '-hls_time', '2', '-hls_list_size', '0', '-hls_segment_filename',
                     str(Path(temp) / 'recovery%03d.ts'), str(Path(temp) / 'recovery.m3u8')], check=True)
-    faults = {'ts': False, 'all': False, 'ts_failures': 0, 'hls': 0}
+    faults = {'ts': False, 'all': False, 'ts_failures': 0, 'hls': 0, 'catalog': False, 'group_error': False}
 
     class Provider(BaseHTTPRequestHandler):
         def log_message(self, *args):
@@ -57,9 +59,27 @@ with tempfile.TemporaryDirectory() as temp:
             url = urlparse(self.path)
             if url.path == '/player_api.php':
                 query = parse_qs(url.query)
-                if query.get('action') == ['get_live_streams']:
-                    body = [{'name': 'Test 16:9', 'stream_id': '1'}, {'name': 'Test 4:3', 'stream_id': '2'},
-                            {'name': 'Test third', 'stream_id': '3'}]
+                action = query.get('action', [''])[0]
+                if action == 'get_live_categories':
+                    body = ([{'category_id':'10','category_name':'AR | OSN'}, {'category_id':'11','category_name':'Sports'}]
+                            if faults['catalog'] else [{'category_id':'10','category_name':'General'}])
+                elif action == 'get_live_streams':
+                    if faults['catalog']:
+                        group = query.get('category_id', [''])[0]
+                        if group == '11' and faults['group_error']:
+                            self.send_error(503)
+                            return
+                        body = [{'name':'OSN News','stream_id':'1','category_id':'10'},
+                                {'name':'Ｏ.Ｓ.Ｎ Cinema','stream_id':'2','category_id':'10'}]
+                        if group == '10':
+                            body += [{'name':'Movies Action','stream_id':'3'}, {'name':'Movies Comedy','stream_id':'4'},
+                                     {'name':'Movies Action','stream_id':'5'}]
+                        elif group == '11':
+                            body = [{'name':'Sports','stream_id':'6'}]
+                    else:
+                        body = [{'name': 'Test 16:9', 'stream_id': '1', 'category_id':'10'},
+                                {'name': 'Test 4:3', 'stream_id': '2', 'category_id':'10'},
+                                {'name': 'Test third', 'stream_id': '3', 'category_id':'10'}]
                 else:
                     body = {'user_info': {'status': 'Active'}}
                 data = json.dumps(body).encode()
@@ -242,6 +262,41 @@ with tempfile.TemporaryDirectory() as temp:
     keys('DPAD_DOWN')
     assert any(n.get('class') == 'android.widget.ListView' and n.get('focused') == 'true' for n in ui().iter('node'))
     note('PASS: case-insensitive channel search, filtered playback of the correct original channel, BACK retention, empty results, clear and remote focus.')
+    # The global provider response has only two rows. Category responses contain six distinct streams.
+    faults['catalog'] = True
+    adb('shell','am','force-stop','io.ouswis.tv.standalone')
+    adb('shell','am','start','-W','-n','io.ouswis.tv.standalone/.XtreamActivity')
+
+    def wait_count(count):
+        for _ in range(12):
+            tree = ui()
+            if any('Live TV ('+count+')' in n.get('text','') for n in tree.iter('node')):
+                return tree
+            time.sleep(0.5)
+        raise AssertionError('Missing catalogue/search count: '+count)
+
+    tree = wait_count('6/6')
+    field = next(n for n in tree.iter('node') if n.get('class') == 'android.widget.EditText')
+    assert 'OSN' not in field.get('text',''), 'Search must not contain the old OSN example'
+    search_channels('O.S.N')
+    wait_count('5/6')
+    (OUT / 'live-group-search.png').write_bytes(subprocess.check_output([ADB,'exec-out','screencap','-p']))
+    search_channels('Movies%sAction')
+    wait_count('2/6')  # Same name, different stream IDs: keep both entries.
+    faults['group_error'] = True
+    tap(next(n for n in ui().iter('node') if n.get('content-desc') == 'تحديث القنوات / Reload channels'))
+    for _ in range(12):
+        if 'Some groups failed to load' in ET.tostring(ui(),encoding='unicode'):
+            break
+        time.sleep(0.5)
+    else:
+        raise AssertionError('Missing group must be reported instead of a silent partial catalogue')
+    faults['group_error'] = False
+    tap(next(n for n in ui().iter('node') if n.get('content-desc') == 'تحديث القنوات / Reload channels'))
+    wait_count('2/6')
+    search_channels('osn')
+    wait_count('5/6')
+    note('PASS: truncated global catalogue reconciled with all live groups; OSN finds five members instead of two name matches; decorated names, duplicate-name streams, no example text, partial-load warning and reload recovery verified.')
     server.shutdown()
     adb('reverse', '--remove', 'tcp:'+str(port))
 note('Synthetic local streams only; no real subscription or provider availability was tested.')

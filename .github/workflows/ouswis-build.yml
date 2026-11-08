@@ -99,6 +99,7 @@ jobs:
           bash tools/test-remote.sh
           bash tools/test-order.sh
           bash tools/test-video-fit.sh
+          bash tools/test-xtream-catalog.sh
           bash tools/test-matches-feed.sh --live
           bash tools/test-prayer-times.sh --live
       - name: Playback test image reader
