@@ -37,17 +37,18 @@ jobs:
           echo "::add-mask::$derived"
           echo "FREEMYTV_KEYSTORE=$RUNNER_TEMP/ouswis-official.keystore" >> "$GITHUB_ENV"
           echo "FREEMYTV_KEYSTORE_PASS=$derived" >> "$GITHUB_ENV"
-      - name: Assign increasing internal build number
+      - name: Preview build number just above the published official release
+        env:
+          GH_TOKEN: ${{ github.token }}
         shell: python
         run: |
-          import os, re
+          import re, subprocess
           from pathlib import Path
+          tag = subprocess.check_output(['gh','release','view','--repo',__import__('os').environ['GITHUB_REPOSITORY'],'--json','tagName','--jq','.tagName'], text=True).strip()
+          published = int(re.fullmatch(r'v1\.0-official-(\d+)-\d+-\d+', tag)[1])
           p = Path('app/AndroidManifest.xml')
           s = p.read_text()
-          base = int(re.search(r'android:versionCode="(\d+)"', s)[1])
-          code = base + int(os.environ['GITHUB_RUN_NUMBER'])
-          s = re.sub(r'android:versionCode="\d+"', f'android:versionCode="{code}"', s, count=1)
-          p.write_text(s)
+          p.write_text(re.sub(r'android:versionCode="\d+"', f'android:versionCode="{published + 1}"', s, count=1))
       - name: Check translations and build upgrade baseline
         env:
           GH_TOKEN: ${{ github.token }}
