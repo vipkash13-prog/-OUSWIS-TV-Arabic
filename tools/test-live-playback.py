@@ -31,8 +31,18 @@ def keys(*names):
         adb('shell', 'input', 'keyevent', 'KEYCODE_' + name)
 
 def ui():
-    adb('shell', 'uiautomator', 'dump', '/data/local/tmp/live-ui.xml')
-    text = adb('shell', 'cat', '/data/local/tmp/live-ui.xml')
+    # uiautomator briefly returns a null root while a window animates; retry instead of failing the run.
+    for attempt in range(8):
+        adb('shell', 'rm', '-f', '/data/local/tmp/live-ui.xml')
+        subprocess.run([ADB, 'shell', 'uiautomator', 'dump', '/data/local/tmp/live-ui.xml'], timeout=60,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        try:
+            text = adb('shell', 'cat', '/data/local/tmp/live-ui.xml')
+            break
+        except subprocess.CalledProcessError:
+            time.sleep(2)
+    else:
+        raise RuntimeError('uiautomator never returned a window tree')
     (OUT / 'live-ui.xml').write_text(text)
     return ET.fromstring(text)
 
