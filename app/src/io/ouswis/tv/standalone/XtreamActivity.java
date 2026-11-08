@@ -100,6 +100,22 @@ public final class XtreamActivity extends Activity {
         EditText password=field(form,"Password",pass);
         password.setInputType(129);
         Button connect=new Button(this); connect.setText("Connect / اتصال"); form.addView(connect);
+        // The remote's arrows must walk host, username, password, Connect in order, and OK/Next on the keyboard too.
+        host.setId(View.generateViewId());username.setId(View.generateViewId());
+        password.setId(View.generateViewId());connect.setId(View.generateViewId());
+        host.setNextFocusDownId(username.getId());username.setNextFocusUpId(host.getId());
+        username.setNextFocusDownId(password.getId());password.setNextFocusUpId(username.getId());
+        password.setNextFocusDownId(connect.getId());connect.setNextFocusUpId(password.getId());
+        host.setImeOptions(EditorInfo.IME_ACTION_NEXT|EditorInfo.IME_FLAG_NO_EXTRACT_UI);
+        username.setImeOptions(EditorInfo.IME_ACTION_NEXT|EditorInfo.IME_FLAG_NO_EXTRACT_UI);
+        password.setImeOptions(EditorInfo.IME_ACTION_DONE|EditorInfo.IME_FLAG_NO_EXTRACT_UI);
+        host.setOnEditorActionListener((v,a,e)->{username.requestFocus();return true;});
+        username.setOnEditorActionListener((v,a,e)->{password.requestFocus();return true;});
+        password.setOnEditorActionListener((v,a,e)->{
+            InputMethodManager ime=(InputMethodManager)getSystemService(INPUT_METHOD_SERVICE);
+            if(ime!=null)ime.hideSoftInputFromWindow(password.getWindowToken(),0);
+            connect.requestFocus();return true;
+        });
         connect.setOnClickListener(v->{
             String h=host.getText().toString().trim().replaceAll("/+$","");
             if (!h.startsWith("http://")&&!h.startsWith("https://")) { Toast.makeText(this,"Enter http:// or https://",Toast.LENGTH_LONG).show(); return; }
@@ -112,6 +128,7 @@ public final class XtreamActivity extends Activity {
     }
     private EditText field(LinearLayout form,String hint,String value) {
         EditText e=new EditText(this); e.setSingleLine(true); e.setHint(hint); e.setText(value);
+        e.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
         e.setTextColor(Ui.pageInk(this)); e.setHintTextColor(Ui.pageMuted(this)); form.addView(e); return e;
     }
     private String enc(String s) throws Exception {return URLEncoder.encode(s,"UTF-8");}
@@ -216,6 +233,7 @@ public final class XtreamActivity extends Activity {
     private void showChannels() {
         String selected=current>=0&&current<channels.size()?channels.get(current).id:null;
         stopPlayer();current=-1;
+        getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         if(pendingCatalog!=null){applyCatalog(pendingCatalog,pendingComplete);pendingCatalog=null;}
         shell();
         LinearLayout header=new LinearLayout(this); root.addView(header);
@@ -300,6 +318,12 @@ public final class XtreamActivity extends Activity {
         });
         clear.setOnClickListener(view->{search.setText("");search.requestFocus();});
         search.setNextFocusDownId(list.getId());list.setNextFocusUpId(search.getId());
+        reload.setId(View.generateViewId());account.setId(View.generateViewId());clear.setId(View.generateViewId());
+        reload.setNextFocusRightId(account.getId());account.setNextFocusLeftId(reload.getId());
+        reload.setNextFocusDownId(search.getId());account.setNextFocusDownId(search.getId());
+        search.setNextFocusUpId(reload.getId());search.setNextFocusRightId(clear.getId());
+        clear.setNextFocusLeftId(search.getId());clear.setNextFocusDownId(list.getId());
+        clear.setNextFocusUpId(account.getId());
         list.setOnItemClickListener((parent,view,pos,id)->{
             if(pos>=0&&pos<visible.size()){
                 String channelId=visible.get(pos);
@@ -336,6 +360,7 @@ public final class XtreamActivity extends Activity {
         player=new FrameLayout(this);
         player.setBackgroundColor(Color.BLACK);
         setContentView(player);
+        getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         FitVideoView fitted=new FitVideoView(this);
         video=fitted;
         player.addView(video,new FrameLayout.LayoutParams(-1,-1,Gravity.CENTER));
