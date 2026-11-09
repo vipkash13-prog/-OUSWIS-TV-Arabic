@@ -2211,6 +2211,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     /** Weather for your location: now (large), the next 6 hours or 5 days, and sunrise and sunset. */
     private void drawWeatherCard(Canvas c, RectF r) {
         drawerCard(c, r);
+        if (gold()) goldSkin.weatherArt(c, r, k);
         if (Ui.LEGACY) weatherSnapshot.draw(c, r, drawerCardsKey(), cc -> drawWeather(cc, r));
         else drawWeather(c, r);
     }
@@ -4688,7 +4689,9 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         }
         goldSkin.prayerArt(c,r,k);
         float x=r.left+28*k,colRight=r.left+r.width()*0.55f;
-        cardTitle.setColor(GoldenHomeSkin.WHITE);c.drawText(Ui.tr("Prayer times"),x,r.top+48*k,cardTitle);
+        cardTitle.setColor(GoldenHomeSkin.WHITE);
+        goldSkin.mosque(c,x,r.top+40*k,42*k);
+        c.drawText(Ui.tr("Prayer times"),x+56*k,r.top+48*k,cardTitle);
         cardDimRight.setTextSize(18*k);c.drawText(goldPrayerPlace,r.right-24*k,r.top+48*k,cardDimRight);
         int next=day==null?-1:day.next(System.currentTimeMillis());
         cardText.setTextAlign(Paint.Align.LEFT);cardText.setTextSize(24*k);prayerTimePaint.setTextAlign(Paint.Align.RIGHT);

@@ -28,13 +28,16 @@ final class GoldenHomeSkin {
     private final TextPaint datePaint=new TextPaint(Paint.ANTI_ALIAS_FLAG),hijriPaint=new TextPaint(Paint.ANTI_ALIAS_FLAG);
     private final SaudiDates dates=new SaudiDates();
     private StaticLayout gregorianLayout,hijriLayout;
-    private Bitmap wallpaper,prayerArt;
+    private Bitmap wallpaper,prayerArt,weatherPhoto,calendarIcon,mosqueIcon;
     private long minute=-1;
     private int generation=-1;
     GoldenHomeSkin(){line.setStyle(Paint.Style.STROKE);cardRim.setStyle(Paint.Style.STROKE);}
     void load(Context context){
         wallpaper=decode(context,"themes/gold-sunset.png");
         prayerArt=decode(context,"themes/gold-prayers.png");
+        weatherPhoto=decode(context,"themes/gold-weather.png");
+        calendarIcon=decode(context,"themes/gold-calendar.png");
+        mosqueIcon=decode(context,"themes/gold-mosque.png");
     }
     private static Bitmap decode(Context context,String path){
         try(InputStream in=context.getAssets().open(path)){return BitmapFactory.decodeStream(in);}
@@ -98,6 +101,7 @@ final class GoldenHomeSkin {
         }
         int save=c.save();c.translate(95*k,62*k);gregorianLayout.draw(c);c.restoreToCount(save);
         save=c.save();c.translate(95*k,112*k);hijriLayout.draw(c);c.restoreToCount(save);
+        if(calendarIcon!=null){art.set(522*k,76*k,522*k+48*k*calendarIcon.getWidth()/calendarIcon.getHeight(),124*k);c.drawBitmap(calendarIcon,null,art,image);}
         // Large, light numerals directly on the wallpaper: no opaque clock capsule.
         fitText(c,time,955*k,121*k,390*k,clock);
     }
@@ -135,6 +139,18 @@ final class GoldenHomeSkin {
     private static void fitText(Canvas c,String value,float left,float baseline,float width,Paint p){
         float measured=p.measureText(value);p.setTextScaleX(measured>width?width/measured:1);
         c.drawText(value,left,baseline,p);p.setTextScaleX(1);
+    }
+    /** Jeddah's bridge, fading into the weather card's lower left as in the approved design. */
+    void weatherArt(Canvas c,RectF r,float k){
+        if(weatherPhoto==null)return;
+        float w=r.width()*0.46f,h=w*weatherPhoto.getHeight()/weatherPhoto.getWidth();
+        art.set(r.left+2*k,r.bottom-2*k-h,r.left+2*k+w,r.bottom-2*k);
+        c.drawBitmap(weatherPhoto,null,art,image);
+    }
+    void mosque(Canvas c,float left,float cy,float size){
+        if(mosqueIcon==null)return;
+        float w=size*mosqueIcon.getWidth()/mosqueIcon.getHeight();
+        art.set(left,cy-size/2,left+w,cy+size/2);c.drawBitmap(mosqueIcon,null,art,image);
     }
     void prayerArt(Canvas c,RectF r,float k){
         if(prayerArt==null)return;
