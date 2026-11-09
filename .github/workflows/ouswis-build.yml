@@ -124,6 +124,7 @@ jobs:
             bash tools/test-install-upgrade.sh "$RUNNER_TEMP/previous.apk" FreeMyTV.apk install-evidence
             python3 tools/test-feature-entrypoints.py install-evidence
             python3 tools/test-prayer-widget.py install-evidence
+            python3 tools/test-gold-home.py install-evidence
             python3 tools/test-live-playback.py install-evidence
             python3 tools/test-coexistence.py verify install-evidence
       - name: Native 4K Arabic remote test
@@ -141,6 +142,7 @@ jobs:
           script: |
             adb install --no-streaming FreeMyTV.apk
             python3 tools/test-rtl-4k.py install-evidence
+            python3 tools/test-gold-home.py install-evidence
       - name: Save install evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -158,7 +160,7 @@ jobs:
           cp FreeMyTV.apk OUSWIS-TV-1.0.apk
           code=$(sed -n 's/.*android:versionCode="\([0-9]*\)".*/\1/p' app/AndroidManifest.xml)
           tag="v1.0-official-${code}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          gh release create "$tag" OUSWIS-TV-1.0.apk install-evidence/install-upgrade.log install-evidence/coexistence.log install-evidence/inapp-update.log install-evidence/inapp-*.png install-evidence/prayer-widget.log install-evidence/prayer-times-jeddah.png install-evidence/new-app-icon.png install-evidence/feature-navigation.log install-evidence/live-playback.log install-evidence/live-input-single.png install-evidence/live-fit-16x9.png install-evidence/live-fit-4x3.png install-evidence/settings-features.png install-evidence/xtream-login.png install-evidence/matches-screen.png install-evidence/matches-details.png install-evidence/home-features.png \
+          gh release create "$tag" OUSWIS-TV-1.0.apk install-evidence/install-upgrade.log install-evidence/coexistence.log install-evidence/inapp-update.log install-evidence/inapp-*.png install-evidence/prayer-widget.log install-evidence/prayer-times-jeddah.png install-evidence/new-app-icon.png install-evidence/feature-navigation.log install-evidence/live-playback.log install-evidence/live-input-single.png install-evidence/live-fit-16x9.png install-evidence/live-fit-4x3.png install-evidence/settings-features.png install-evidence/xtream-login.png install-evidence/matches-screen.png install-evidence/matches-details.png install-evidence/home-features.png install-evidence/gold-home.log install-evidence/gold-home-ar-*.png \
             --target "$GITHUB_SHA" --title "OUSWIS TV 1.0 — Official" \
             --notes "Independent package io.ouswis.tv.standalone, OUSWIS TV 1.0. Android 14 emulator installation alongside the supplied legacy io.freemytv APK passed; the legacy APK, app ID, first-install time and private data were retained. Standalone update/data-retention and feature/remote/playback checks passed. Permanent repository signing certificate aa97cc826f59fa9ba8d37f4ba3978bd968bcc8f94a0f5aa9b458f55151a177b7. No app removal is needed. Settings belong to the new independent app. See inapp-update.log for online updater availability; private repositories require a signed-in manual download. Physical MECOOL testing is separate."
           echo "https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/OUSWIS-TV-1.0.apk" >> "$GITHUB_STEP_SUMMARY"

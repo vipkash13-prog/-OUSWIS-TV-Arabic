@@ -62,7 +62,7 @@ final class HomeApps {
     static final int RECENTS = 8;
     /** A Home Assistant entity in the drawer (HomeAssistant): OK calls its service, nothing opens. */
     static final int HOME_ASSISTANT = 9;
-    static final int XTREAM_LIVE = 10, MATCHES = 11;
+    static final int XTREAM_LIVE = 10, MATCHES = 11, UPDATES = 12;
     /** Image size of each card (16:9; on screen it shows up to ~330 px wide). */
     static final int TILE_W = 384, TILE_H = 216;
 
@@ -367,10 +367,11 @@ final class HomeApps {
     /** Shortcuts in the bottom drawer. */
     static List<Item> drawerShortcuts(Context c) {
         List<Item> items = new ArrayList<>();
-        items.add(shortcut(MATCHES, TOP_MATCHES, Ui.tr("Matches"), "tv"));
         items.add(shortcut(ALL_APPS, "all", Ui.tr("All Apps"), "apps"));
+        items.add(shortcut(MATCHES, TOP_MATCHES, Ui.tr("Matches"), "tv"));
         items.add(shortcut(SETTINGS, "settings", Ui.tr("Home Settings"), "settings"));
         items.add(shortcut(ANDROID_SETTINGS, "tv-settings", Ui.tr("TV Settings"), "tv_settings"));
+        items.add(shortcut(UPDATES, "updates", Ui.tr("Updates"), "store"));
         if (!Prefs.recents().equals("off")) items.add(shortcut(RECENTS, "recents", Ui.tr("Recent Apps"), "recents"));   // opt-in (Home Settings)
         // HY300 projectors (Hotack, Allwinner H713): keystone and focus live in the maker's settings app, and the
         // stock home screen was the only way to its Miracast receiver. Each shows only where the TV has it.
@@ -636,6 +637,9 @@ final class HomeApps {
                 break;
             case XTREAM_LIVE:
                 intent = new Intent(a, XtreamActivity.class);
+                break;
+            case UPDATES:
+                intent=new Intent(a,UpdatesActivity.class);
                 break;
             case MATCHES:
                 intent = new Intent(a, MatchesActivity.class);

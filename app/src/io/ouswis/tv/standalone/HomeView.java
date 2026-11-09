@@ -132,12 +132,20 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private final Scene scene = new Scene();
     private final HomeData data;
     private final PrayerTimes prayers;
+    private final GoldenHomeSkin goldSkin=new GoldenHomeSkin();
+    private final RectF goldRow=new RectF();
     private final Runnable prayerChanged=this::onData;
     private long prayerLineMinute=-1,prayerLineChanged=-1;
     private int prayerLineGeneration=-1,prayerLinePrefs=-1;
     private String prayerLine="";
     private Paint prayerLinePaint;
     private float prayerLineWidth;
+    private String goldHumidity="",goldWind="";
+    private long goldPrayerMinute=-1,goldPrayerChange=-1;
+    private int goldPrayerGeneration=-1,goldPrayerPrefs=-1;
+    private final String[] goldPrayerNames=new String[5],goldPrayerTimes=new String[5];
+    private String goldPrayerFooter="",goldPrayerPlace="";
+    private static final java.time.format.DateTimeFormatter GOLD_DAY=java.time.format.DateTimeFormatter.ofPattern("dd/MM",java.util.Locale.US);
     private final Recs recs;
     private final NowPlaying.Watch playing;
     private final Click click;
@@ -667,6 +675,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         }
         for (int i = 0; i < watchFocus.length; i++) watchFocus[i] = new Spring(0.32f, 0.78f, 0);
         topMode = Prefs.topContent();
+        LOADER.execute(()->{goldSkin.load(a.getApplicationContext());handler.post(this::invalidateAll);});
         watchArt = new WatchArt(a, () -> {
             heroDirty = true;
             updateTint();
@@ -847,15 +856,15 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         int width = MeasureSpec.getSize(widthSpec), height = MeasureSpec.getSize(heightSpec);
         float kk = width / 1920f;
         measure(sky, width, height);
-        measure(heroLayer, width, Math.round(790 * kk));
+        measure(heroLayer, width, Math.round((gold()?240:790) * kk));
         // The icons at the top left need the whole width; with them off the layer keeps its old size (the corner buttons
         // only), so the GPU still composites a small layer.
         statusWide = Prefs.statusIcons();
         measure(status, statusWide ? width : Math.round(1160 * kk), Math.round(240 * kk));
         // Sized to what they draw (the glass and its shadow; the grown tiles and their shadows): smaller layers are
         // cheaper for the GPU to composite on every frame of the drawer animation.
-        measure(platter, width, Math.round(320 * kk));
-        measure(tiles, width, Math.round(270 * kk));
+        measure(platter, width, Math.round((gold()?250:320) * kk));
+        measure(tiles, width, Math.round((gold()?190:270) * kk));
         measure(drawerLayer, width, Math.round(600 * kk));
         measure(sheetLayer, width, height);
         measure(menuLayer, width, height);
@@ -874,8 +883,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         sky.layout(0, 0, width, height);
         place(heroLayer, 0, 0);
         place(status, statusWide ? 0 : width - status.getMeasuredWidth(), 0);
-        place(platter, 0, Math.round(750 * kk));
-        place(tiles, 0, Math.round(790 * kk));
+        place(platter, 0, Math.round((gold()?250:750) * kk));
+        place(tiles, 0, Math.round((gold()?290:790) * kk));
         place(drawerLayer, 0, Math.round(470 * kk));
         sheetLayer.layout(0, 0, width, height);
         menuLayer.layout(0, 0, width, height);
@@ -916,6 +925,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     }
 
     private void makePaints() {
+        goldSkin.resize(k,w,h);
         labelPaint = Ui.text(Ui.medium, 25 * k, 0xC7FFFFFF);
         labelPaint.setLetterSpacing(0.1f);
         titlePaint = new TextPaint(Ui.text(Ui.displayMedium, 76 * k, 0xFFFFFFFF));
@@ -1064,7 +1074,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         // Busy: something is moving, or the sheet or the drawer is open.
         boolean busy = tilesMoving || statusMoving || heroMoving || drawerItemsMoving || gridMoving || drawerMoving
                 || menuMoving || sheetMoving || toastFading || heroFading || bgFading || nightMoving || tintMoving || sheetOpen
-                || sheet.value > 0.001f || recentMoving || drawerOpen || drawer.value > 0.001f || toast != null || !toasts.isEmpty();
+                || sheet.value > 0.001f || recentMoving || (!gold()&&drawerOpen) || (!gold()&&drawer.value > 0.001f) || toast != null || !toasts.isEmpty();
         idle = !busy;
         if (busy) Choreographer.getInstance().postFrameCallback(this);
         else Choreographer.getInstance().postFrameCallbackDelayed(this, 1000);
@@ -1105,7 +1115,15 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     /** Drawer and sheet: the layers' positions and opacity (without redrawing their content). */
     private void updateMotion() {
         float d = drawer.value, dc = Ui.clamp(d), s = Ui.clamp(sheet.value);
-        float home = 1 - s, top = home * (1 - smoothstep(0, 0.32f, dc));
+        float home = 1 - s;
+        if(gold()){
+            show(heroLayer,home,0);show(status,home,0);show(platter,home,0);show(tiles,home,0);
+            show(drawerLayer,home,0);
+            sheetLayer.setVisibility(s>0.001f||sheetOpen?VISIBLE:INVISIBLE);sheetLayer.setAlpha(s);
+            sheetLayer.setScaleX(1.04f-0.04f*s);sheetLayer.setScaleY(1.04f-0.04f*s);
+            return;
+        }
+        float top = home * (1 - smoothstep(0, 0.32f, dc));
         float shift = SHIFT * k;
         float lift = -d * shift;
         show(heroLayer, top, lift);
@@ -1391,8 +1409,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     }
 
     /** How dark it is: 0 = day, 1 = night (in between during the transition). */
+    private boolean gold(){return clockMode();}
+
     private float dark() {
-        return night;
+        return gold()?1:night;
     }
 
     /** The day color or the night color, depending on the night value (blended during the transition). */
@@ -1500,7 +1520,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     // MARK: - Background
 
     private void drawSky(Canvas c) {
-        drawLightSky(c);
+        if(gold())goldSkin.background(c,screen);else drawLightSky(c);
     }
 
     /** Blends a color on top (the drawer's veil) as part of drawing the image, without another layer. */
@@ -1623,18 +1643,19 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     private void layoutShelf() {
         int n = Math.min(shelf.size(), shelfVisible);
-        float pad = SHELF_PAD * k, gap = TILE_GAP * k;
+        float pad = (gold()?32:SHELF_PAD) * k, gap = (gold()?18:TILE_GAP) * k;
         float full = (CONTENT_R - MARGIN) * k;
         // Tiles in the TV banners' own 16:9, so an app's art is never stretched; never taller than L_TILE_H. The glass
         // keeps its bottom edge, so with more apps it only gets lower.
-        float tw = Math.min(L_TILE_H * 16f / 9 * k, (full - Math.max(0, n - 1) * gap) / Math.max(1, n));
+        float tw = Math.min((gold()?114:L_TILE_H) * 16f / 9 * k, (full - Math.max(0, n - 1) * gap) / Math.max(1, n));
         float th = tw * 9f / 16;
         float width = n * tw + Math.max(0, n - 1) * gap, left = (w - width) / 2f;
-        float top = (L_PLATTER_TOP + L_TILE_H) * k - th;
-        platterRect.set(left - pad, top, left + width + pad, top + th + 2 * pad);
+        float top = gold()?286*k:(L_PLATTER_TOP + L_TILE_H) * k - th;
+        if(gold())platterRect.set(44*k,286*k,w-44*k,470*k);
+        else platterRect.set(left - pad, top, left + width + pad, top + th + 2 * pad);
         snap(platterRect);
         shelfFirst = Math.max(0, Math.min(shelfFirst, shelf.size() - n));
-        float x = left - shelfFirst * (tw + gap), y = top + pad;
+        float x = left - shelfFirst * (tw + gap), y = gold()?platterRect.centerY()-th/2:top + pad;
         for (int i = 0; i < shelf.size(); i++) {
             tileRects[i].set(x, y, x + tw, y + th);
             snap(tileRects[i]);
@@ -1648,7 +1669,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         int n = Math.min(shelf.size(), shelfVisible);
         int first = Math.max(0, Math.min(Math.max(shelfFirst, shelfIndex - n + 1), Math.min(shelfIndex, shelf.size() - n)));
         if (first == shelfFirst || tileRects.length == 0) return;
-        float dx = (shelfFirst - first) * (tileRects[0].width() + TILE_GAP * k);
+        float dx = (shelfFirst - first) * (tileRects[0].width() + (gold()?18:TILE_GAP) * k);
         for (int i = 0; i < tileRects.length; i++) {
             tileRects[i].offset(dx, 0);
             if (!snap && i < tileSlide.length) tileSlide[i].value -= dx;
@@ -1662,6 +1683,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     /** Shelf layer: the glass bar and its shadow (it only changes with the background). */
     private void drawPlatter(Canvas c) {
+        if(gold()){goldSkin.panel(c,platterRect,45*k,k,0);return;}
         if (shelf.isEmpty()) return;
         float radius = (TILE_RADIUS + SHELF_PAD) * k;
         tmp.set(platterRect);
@@ -1841,7 +1863,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         HomeApps.Item it = shelf.get(i);
         // Lifted to be moved: a little bigger than focused, with a deeper shadow.
         float l = !reorderTop && i == liftIndex ? Math.max(0, moveLift.value) : 0;
-        float f = tileFocus[i].value, fc = Ui.clamp(f), s = 1 + FOCUS_GROW * f + LIFT_GROW * l;
+        float f = tileFocus[i].value, fc = Ui.clamp(f), s = 1 + (gold()?0.06f:FOCUS_GROW) * f + LIFT_GROW * l;
         RectF base = tileRects[i];
         float bw = base.width(), bh = base.height(), r0 = TILE_RADIUS * k;
         float cx = base.centerX(), cy = base.centerY();
@@ -1891,6 +1913,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         } else {
             if (it.tile != null) roundImage(c, it.tile, it.tileShader, cell, r);
         }
+        if(gold()&&fc>0.01f){goldSkin.focus(c,cell,r,k,fc);return;}
         if (fc > 0.01f) {
             rim.setShader(null);
             rim.setColor(Ui.alpha(0xFFFFFFFF, 0.45f * fc));
@@ -2011,21 +2034,21 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private void layoutDrawer() {
         int n = drawerItems.size();
         float left = MARGIN * k, right = CONTENT_R * k;
-        float gap = 18 * k, groupGap = 56 * k;
+        float gap = 18 * k, groupGap = (gold()?18:56) * k;
         int groups = Math.max(1, (drawerInputs > 0 ? 1 : 0) + (drawerHome > drawerInputs ? 1 : 0) + (n > drawerHome ? 1 : 0));
-        float tw = Math.min(230 * k, (right - left - Math.max(0, n - groups) * gap - (groups - 1) * groupGap) / Math.max(1, n));
-        float x = left, top = ROW_TOP * k;
+        float tw = Math.min((gold()?400:230) * k, (right - left - Math.max(0, n - groups) * gap - (groups - 1) * groupGap) / Math.max(1, n));
+        float x = left, top = (gold()?500:ROW_TOP) * k;
         for (int i = 0; i < n; i++) {
             if ((i == drawerInputs || i == drawerHome) && i > 0) x += groupGap - gap;
             drawerRects[i].set(x, top, x + tw, top + ROW_H * k);
             snap(drawerRects[i]);
             x += tw + gap;
         }
-        float cardsTop = CARDS_TOP * k, split = left + (right - left) * 0.585f;
+        float cardsTop = (gold()?659:CARDS_TOP) * k, split = left + (right - left) * 0.585f;
         boolean wx = Prefs.weather(), qt = Prefs.prayers();
         // A card that is off gives its room to the other one.
-        weatherCard.set(left, cardsTop, qt ? split - 16 * k : right, cardsTop + CARDS_H * k);
-        prayerCard.set(wx ? split + 16 * k : left, cardsTop, right, cardsTop + CARDS_H * k);
+        weatherCard.set(left, cardsTop, qt ? split - 16 * k : right, cardsTop + (gold()?322:CARDS_H) * k);
+        prayerCard.set(wx ? split + 16 * k : left, cardsTop, right, cardsTop + (gold()?322:CARDS_H) * k);
         snap(weatherCard);
         snap(prayerCard);
         // The symbols at their sizes at rest and focused: drawing them never scales one.
@@ -2107,6 +2130,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     /** Glass for a drawer card or button: white by day, smoked at night (both during the transition). */
     private void drawerGlass(Canvas c, RectF r, float radius, float lightTint, int shadowColor, float drop) {
+        if(gold()){goldSkin.panel(c,r,radius,k,0);return;}
         float dk = dark();
         if (dk < 0.999f) {
             tmp.set(r);
@@ -2135,9 +2159,9 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         dayLow.setColor(tone(L_DIM, 0xADFFFFFF));
         prayerTimePaint.setColor(drawerInk(0.95f));
         float titleBase = ROW_TITLE * k;
-        if (drawerInputs > 0) c.drawText(Ui.tr("Inputs"), drawerRects[0].left + 4 * k, titleBase, rowTitle);
-        if (drawerInputs < drawerHome) c.drawText(Ui.tr("Shortcuts"), drawerRects[drawerInputs].left + 4 * k, titleBase, rowTitle);
-        if (drawerHome < drawerItems.size()) c.drawText("Home Assistant", drawerRects[drawerHome].left + 4 * k, titleBase, rowTitle);
+        if (!gold()&&drawerInputs > 0) c.drawText(Ui.tr("Inputs"), drawerRects[0].left + 4 * k, titleBase, rowTitle);
+        if (!gold()&&drawerInputs < drawerHome) c.drawText(Ui.tr("Shortcuts"), drawerRects[drawerInputs].left + 4 * k, titleBase, rowTitle);
+        if (!gold()&&drawerHome < drawerItems.size()) c.drawText("Home Assistant", drawerRects[drawerHome].left + 4 * k, titleBase, rowTitle);
         int top = -1;
         for (int i = 0; i < drawerItems.size(); i++) if (drawerFocus[i].value > 0.02f && (top < 0 || drawerFocus[i].value > drawerFocus[top].value)) top = i;
         for (int i = 0; i < drawerItems.size(); i++) if (i != top) drawDrawerTile(c, i);
@@ -2160,16 +2184,18 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             shadow.setColor(Ui.alpha(0xFF000000, 0.45f * f));
             shadows.draw(c, tmp, r, SHADOW_BLUR * k, shadow);
         }
-        if (f < 0.99f) drawerGlass(c, cell, r, 0.7f, 0x14000000, 6 * k);
-        if (f > 0.01f) {
+        if (gold() || f < 0.99f) drawerGlass(c, cell, r, 0.7f, 0x14000000, 6 * k);
+        if(gold())goldSkin.focus(c,cell,r,k,f);
+        if (!gold()&&f > 0.01f) {
             fill.setShader(null);
             fill.setColor(Ui.alpha(WHITE, f));
             c.drawRoundRect(cell, r, r, fill);
         }
         boolean off = it.kind == HomeApps.INPUT && !it.connected
                 || it.kind == HomeApps.HOME_ASSISTANT && it.control != null && !it.control.on();
-        int ink = blend(tone(off ? 0xFF8E8E93 : L_INK, off ? 0x6BFFFFFF : 0xF2FFFFFF), INK, f);
-        Symbols.draw(getContext(), c, it.symbol, cx, cell.top + cell.height() * 0.4f, 34 * k * s, ink);
+        int ink = gold()?Ui.alpha(f>0.01f?GoldenHomeSkin.GOLD:GoldenHomeSkin.WHITE,off?0.5f:1):blend(tone(off ? 0xFF8E8E93 : L_INK, off ? 0x6BFFFFFF : 0xF2FFFFFF), INK, f);
+        if(it.kind==HomeApps.UPDATES)goldSkin.download(c,cx,cell.top+cell.height()*0.4f,34*k*s,ink);
+        else Symbols.draw(getContext(), c, it.symbol, cx, cell.top + cell.height() * 0.4f, 34 * k * s, ink);
         drawerLabel.setColor(ink);
         drawerLabel.setTextSize(23 * k * s);
         float room = cell.width() - 16 * k, wide = drawerLabel.measureText(it.label);
@@ -2199,7 +2225,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         }
         String symbol = Symbols.weather(wx.code, wx.isDay);
         float sw = Symbols.width(getContext(), symbol, 52 * k);
-        Symbols.draw(getContext(), c, symbol, x + sw / 2, r.top + 132 * k, 52 * k, drawerInk(0.95f));
+        Symbols.draw(getContext(), c, symbol, x + sw / 2, r.top + 132 * k, 52 * k, gold()?GoldenHomeSkin.GOLD:drawerInk(0.95f));
         c.drawText(nowTemp, x + sw + 18 * k - Ui.leftBearing(bigTemp, nowTemp), r.top + 170 * k, bigTemp);
         c.drawText(HomeData.condition(wx.code, wx.isDay), x, r.top + 220 * k, cardText);
         c.drawText(highLow, x, r.top + 258 * k, cardDim);
@@ -2213,7 +2239,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             for (int i = 0; i < wx.days.size() && i < 5; i++) {
                 float hc = hx + hw * (i + 0.5f);
                 c.drawText(dayText[i], hc, r.top + 96 * k, hourPaint);
-                Symbols.draw(getContext(), c, Symbols.weather(wx.dayCode.get(i), true), hc, r.top + 142 * k, 30 * k, drawerInk(0.9f));
+                Symbols.draw(getContext(), c, Symbols.weather(wx.dayCode.get(i), true), hc, r.top + 142 * k, 30 * k, gold()?GoldenHomeSkin.GOLD:drawerInk(0.9f));
                 // The high, then the low dimmed, centered together (closer than the next day, so the pairs read apart).
                 float maxW = hourTemp.measureText(dayMaxText[i]), minW = dayLow.measureText(dayMinText[i]), gap = 6 * k;
                 float left = hc - (maxW + gap + minW) / 2;
@@ -2225,9 +2251,14 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             for (int i = 0; i < wx.hours.size() && i < 6; i++) {
                 float hc = hx + hw * (i + 0.5f);
                 c.drawText(hourText[i], hc, r.top + 96 * k, hourPaint);
-                Symbols.draw(getContext(), c, Symbols.weather(wx.hourCode.get(i), wx.hourDay.get(i)), hc, r.top + 142 * k, 30 * k, drawerInk(0.9f));
+                Symbols.draw(getContext(), c, Symbols.weather(wx.hourCode.get(i), wx.hourDay.get(i)), hc, r.top + 142 * k, 30 * k, gold()?GoldenHomeSkin.GOLD:drawerInk(0.9f));
                 c.drawText(hourTempText[i], hc, r.top + 196 * k, hourTemp);
             }
+        }
+        if(gold()){
+            c.drawText(goldWind,hx,r.top+285*k,cardDim);
+            c.drawText(goldHumidity,r.right-34*k-cardDim.measureText(goldHumidity),r.top+285*k,cardDim);
+            return;
         }
         float sx = hx, base = r.top + 258 * k;
         if (wx.sunrise != 0) sx = sunItem(c, "sunrise", sunriseText, sx, base) + 36 * k;
@@ -2254,6 +2285,9 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                 hourText[i] = HomeData.hour(wx.hours.get(i));
                 hourTempText[i] = HomeData.degrees(wx.hourTemp.get(i));
             }
+            boolean ar=Ui.language.equals("ar");
+            goldHumidity=(ar?"الرطوبة: ":"Humidity: ")+(Double.isNaN(wx.humidity)?"—":String.format(Ui.locale(),"%.0f%%",wx.humidity));
+            goldWind=(ar?"الرياح: ":"Wind: ")+(Double.isNaN(wx.wind)?"—":String.format(Ui.locale(),"%.0f",wx.wind)+(ar?" كم/س":" km/h"));
             sunriseText = Ui.trf("Sunrise {time}", "time", Ui.time(wx.sunrise));
             sunsetText = Ui.trf("Sunset {time}", "time", Ui.time(wx.sunset));
         }
@@ -2311,6 +2345,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private final Snapshot weatherSnapshot = new Snapshot(), prayerSnapshot = new Snapshot();
 
     private void drawPrayers(Canvas c, RectF r) {
+        if(gold()){drawGoldPrayers(c,r);return;}
         float x=r.left+34*k,right=r.right-34*k;
         c.drawText(Ui.tr("Prayer times"),x,r.top+48*k,cardTitle);
         c.drawText(PrayerTimes.place(),right,r.top+48*k,cardDimRight);
@@ -2717,7 +2752,11 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             }
             return;
         }
-        if (drawerOpen) {
+        if (gold()) {
+            int hit=hit(drawerRects,x,y);
+            if(hit>=0){openDrawer();drawerIndex=hit;retarget(false);return;}
+        }
+        if (drawerOpen&&!gold()) {
             int hit = hit(drawerRects, x, y);
             if (entered(Z_DRAWER, hit) && (zone != Z_DRAWER || drawerIndex != hit)) {
                 zone = Z_DRAWER;
@@ -2823,7 +2862,11 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             }
             return;
         }
-        if (drawerOpen) {
+        if(gold()){
+            int hit=hit(drawerRects,x,y);
+            if(hit>=0){openDrawer();drawerIndex=hit;retarget(false);activate();return;}
+        }
+        if (drawerOpen&&!gold()) {
             int hit = hit(drawerRects, x, y);
             if (hit >= 0) {
                 zone = Z_DRAWER;
@@ -3615,8 +3658,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         if (continueMode()) for (int i = 0; i < watching.size(); i++) out.add(a11yId(Z_WATCH, i));
         for (int i = shelfFirst; i < Math.min(shelf.size(), shelfFirst + shelfVisible); i++) out.add(a11yId(Z_SHELF, i));
         for (int i = 0; i < drawerItems.size(); i++) out.add(a11yId(Z_DRAWER, i));
-        if (drawerOpen && Prefs.weather()) out.add(a11yId(WIDGETS, 0));
-        if (drawerOpen && Prefs.prayers()) out.add(a11yId(WIDGETS, 1));
+        if ((gold()||drawerOpen) && Prefs.weather()) out.add(a11yId(WIDGETS, 0));
+        if ((gold()||drawerOpen) && Prefs.prayers()) out.add(a11yId(WIDGETS, 1));
     }
 
     private String a11yText(int id) {
@@ -3709,10 +3752,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             case Z_DRAWER:
                 if (i >= drawerRects.length) return false;
                 a11yRect.set(drawerRects[i]);
-                dy = drawerOpen ? 0 : h;
+                dy = gold()||drawerOpen ? 0 : h;
                 break;
             case WIDGETS:
-                if (!drawerOpen) return false;
+                if (!gold()&&!drawerOpen) return false;
                 a11yRect.set(i == 0 ? weatherCard : prayerCard);
                 dy = 0;
                 break;
@@ -3924,10 +3967,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             snap(topRects[i]);
             x = topRects[i].right + 4 * k;
         }
-        float b = L_BUTTON * k, right = CONTENT_R * k, cy = L_BUTTON_CY * k;
+        float b = (gold()?56:L_BUTTON) * k, right = CONTENT_R * k, cy = (gold()?85:L_BUTTON_CY) * k;
         for (int i = lightButtons.size() - 1; i >= 0; i--) {
             topRects[3 + i].set(right - b, cy - b / 2, right, cy + b / 2);
-            right -= b + L_BUTTON_GAP * k;
+            right -= b + (gold()?12:L_BUTTON_GAP) * k;
         }
         float top = L_CARDS_TOP * k, ch = L_CARD_H * k, g = L_CARD_GAP * k, left = MARGIN * k, tall = L_TALL_W * k;
         for (HomeApps.Item it : lightButtons) {
@@ -4038,6 +4081,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         boolean lost = zone == Z_WATCH && list.isEmpty() || !picksMode() && (zone == Z_CARDS || zone == Z_TOP && topIndex < 3);
         if (modeChanged || lost) zone = Z_SHELF;
         if (modeChanged) {
+            requestLayout();layoutShelf();layoutDrawer();
             updateCards();
             if (bgTo == null && bgFadeAt == 0) neutralGlass();   // the plain background depends on the mode too
             sky.invalidate();   // the background's gradient depends on the mode
@@ -4550,6 +4594,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     }
 
     private void drawLightTop(Canvas c) {
+        if(gold()){drawGoldHeader(c);return;}
         applyTone();
         if (clockMode()) {
             titleRight = 0;
@@ -4600,6 +4645,61 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     private boolean picksOn() {
         return Recs.hasKey(getContext());
+    }
+
+    private void drawGoldHeader(Canvas c){
+        refreshDrawerText();
+        goldSkin.header(c,k,clockText,data.weather,weatherTitle);
+        if(Prefs.weather()&&!Double.isNaN(data.weather.temp)){
+            Symbols.draw(getContext(),c,Symbols.weather(data.weather.code,data.weather.isDay),1260*k,88*k,68*k,GoldenHomeSkin.GOLD);
+            goldSkin.text(c,nowTemp,1320*k,102*k,150*k,k,true);
+            goldSkin.text(c,weatherTitle,1325*k,148*k,140*k,k,false);
+        }
+    }
+    private void drawGoldButtons(Canvas c){
+        if(lightButtons.isEmpty())return;
+        goldRow.set(topRects[3].left-(Prefs.statusIcons()?102:18)*k,44*k,CONTENT_R*k+18*k,127*k);
+        goldSkin.panel(c,goldRow,40*k,k,0);
+        if(Prefs.statusIcons()){
+        Symbols.draw(getContext(),c,network==2?"ethernet":"wifi",topRects[3].left-73*k,85*k,26*k,network==0?0x77FFFFFF:GoldenHomeSkin.WHITE);
+        Symbols.draw(getContext(),c,"bluetooth",topRects[3].left-30*k,85*k,26*k,bluetoothConnected?GoldenHomeSkin.WHITE:0x77FFFFFF);
+        }
+        for(int i=0;i<lightButtons.size();i++){
+            HomeApps.Item it=lightButtons.get(i);RectF r=topRects[3+i];float focus=Ui.clamp(topFocus[3+i].value);
+            if(focus>0.01f)goldSkin.focus(c,r,r.height()/2,k,focus);
+            Symbols.draw(getContext(),c,it.symbol,r.centerX(),r.centerY(),27*k,it.kind==HomeApps.SETTINGS||focus>0.01f?GoldenHomeSkin.GOLD:GoldenHomeSkin.WHITE);
+            if(focus>0.01f){
+                lTip.setColor(Ui.alpha(GoldenHomeSkin.GOLD,focus));
+                float center=Math.min(r.centerX(),CONTENT_R*k-lTip.measureText(it.label)/2);
+                c.drawText(it.label,center,170*k,lTip);
+            }
+        }
+    }
+    private void drawGoldPrayers(Canvas c,RectF r){
+        PrayerSchedule day=prayers.today();long minute=System.currentTimeMillis()/60000;
+        if(minute!=goldPrayerMinute||prayers.changedAt!=goldPrayerChange||Ui.generation!=goldPrayerGeneration||Prefs.version!=goldPrayerPrefs){
+            goldPrayerMinute=minute;goldPrayerChange=prayers.changedAt;goldPrayerGeneration=Ui.generation;goldPrayerPrefs=Prefs.version;
+            for(int i=0;i<5;i++){goldPrayerNames[i]=PrayerTimes.name(i);goldPrayerTimes[i]=day==null?"—":PrayerTimes.time(day,i);}
+            goldPrayerPlace=PrayerTimes.place();
+            goldPrayerFooter=day==null?prayers.status():day.date.format(GOLD_DAY)+" · AlAdhan"+(prayers.fromCache?" · "+Ui.tr("Saved times"):"");
+        }
+        goldSkin.prayerArt(c,r,k);
+        float x=r.left+28*k,colRight=r.left+r.width()*0.55f;
+        cardTitle.setColor(GoldenHomeSkin.WHITE);c.drawText(Ui.tr("Prayer times"),x,r.top+48*k,cardTitle);
+        cardDimRight.setTextSize(18*k);c.drawText(goldPrayerPlace,r.right-24*k,r.top+48*k,cardDimRight);
+        int next=day==null?-1:day.next(System.currentTimeMillis());
+        cardText.setTextAlign(Paint.Align.RIGHT);cardText.setTextSize(24*k);prayerTimePaint.setTextAlign(Paint.Align.LEFT);
+        for(int i=0;i<5;i++){
+            float base=r.top+(94+i*38)*k;
+            if(i==next){goldRow.set(x-8*k,base-29*k,colRight+8*k,base+8*k);goldSkin.highlight(c,goldRow,k);}
+            int color=i==next?0xFF191207:GoldenHomeSkin.WHITE;
+            cardText.setColor(color);prayerTimePaint.setColor(color);
+            c.drawText(goldPrayerNames[i],colRight,base,cardText);
+            c.drawText(goldPrayerTimes[i],x+4*k,base,prayerTimePaint);
+        }
+        cardText.setTextAlign(Paint.Align.LEFT);cardText.setTextSize(29*k);cardText.setColor(GoldenHomeSkin.WHITE);
+        prayerTimePaint.setTextAlign(Paint.Align.RIGHT);prayerTimePaint.setColor(GoldenHomeSkin.WHITE);
+        c.drawText(goldPrayerFooter,r.right-24*k,r.bottom-18*k,cardDimRight);cardDimRight.setTextSize(21*k);
     }
 
     private void drawClock(Canvas c) {
@@ -4715,6 +4815,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
      * night); the focused one turns white with a dark icon (the tvOS focus) and its name appears below it.
      */
     private void drawLightButtons(Canvas c) {
+        if(gold()){drawGoldButtons(c);return;}
         applyTone();
         drawStatusIcons(c);
         for (int slot = 0; slot < lightButtons.size(); slot++) {

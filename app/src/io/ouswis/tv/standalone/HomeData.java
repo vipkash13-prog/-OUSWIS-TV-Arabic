@@ -48,8 +48,8 @@ final class HomeData {
     }
     // Both forecasts in one answer, the next 48 hours and today plus 5 days: Home Settings → Forecast switches without
     // asking again, and offline too.
-    private static final String WEATHER_QUERY = "&current=temperature_2m,weather_code,is_day&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset,weather_code"
-            + "&hourly=temperature_2m,weather_code,is_day&timezone=auto&forecast_days=6&forecast_hours=48";
+    private static final String WEATHER_QUERY = "&current=temperature_2m,weather_code,is_day,relative_humidity_2m,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset,weather_code"
+            + "&hourly=temperature_2m,weather_code,is_day&timezone=auto&forecast_days=6&forecast_hours=48&wind_speed_unit=kmh";
 
     private static String weatherPlace() {
         return Prefs.latitude() + "," + Prefs.longitude();
@@ -135,7 +135,7 @@ final class HomeData {
     }
 
     static final class Weather {
-        double temp = Double.NaN, max = Double.NaN, min = Double.NaN;
+        double temp = Double.NaN, max = Double.NaN, min = Double.NaN, humidity=Double.NaN, wind=Double.NaN;
         int code = -1;
         boolean isDay = true;
         long sunrise, sunset;   // today's, in epoch ms
@@ -320,6 +320,8 @@ final class HomeData {
         w.temp = current.getDouble("temperature_2m");
         w.code = current.getInt("weather_code");
         w.isDay = current.optInt("is_day", 1) == 1;
+        w.humidity=current.optDouble("relative_humidity_2m",Double.NaN);
+        w.wind=current.optDouble("wind_speed_10m",Double.NaN);
         JSONObject daily = o.getJSONObject("daily");
         w.max = daily.getJSONArray("temperature_2m_max").getDouble(0);
         w.min = daily.getJSONArray("temperature_2m_min").getDouble(0);
