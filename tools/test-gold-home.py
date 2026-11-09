@@ -86,7 +86,7 @@ try:
     reference=(int(700*k),int(40*k))
     sky=im.getpixel(reference);source=wallpaper.getpixel(reference)
     delta=[a-b for a,b in zip(sky,source)]
-    assert max(abs(a-b-d) for a,b,d in zip(actual,expected,delta))<12,('Opaque clock background',actual,expected,delta)
+    assert max(abs(a-b-d) for a,b,d in zip(actual,expected,delta))<6,('Opaque clock background',actual,expected,delta)
     focus=next(n for n in nodes if n.get('focused')=='true' and n.get('package')==PKG and n.get('clickable')=='true')
     first=bounds(focus);assert h*.25<first[1]<h*.5,first
     key('RIGHT');tree=ui();second=bounds(next(n for n in tree.iter('node') if n.get('focused')=='true' and n.get('package')==PKG and n.get('clickable')=='true'))
