@@ -52,11 +52,11 @@ try:
     note('PASS: default Celsius and a countdown derived from current real Jeddah prayer data are visible to Android accessibility.')
     before=adb('shell','dumpsys','activity','activities')
     title='OUSWIS_island_check'
-    note(adb('shell','cmd','notification','post','-t',title,'ouswis-island-probe','Integration-check').strip())
+    note(adb('shell','su','2000','cmd','notification','post','-t',title,'ouswis-island-probe','Integration-check').strip())
     found=None
     for _ in range(3):
         tree=ui()
-        found=next((n for n in tree.iter('node') if title in (n.get('text','')+' '+n.get('content-desc',''))),None)
+        found=next((n for n in tree.iter('node') if n.get('package')==PKG and title in (n.get('text','')+' '+n.get('content-desc',''))),None)
         if found is not None:break
     if found is None:
         shot('island-notification-failure.png')
