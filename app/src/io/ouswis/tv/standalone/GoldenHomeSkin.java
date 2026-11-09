@@ -31,7 +31,7 @@ final class GoldenHomeSkin {
     }
     void load(Context context){
         wallpaper=decode(context,"themes/gold-sunset.png");
-        prayerArt=decode(context,"themes/gold-prayers.jpg");
+        prayerArt=decode(context,"themes/gold-prayers.png");
     }
     private static Bitmap decode(Context context,String path){
         try(InputStream in=context.getAssets().open(path)){return BitmapFactory.decodeStream(in);}
@@ -96,7 +96,10 @@ final class GoldenHomeSkin {
     }
     void prayerArt(Canvas c,RectF r,float k){
         if(prayerArt==null)return;
-        art.set(r.left+r.width()*0.59f,r.top+70*k,r.right-2*k,r.bottom-2*k);
-        int save=c.save();c.clipRect(art);image.setAlpha(170);c.drawBitmap(prayerArt,null,art,image);image.setAlpha(255);c.restoreToCount(save);
+        // Transparent frontal artwork merges with the glass. Fit rather than stretch the Kaaba and minarets.
+        float right=r.right-10*k,bottom=r.bottom-28*k;
+        float scale=Math.min(r.width()*0.44f/prayerArt.getWidth(),(r.height()-96*k)/prayerArt.getHeight());
+        art.set(right-prayerArt.getWidth()*scale,bottom-prayerArt.getHeight()*scale,right,bottom);
+        c.drawBitmap(prayerArt,null,art,image);
     }
 }
