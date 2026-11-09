@@ -31,8 +31,18 @@ def keys(*names):
         adb('shell', 'input', 'keyevent', 'KEYCODE_' + name)
 
 def ui():
-    adb('shell', 'uiautomator', 'dump', '/data/local/tmp/live-ui.xml')
-    text = adb('shell', 'cat', '/data/local/tmp/live-ui.xml')
+    # uiautomator briefly returns a null root while a window animates; retry instead of failing the run.
+    for attempt in range(8):
+        adb('shell', 'rm', '-f', '/data/local/tmp/live-ui.xml')
+        subprocess.run([ADB, 'shell', 'uiautomator', 'dump', '/data/local/tmp/live-ui.xml'], timeout=60,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        try:
+            text = adb('shell', 'cat', '/data/local/tmp/live-ui.xml')
+            break
+        except subprocess.CalledProcessError:
+            time.sleep(2)
+    else:
+        raise RuntimeError('uiautomator never returned a window tree')
     (OUT / 'live-ui.xml').write_text(text)
     return ET.fromstring(text)
 
@@ -136,7 +146,7 @@ with tempfile.TemporaryDirectory() as temp:
     pref = folder + '/XtreamActivity.xml'
     adb('shell', 'mkdir', '-p', folder)
     content = ('<?xml version="1.0" encoding="utf-8"?><map><string name="server">http://127.0.0.1:'+str(port)+
-               '</string><string name="user">demo</string><string name="pass">demo</string></map>')
+               '</string><string name="user">demo</string><string name="pass">demo</string><boolean name="autoplay" value="false" /></map>')
     subprocess.run([ADB, 'shell', 'cat > '+pref], input=content.encode(), check=True)
     adb('shell', 'chown', uid+':'+uid, folder, pref)
     adb('shell', 'am', 'start', '-W', '-n', 'io.ouswis.tv.standalone/io.ouswis.tv.standalone.HomeActivity')

@@ -109,7 +109,7 @@ public final class MatchCarouselView extends View {
         int w=getWidth(),h=getHeight();
         if(w<=0||h<=0)return;
         if(matches.isEmpty()){drawMessage(canvas,w,h);return;}
-        float cw=Math.min(w*0.66f,h*1.9f),ch=h*0.94f,step=cw*0.72f;
+        float cw=Math.min(w*0.60f,h*1.7f),ch=h*0.94f;
         // Positions -2..2 around the selected card, farthest first so the middle one ends on top.
         for(int d=2;d>=0;d--){
             for(int sign=-1;sign<=1;sign+=2){
@@ -119,11 +119,13 @@ public final class MatchCarouselView extends View {
                 int at=((index+offset)%matches.size()+matches.size())%matches.size();
                 if(matches.size()==1&&offset!=0)continue;
                 if(matches.size()==2&&Math.abs(offset)==2)continue;
+                // Side cards sit beside the front one (never under it) and fade out, so text never overlaps.
                 float near=Math.min(1f,Math.abs(pos));
-                float scale=1f-0.20f*near-0.08f*Math.max(0f,Math.abs(pos)-1f);
-                float alpha=Math.max(0f,1f-0.55f*near-0.3f*Math.max(0f,Math.abs(pos)-1f));
+                float scale=1f-0.28f*near;
+                float alpha=Math.max(0f,1f-0.6f*near-0.4f*Math.max(0f,Math.abs(pos)-1f));
                 if(alpha<=0.02f)continue;
-                float cx=w/2f+pos*step*(1f-0.1f*near);
+                float gap=cw*0.5f+cw*0.72f*0.5f+cw*0.04f;
+                float cx=w/2f+Math.signum(pos)*gap*near+(Math.abs(pos)>1f?Math.signum(pos)*(Math.abs(pos)-1f)*gap*0.7f:0f);
                 int save=canvas.save();
                 canvas.translate(cx,h/2f);
                 canvas.scale(scale,scale);
@@ -134,10 +136,10 @@ public final class MatchCarouselView extends View {
             }
         }
         // Position and arrows.
-        ink.setColor(0xFF505058);ink.setTextAlign(Paint.Align.CENTER);ink.setTextSize(h*0.045f);
+        ink.setColor(0xFF9AA3B2);ink.setTextAlign(Paint.Align.CENTER);ink.setTextSize(h*0.045f);
         canvas.drawText((index+1)+" / "+matches.size(),w/2f,h-h*0.012f,ink);
         if(matches.size()>1){
-            ink.setTextSize(h*0.12f);ink.setColor(0xFF686870);
+            ink.setTextSize(h*0.12f);ink.setColor(0xFFFFC857);
             canvas.drawText("‹",h*0.06f,h*0.56f,ink);canvas.drawText("›",w-h*0.06f,h*0.56f,ink);
         }
     }
@@ -146,7 +148,7 @@ public final class MatchCarouselView extends View {
         float cw=Math.min(w*0.66f,h*1.9f),ch=h*0.7f;
         int save=canvas.save();canvas.translate((w-cw)/2f,(h-ch)/2f);
         glass(canvas,cw,ch,false);
-        ink.setColor(0xFF242428);ink.setTextAlign(Paint.Align.CENTER);ink.setTextSize(ch*0.11f);
+        ink.setColor(0xFFFFFFFF);ink.setTextAlign(Paint.Align.CENTER);ink.setTextSize(ch*0.11f);
         fit(canvas,message,cw/2f,ch/2f+ch*0.04f,cw*0.86f,ink);
         canvas.restoreToCount(save);
     }
@@ -154,13 +156,13 @@ public final class MatchCarouselView extends View {
     private void glass(Canvas canvas,float cw,float ch,boolean focused){
         float r=Math.min(cw,ch)*0.09f;
         box.set(0,0,cw,ch);
-        fill.setShader(new LinearGradient(0,0,cw,ch,new int[]{0xF5F5F5F7,0xF5E0E0E5,0xF5C9C9CF},new float[]{0f,.55f,1f},Shader.TileMode.CLAMP));
+        fill.setShader(new LinearGradient(0,0,cw,ch,new int[]{0xFF22242B,0xFF111218,0xFF050507},new float[]{0f,.55f,1f},Shader.TileMode.CLAMP));
         canvas.drawRoundRect(box,r,r,fill);
-        fill.setShader(new LinearGradient(0,0,0,ch*0.45f,0x38FFFFFF,0x00FFFFFF,Shader.TileMode.CLAMP));
+        fill.setShader(new LinearGradient(0,0,0,ch*0.45f,0x30FFFFFF,0x00FFFFFF,Shader.TileMode.CLAMP));
         canvas.drawRoundRect(box,r,r,fill);
         fill.setShader(null);
         line.setStrokeWidth(focused?Math.max(3f,ch*0.012f):Math.max(1.5f,ch*0.005f));
-        line.setColor(focused?0xFF606068:0xFFB0B0B8);
+        line.setColor(focused?0xFFFFC857:0xFF3A3D48);
         box.inset(line.getStrokeWidth()/2f,line.getStrokeWidth()/2f);
         canvas.drawRoundRect(box,r,r,line);
     }
@@ -169,7 +171,7 @@ public final class MatchCarouselView extends View {
         glass(canvas,cw,ch,front&&hasFocus());
         // League.
         float top=ch*0.075f,small=ch*0.058f;
-        ink.setTextAlign(Paint.Align.CENTER);ink.setColor(0xFF56565E);ink.setTextSize(small);
+        ink.setTextAlign(Paint.Align.CENTER);ink.setColor(0xFFFFC857);ink.setTextSize(small);
         float nameWidth=ink.measureText(m.competition);
         float icon=ch*0.075f,gap=ch*0.02f,total=Math.min(cw*0.8f,nameWidth)+(m.leagueLogo.isEmpty()?0:icon+gap);
         float x0=cw/2f-total/2f;
@@ -180,25 +182,25 @@ public final class MatchCarouselView extends View {
         float crestSize=ch*0.30f,cy=ch*0.20f,side=cw*0.25f;
         crest(canvas,m.homeLogo,side-crestSize/2f,cy,crestSize);
         crest(canvas,m.awayLogo,cw-side-crestSize/2f,cy,crestSize);
-        ink.setColor(0xFF242428);ink.setTextAlign(Paint.Align.CENTER);ink.setTextSize(ch*0.08f);
+        ink.setColor(0xFFFFFFFF);ink.setTextAlign(Paint.Align.CENTER);ink.setTextSize(ch*0.08f);
         fit(canvas,m.home,side,cy+crestSize+ch*0.10f,cw*0.38f,ink);
         fit(canvas,m.away,cw-side,cy+crestSize+ch*0.10f,cw*0.38f,ink);
         // Centre: score or kick-off.
         float mid=cy+crestSize*0.52f;
         if(m.upcoming()){
-            ink.setColor(0xFF242428);ink.setTextSize(ch*0.15f);
+            ink.setColor(0xFFFFFFFF);ink.setTextSize(ch*0.15f);
             canvas.drawText("VS",cw/2f,mid,ink);
-            ink.setColor(0xFF825600);ink.setTextSize(ch*0.058f);
+            ink.setColor(0xFFFFC857);ink.setTextSize(ch*0.058f);
             fit(canvas,m.kickoff,cw/2f,mid+ch*0.10f,cw*0.26f,ink);
         }else{
-            ink.setColor(0xFF242428);ink.setTextSize(ch*0.17f);
+            ink.setColor(0xFFFFFFFF);ink.setTextSize(ch*0.17f);
             String score=m.homeScore+" - "+m.awayScore;
             fit(canvas,score,cw/2f,mid,cw*0.26f,ink);
             pill(canvas,m,cw/2f,mid+ch*0.12f,ch);
         }
         // Goals.
         float goalsTop=cy+crestSize+ch*0.19f;
-        ink.setTextSize(ch*0.05f);ink.setColor(0xFF505058);
+        ink.setTextSize(ch*0.05f);ink.setColor(0xFFB8C4D6);
         goals(canvas,m.goalsHome,side,goalsTop,cw*0.4f,ch*0.062f);
         goals(canvas,m.goalsAway,cw-side,goalsTop,cw*0.4f,ch*0.062f);
     }
@@ -214,9 +216,9 @@ public final class MatchCarouselView extends View {
         ink.setTextSize(ch*0.052f);ink.setTextAlign(Paint.Align.CENTER);
         float tw=ink.measureText(m.status),padX=ch*0.04f,ph=ch*0.085f;
         box.set(cx-tw/2f-padX,y-ph*0.68f,cx+tw/2f+padX,y+ph*0.32f);
-        fill.setColor(m.live()?0xFFE23B3B:0xFFBEBEC6);
+        fill.setColor(m.live()?0xFFE23B3B:0xFF3A3D48);
         canvas.drawRoundRect(box,ph/2f,ph/2f,fill);
-        ink.setColor(m.live()?0xFFFFFFFF:0xFF242428);
+        ink.setColor(0xFFFFFFFF);
         canvas.drawText(m.status,cx,y,ink);
     }
 
@@ -240,7 +242,7 @@ public final class MatchCarouselView extends View {
         box.set(x,y,x+size,y+size);
         if(b!=null){canvas.drawBitmap(b,null,box,bmp);return;}
         // Placeholder disc while the crest loads (or when the feed has none).
-        fill.setColor(0x22606068);canvas.drawCircle(x+size/2f,y+size/2f,size*0.42f,fill);
+        fill.setColor(0x22FFFFFF);canvas.drawCircle(x+size/2f,y+size/2f,size*0.42f,fill);
         if(url!=null&&!url.isEmpty())load(url);
     }
     private void load(final String url){
