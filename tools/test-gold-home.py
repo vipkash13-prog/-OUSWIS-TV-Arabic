@@ -35,6 +35,8 @@ adb('root');adb('wait-for-device');adb('shell','am','force-stop',PKG)
 prefs='/data/user/0/'+PKG+'/shared_prefs/settings.xml'
 try:saved=adb('shell','cat',prefs,binary=True)
 except subprocess.CalledProcessError:saved=b'<map/>'
+display_override='Physical size: 3840x2160' not in adb('shell','wm','size')
+if display_override:adb('shell','wm','size','1080x1920')
 uid=re.search(r'(?:userId|appId)=(\d+)',adb('shell','dumpsys','package',PKG)).group(1)
 def write(data):
     path=OUT/'gold-settings.tmp';path.write_bytes(data)
@@ -50,7 +52,7 @@ try:
     shelf=[p for p in candidates if 'package:'+p+'\n' in available]
     assert shelf,'No installed shelf candidates'
     settings=ET.fromstring(saved)
-    values={'language':('string','ar'),'topContent':('string','none'),'shelf':('string',','.join(shelf)),'androidapps':('boolean','true'),'weather':('boolean','true'),'prayers':('boolean','true')}
+    values={'language':('string','ar'),'topContent':('string','none'),'city':('string','جدة'),'latitude':('string','21.4858'),'longitude':('string','39.1925'),'shelf':('string',','.join(shelf)),'androidapps':('boolean','true'),'weather':('boolean','true'),'prayers':('boolean','true')}
     for n in list(settings):
         if n.get('name') in values:settings.remove(n)
     for name,(kind,value) in values.items():
@@ -70,14 +72,14 @@ try:
     (OUT/('gold-home-ar-'+suffix+'.xml')).write_bytes(ET.tostring(tree))
     p=bounds(prayer);assert p[1]>h*.55 and p[3]<=h,(p,w,h)
     # Dark glass must be visibly different from the old pale home, at both resolutions.
-    r,g,b=im.getpixel((int(1150*k),int(710*k)));assert max(r,g,b)<180,(r,g,b)
-    focus=next(n for n in nodes if n.get('focused')=='true' and n.get('package')==PKG)
+    r,g,b=im.getpixel((int(1200*k),int(940*k)));assert max(r,g,b)<180,(r,g,b)
+    focus=next(n for n in nodes if n.get('focused')=='true' and n.get('package')==PKG and n.get('clickable')=='true')
     first=bounds(focus);assert h*.25<first[1]<h*.5,first
-    key('RIGHT');tree=ui();second=bounds(next(n for n in tree.iter('node') if n.get('focused')=='true' and n.get('package')==PKG))
+    key('RIGHT');tree=ui();second=bounds(next(n for n in tree.iter('node') if n.get('focused')=='true' and n.get('package')==PKG and n.get('clickable')=='true'))
     assert second[0]>first[0],(first,second)
-    key('LEFT');key('DOWN');tree=ui();low=bounds(next(n for n in tree.iter('node') if n.get('focused')=='true' and n.get('package')==PKG))
+    key('LEFT');key('DOWN');tree=ui();low=bounds(next(n for n in tree.iter('node') if n.get('focused')=='true' and n.get('package')==PKG and n.get('clickable')=='true'))
     assert h*.4<low[1]<h*.65,low
-    key('UP');tree=ui();high=bounds(next(n for n in tree.iter('node') if n.get('focused')=='true' and n.get('package')==PKG))
+    key('UP');tree=ui();high=bounds(next(n for n in tree.iter('node') if n.get('focused')=='true' and n.get('package')==PKG and n.get('clickable')=='true'))
     assert high[1]<low[1],(high,low)
     for text,name in [('التحديثات','UpdatesActivity'),('المباريات','MatchesActivity'),('البث التلفزيوني المباشر','XtreamActivity')]:
         launch();tree=ui()
@@ -89,3 +91,4 @@ try:
     print((OUT/'gold-home.log').read_text(),flush=True)
 finally:
     adb('shell','am','force-stop',PKG);write(saved)
+    if display_override:adb('shell','wm','size','reset')

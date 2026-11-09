@@ -2754,7 +2754,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         }
         if (gold()) {
             int hit=hit(drawerRects,x,y);
-            if(hit>=0){openDrawer();drawerIndex=hit;retarget(false);return;}
+            if(hit>=0){if(!drawerOpen)openDrawer();zone=Z_DRAWER;drawerIndex=hit;retarget(false);return;}
+            if(drawerOpen)closeDrawer();
         }
         if (drawerOpen&&!gold()) {
             int hit = hit(drawerRects, x, y);
@@ -2864,7 +2865,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         }
         if(gold()){
             int hit=hit(drawerRects,x,y);
-            if(hit>=0){openDrawer();drawerIndex=hit;retarget(false);activate();return;}
+            if(hit>=0){if(!drawerOpen)openDrawer();zone=Z_DRAWER;drawerIndex=hit;retarget(false);activate();return;}
+            if(drawerOpen)closeDrawer();
         }
         if (drawerOpen&&!gold()) {
             int hit = hit(drawerRects, x, y);

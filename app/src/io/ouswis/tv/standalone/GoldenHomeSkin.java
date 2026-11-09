@@ -38,7 +38,7 @@ final class GoldenHomeSkin {
         catch(Exception e){AppLog.w("gold artwork unavailable");return null;}
     }
     void resize(float k,float width,float height){
-        glass.setShader(new LinearGradient(0,0,width,height,new int[]{0xD2474D57,0xEE090D16,0xF00A1018},new float[]{0,0.45f,1},Shader.TileMode.CLAMP));
+        glass.setShader(new LinearGradient(0,0,width,height,new int[]{0xED29313E,0xF2090D16,0xF5080B11},new float[]{0,0.45f,1},Shader.TileMode.CLAMP));
         header.setTypeface(Ui.semibold);header.setTextSize(25*k);header.setColor(WHITE);
         clock.setTypeface(Ui.displaySemibold);clock.setTextSize(70*k);clock.setColor(WHITE);
         small.setTypeface(Ui.medium);small.setTextSize(22*k);small.setColor(0xE0F0E6D4);
