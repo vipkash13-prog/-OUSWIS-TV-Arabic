@@ -82,7 +82,11 @@ try:
     wallpaper=Image.open('app/assets/themes/gold-sunset.png').convert('RGB').resize((w,content_height),Image.Resampling.BILINEAR)
     x,y=int(955*k),int(40*k)
     expected=wallpaper.getpixel((x,y));actual=im.getpixel((x,y))
-    assert max(abs(a-b) for a,b in zip(actual,expected))<20,('Opaque clock background',actual,expected)
+    # Normalize the screenshot's global color transform using uncovered sky beside the clock.
+    reference=(int(700*k),int(40*k))
+    sky=im.getpixel(reference);source=wallpaper.getpixel(reference)
+    delta=[a-b for a,b in zip(sky,source)]
+    assert max(abs(a-b-d) for a,b,d in zip(actual,expected,delta))<12,('Opaque clock background',actual,expected,delta)
     focus=next(n for n in nodes if n.get('focused')=='true' and n.get('package')==PKG and n.get('clickable')=='true')
     first=bounds(focus);assert h*.25<first[1]<h*.5,first
     key('RIGHT');tree=ui();second=bounds(next(n for n in tree.iter('node') if n.get('focused')=='true' and n.get('package')==PKG and n.get('clickable')=='true'))
