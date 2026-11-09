@@ -48,7 +48,7 @@ final class PrayerTimes {
         return a!=null&&a.date.equals(day)?a:b!=null&&b.date.equals(day)?b:null;
     }
     synchronized void refreshIfStale(){
-        if(!Prefs.prayers()||fetching)return;
+        if((!Prefs.prayers()&&!Prefs.prayerAlerts())||fetching)return;
         long now=System.currentTimeMillis();
         if(failedAt>0&&now>=failedAt&&now-failedAt<60_000)return;
         if(today()!=null&&!fromCache&&now>=fetchedAt&&now-fetchedAt<6*3600_000L)return;

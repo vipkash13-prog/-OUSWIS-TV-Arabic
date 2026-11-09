@@ -1241,11 +1241,11 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         if (minute == clockMinute || clockPaint == null) return false;
         clockMinute = minute;
         clockText = gold()?Ui.clockWithPeriod(now):Ui.clock(now);
-        if(gold()){
+        if(gold()||Prefs.prayerAlerts()){
             PrayerCountdown next=PrayerCountdown.next(prayers.today(),prayers.tomorrow(),now);
             boolean ar=Ui.language.equals("ar");
             goldCountdown=next==null?"":(ar?"المتبقي ":"Remaining ")+next.minutes(now)+(ar?" دقيقة":" min");
-            if(next!=null&&Prefs.prayers()&&Prefs.prayerAlerts()&&next.at-now<=5*60_000L&&next.at>now&&prayerNoticeAt!=next.at&&Prefs.lastPrayerNotice()!=next.at){
+            if(next!=null&&Prefs.prayerAlerts()&&next.approaching(now)&&prayerNoticeAt!=next.at&&Prefs.lastPrayerNotice()!=next.at){
                 prayerNoticeAt=next.at;Prefs.notePrayerNotice(next.at);notice("prayer:"+next.at,PrayerTimes.name(next.index)+" · "+goldCountdown);
             }
             drawerDirty=true;
@@ -2143,7 +2143,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private void openDrawer() {
         if (drawerItems.isEmpty()) return;
         drawerOpen = true;
-        drawer.target = 1;
+        if(gold())drawer.snap(1);else drawer.target=1;
         zone = Z_DRAWER;
         drawerIndex = shelf.isEmpty() ? 0 : nearest(drawerRects, tileRects[shelfIndex].centerX());
         for (int i = 0; i < drawerFocus.length; i++) drawerFocus[i].target=i == drawerIndex ? 1 : 0;
@@ -2153,7 +2153,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     private void closeDrawer() {
         drawerOpen = false;
-        drawer.target = 0;
+        if(gold())drawer.snap(0);else drawer.target=0;
         zone = Z_SHELF;
         for (Spring f : drawerFocus) {if(gold())f.target=0;else f.snap(0);}   // the drawer goes away: its focus doesn't need to animate
         handler.removeCallbacks(homeTick);

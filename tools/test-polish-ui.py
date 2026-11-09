@@ -40,8 +40,8 @@ try:
     ET.SubElement(settings,'boolean',{'name':'islandNotifications','value':'true'})
     ET.SubElement(settings,'boolean',{'name':'prayerAlerts','value':'false'})
     write(ET.tostring(settings,encoding='utf-8'))
-    adb('shell','cmd','notification','allow_listener',COMPONENT)
     adb('shell','am','start','-W','-n',PKG+'/.HomeActivity')
+    adb('shell','cmd','notification','allow_listener',COMPONENT)
     for _ in range(12):
         tree=ui();text=ET.tostring(tree,encoding='unicode')
         if '°C' in text and 'المتبقي' in text:break
@@ -52,13 +52,18 @@ try:
     note('PASS: default Celsius and a countdown derived from current real Jeddah prayer data are visible to Android accessibility.')
     before=adb('shell','dumpsys','activity','activities')
     title='OUSWIS_island_check'
-    adb('shell','cmd','notification','post','-t',title,'ouswis-island-probe','Integration-check')
+    note(adb('shell','cmd','notification','post','-t',title,'ouswis-island-probe','Integration-check').strip())
     found=None
     for _ in range(3):
         tree=ui()
         found=next((n for n in tree.iter('node') if title in (n.get('text','')+' '+n.get('content-desc',''))),None)
         if found is not None:break
-    assert found is not None,'Enabled notification did not reach the existing island'
+    if found is None:
+        shot('island-notification-failure.png')
+        (OUT/'island-failure.xml').write_bytes(ET.tostring(tree))
+        (OUT/'island-system.txt').write_text(adb('shell','dumpsys','notification'))
+        (OUT/'island-logcat.txt').write_text(adb('logcat','-d','-t','600'))
+        raise AssertionError('Enabled notification did not reach the existing island')
     box=list(map(int,re.findall(r'\d+',found.get('bounds',''))))
     root=next(n for n in tree.iter('node') if n.get('class')=='android.view.ViewGroup')
     screen=list(map(int,re.findall(r'\d+',root.get('bounds',''))))

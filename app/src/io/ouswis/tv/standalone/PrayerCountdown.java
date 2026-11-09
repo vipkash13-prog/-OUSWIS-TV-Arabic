@@ -11,5 +11,6 @@ final class PrayerCountdown {
         if(tomorrow==null||!tomorrow.date.equals(today.date.plusDays(1))||tomorrow.time(0)<=now)return null;
         return new PrayerCountdown(0,tomorrow.time(0));
     }
+    boolean approaching(long now){return at>now&&at-now<=5*60_000L;}
     long minutes(long now){return Math.max(0,(at-now+59_999)/60_000);}
 }

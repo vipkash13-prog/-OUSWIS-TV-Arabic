@@ -33,13 +33,17 @@ public class NowPlaying extends NotificationListenerService {
 
     private static NowPlaying connected;
     @Override public void onListenerConnected() {
+        Prefs.reload(); // the opt-in is edited in :home, while this listener runs in the main process
         connected=this;
+        AppLog.w("Island listener connected; enabled="+Prefs.islandNotifications());
         if(!Prefs.islandNotifications()){requestUnbind();connected=null;}
     }
     @Override public void onListenerDisconnected(){if(connected==this)connected=null;}
     @Override public void onDestroy(){if(connected==this)connected=null;super.onDestroy();}
 
     @Override public void onNotificationPosted(android.service.notification.StatusBarNotification status){
+        Prefs.reload();
+        if(!Prefs.islandNotifications()){requestUnbind();connected=null;return;}
         if(!Prefs.islandNotifications()||status==null||getPackageName().equals(status.getPackageName()))return;
         android.app.Notification n=status.getNotification();
         if(n==null||n.extras==null||android.app.Notification.CATEGORY_TRANSPORT.equals(n.category))return;
@@ -47,6 +51,7 @@ public class NowPlaying extends NotificationListenerService {
         if(title!=null)IslandEvents.post(this,"notification:"+status.getKey(),title.toString());
     }
     @Override public void onNotificationRemoved(android.service.notification.StatusBarNotification status){
+        Prefs.reload();
         if(status!=null&&Prefs.islandNotifications())IslandEvents.clear(this,"notification:"+status.getKey());
     }
     static void refreshNotices(Context c){
