@@ -23,6 +23,7 @@ final class GoldenHomeSkin {
     private final Paint temperature=new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint header=new Paint(Paint.ANTI_ALIAS_FLAG),clock=new Paint(Paint.ANTI_ALIAS_FLAG),small=new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF box=new RectF(),art=new RectF();
+    private final android.graphics.Rect photoSource=new android.graphics.Rect();
     private final Paint cardGlass=new Paint(Paint.ANTI_ALIAS_FLAG),cardRim=new Paint(Paint.ANTI_ALIAS_FLAG),cardReflection=new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Matrix cardMatrix=new Matrix();
     private final TextPaint datePaint=new TextPaint(Paint.ANTI_ALIAS_FLAG),hijriPaint=new TextPaint(Paint.ANTI_ALIAS_FLAG);
@@ -143,9 +144,11 @@ final class GoldenHomeSkin {
     /** Jeddah's bridge, fading into the weather card's lower left as in the approved design. */
     void weatherArt(Canvas c,RectF r,float k){
         if(weatherPhoto==null)return;
-        float w=r.width()*0.46f,h=w*weatherPhoto.getHeight()/weatherPhoto.getWidth();
+        // Only the lower 70% of the photo, dimmed, so the high/low line above it stays readable.
+        float w=r.width()*0.46f,h=w*weatherPhoto.getHeight()/weatherPhoto.getWidth()*0.7f;
         art.set(r.left+2*k,r.bottom-2*k-h,r.left+2*k+w,r.bottom-2*k);
-        c.drawBitmap(weatherPhoto,null,art,image);
+        photoSource.set(0,Math.round(weatherPhoto.getHeight()*0.3f),weatherPhoto.getWidth(),weatherPhoto.getHeight());
+        image.setAlpha(160);c.drawBitmap(weatherPhoto,photoSource,art,image);image.setAlpha(255);
     }
     void mosque(Canvas c,float left,float cy,float size){
         if(mosqueIcon==null)return;
