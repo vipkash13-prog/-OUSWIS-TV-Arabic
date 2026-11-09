@@ -140,7 +140,39 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private String prayerLine="";
     private Paint prayerLinePaint;
     private float prayerLineWidth;
-    private String goldHumidity="",goldWind="";
+    private String goldHumidity="",goldWind="",goldRain="",goldAqi="",goldUpdated="",goldCountdown="";
+    private EnvironmentReading textAir;
+    private long textWeatherAt=-1,textMetaMinute=-1,prayerNoticeAt=-1;
+    private final Spring press=Spring.focus(0);
+    private int pressedId=-1;
+    private String lastIslandKey="";
+    private long lastIslandAt,islandUntil;
+    private String pendingIsland,pendingIslandKey,activeIslandKey;
+    private boolean islandToast;
+    private boolean islandRegistered;
+    private final BroadcastReceiver islandReceiver=new BroadcastReceiver(){
+        @Override public void onReceive(Context c,Intent event){
+            if(running){
+                String key=event.getStringExtra("key");
+                if(event.getBooleanExtra("clear",false))clearNotice(key);
+                else notice(key,event.getStringExtra("title"));
+            }
+        }
+    };
+    private void notice(String key,String text){
+        if(key==null||text==null||text.isEmpty()||text.length()>120)return;
+        long now=SystemClock.uptimeMillis();
+        if(key.equals(lastIslandKey)&&now-lastIslandAt<30_000)return;
+        lastIslandKey=key;lastIslandAt=now;pendingIsland=text;pendingIslandKey=key;islandUntil=now+TOAST_MS;
+        if(running)announceForAccessibility(text);wake();
+    }
+    private void clearNotice(String key){
+        if(key==null)return;
+        if(key.equals(pendingIslandKey)){pendingIsland=null;pendingIslandKey=null;}
+        if(key.equals(activeIslandKey)&&islandToast){toast=null;islandToast=false;activeIslandKey=null;toastLayer.invalidate();status.invalidate();}
+    }
+    private float pressScale(int id){return id==pressedId?1-0.025f*Ui.clamp(press.value):1;}
+
     private long goldPrayerMinute=-1,goldPrayerChange=-1;
     private int goldPrayerGeneration=-1,goldPrayerPrefs=-1;
     private final String[] goldPrayerNames=new String[5],goldPrayerTimes=new String[5];
@@ -168,7 +200,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         @Override public int focused() { return a11yFocused(); }
         @Override public void focus(int id) { a11yFocus(id); }
         @Override public void click(int id) { if (recentsOpen()) recents.openFocused(); else activate(); }
-        @Override public boolean clickable(int id) { return (id - 1) / 1000 != WIDGETS; }
+        @Override public boolean clickable(int id) { return (id - 1) / 1000 != WIDGETS&&(id-1)/1000!=NOTICE; }
         @Override public boolean holdable(int id) { return a11yHolds(id); }
         @Override public void hold(int id) { if (recentsOpen()) recents.closeFocused(); else if (sheetOpen) a11yHold(); else if (canReorder()) startReorder(); else showMenu(); }
     });
@@ -352,7 +384,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private Paint labelPaint, metaPaint, clockPaint, buttonPaint, capsuleText, tipPaint, quotePaint, staleQuote;
     private Paint rowTitle, drawerLabel, cardTitle, cardText, cardDim, cardDimRight, bigTemp, hourPaint, hourTemp, dayLow;
     private Paint prayerTimePaint, changePaint, sheetTitle;
-    private TextPaint titlePaint, gridLabel, toastPaint;
+    private TextPaint titlePaint, gridLabel, toastPaint,islandPaint;
     private final Paint bitmapPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
     private final Paint imagePaint = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.DITHER_FLAG);
     private final Paint shadow = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -605,7 +637,15 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         @Override public void run() {
             if (!running) return;
             wake();
-            playing.start();   // the listener allowed after the screen showed (a no-op once watching)
+            playing.start();
+        if(!islandRegistered){
+            IntentFilter filter=new IntentFilter(IslandEvents.ACTION);
+            if(Build.VERSION.SDK_INT>=33)getContext().registerReceiver(islandReceiver,filter,Context.RECEIVER_NOT_EXPORTED);
+            else getContext().registerReceiver(islandReceiver,filter);
+            islandRegistered=true;
+        }
+        NowPlaying.refreshNotices(getContext());
+        LOADER.execute(()->{String[] event=IslandEvents.latest(getContext());if(event!=null)handler.post(()->{if(running&&(!event[0].startsWith("notification:")||Prefs.islandNotifications()))notice(event[0],event[1]);});});   // the listener allowed after the screen showed (a no-op once watching)
             data.refreshIfStale();
             prayers.refreshIfStale();
             if(drawerOpen){drawerDirty=true;drawerLayer.invalidate();}
@@ -664,7 +704,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         drawerLayer.setVisibility(INVISIBLE);
         menuLayer.setVisibility(INVISIBLE);
         for (int i = 0; i < topFocus.length; i++) {
-            topFocus[i] = new Spring(0.26f, 0.85f, 0);
+            topFocus[i] = Spring.focus(0);
             topRects[i] = new RectF();
         }
         for (int i = 0; i < topSlide.length; i++) topSlide[i] = new Spring(0.32f, 0.86f, 0);
@@ -725,6 +765,14 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         startStatus();
         handler.postDelayed(tick, 15_000);
         playing.start();
+        if(!islandRegistered){
+            IntentFilter filter=new IntentFilter(IslandEvents.ACTION);
+            if(Build.VERSION.SDK_INT>=33)getContext().registerReceiver(islandReceiver,filter,Context.RECEIVER_NOT_EXPORTED);
+            else getContext().registerReceiver(islandReceiver,filter);
+            islandRegistered=true;
+        }
+        NowPlaying.refreshNotices(getContext());
+        LOADER.execute(()->{String[] event=IslandEvents.latest(getContext());if(event!=null)handler.post(()->{if(running&&(!event[0].startsWith("notification:")||Prefs.islandNotifications()))notice(event[0],event[1]);});});
         checkNotices();
         hiddenNow.retainAll(Prefs.watchHidden());   // Home Settings may have shown the hidden ones again
         if (!again) reload();
@@ -748,7 +796,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     void pause() {
         if (!running) return;
-        running = false;
+        running = false;press.snap(0);pressedId=-1;
+        if(islandRegistered){getContext().unregisterReceiver(islandReceiver);islandRegistered=false;}
         handler.removeCallbacks(bgFollow);
         cancelReorder(true);
         if (recents != null) recents.closeNow();
@@ -833,6 +882,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     }
 
     @Override public void onData() {
+        clockMinute=-1;
         wake();
         updatePalette();
         checkNight(true);
@@ -985,6 +1035,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         gridLabel = new TextPaint(Ui.text(Ui.medium, 24 * k, 0x99FFFFFF));
         gridLabel.setTextAlign(Paint.Align.CENTER);
         toastPaint = new TextPaint(Ui.text(Ui.medium, 26 * k, 0xF2FFFFFF));
+        islandPaint=new TextPaint(Ui.text(Ui.medium,18*k,GoldenHomeSkin.WHITE));
         menuTitlePaint = Ui.text(Ui.semibold, 34 * k, L_INK);
         menuSubPaint = Ui.text(Ui.medium, 25 * k, L_DIM);
         menuOptionPaint = Ui.text(Ui.medium, 30 * k, L_INK);
@@ -1009,7 +1060,9 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         long up = SystemClock.uptimeMillis();
 
         settleWhileSliding();
-        boolean tilesMoving = step(tileFocus, dt);
+        boolean pressed=press.step(dt);
+        boolean tilesMoving = step(tileFocus, dt)|pressed;
+        if(pressed){status.invalidate();drawerLayer.invalidate();sheetLayer.invalidate();}
         boolean topReorderFrame = reorderTop && reorderAnim;
         if (reorderAnim) {
             boolean moving = stepReorder(dt, up);
@@ -1074,10 +1127,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         // Busy: something is moving, or the sheet or the drawer is open.
         boolean busy = tilesMoving || statusMoving || heroMoving || drawerItemsMoving || gridMoving || drawerMoving
                 || menuMoving || sheetMoving || toastFading || heroFading || bgFading || nightMoving || tintMoving || sheetOpen
-                || sheet.value > 0.001f || recentMoving || (!gold()&&drawerOpen) || (!gold()&&drawer.value > 0.001f) || toast != null || !toasts.isEmpty();
+                || sheet.value > 0.001f || recentMoving || (!gold()&&drawerOpen) || (!gold()&&drawer.value > 0.001f);
         idle = !busy;
         if (busy) Choreographer.getInstance().postFrameCallback(this);
-        else Choreographer.getInstance().postFrameCallbackDelayed(this, 1000);
+        else Choreographer.getInstance().postFrameCallbackDelayed(this,toast==null?1000:Math.max(1,Math.min(1000,TOAST_MS-450-(up-toastAt))));
     }
 
     private final int[] underState = new int[9];
@@ -1147,7 +1200,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
      * of the hero on top of it took 35 to 45 ms of GPU there (most frames dropped when a key came during the slide).
      */
     private void settleWhileSliding() {
-        if (drawer.settled()) return;
+        if (gold()||drawer.settled()) return;
         if (settle(drawerFocus)) drawerDirty = true;
         if (settle(cardFocus) | settle(topFocus)) heroDirty = statusDirty = true;
         if (settle(statusFocus)) statusDirty = true;
@@ -1187,7 +1240,16 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         long minute = now / 60_000;
         if (minute == clockMinute || clockPaint == null) return false;
         clockMinute = minute;
-        clockText = Ui.clock(now);
+        clockText = gold()?Ui.clockWithPeriod(now):Ui.clock(now);
+        if(gold()){
+            PrayerCountdown next=PrayerCountdown.next(prayers.today(),prayers.tomorrow(),now);
+            boolean ar=Ui.language.equals("ar");
+            goldCountdown=next==null?"":(ar?"المتبقي ":"Remaining ")+next.minutes(now)+(ar?" دقيقة":" min");
+            if(next!=null&&Prefs.prayers()&&Prefs.prayerAlerts()&&next.at-now<=5*60_000L&&next.at>now&&prayerNoticeAt!=next.at&&Prefs.lastPrayerNotice()!=next.at){
+                prayerNoticeAt=next.at;Prefs.notePrayerNotice(next.at);notice("prayer:"+next.at,PrayerTimes.name(next.index)+" · "+goldCountdown);
+            }
+            drawerDirty=true;
+        }
         dateText = Ui.date(now);
         return true;
     }
@@ -1572,7 +1634,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             statusRects = new RectF[list.size()];
             int index = Math.min(statusIndex, Math.max(0, list.size() - 1));
             for (int i = 0; i < statusFocus.length; i++) {
-                statusFocus[i] = new Spring(0.26f, 0.85f, 0);
+                statusFocus[i] = Spring.focus(0);
                 statusRects[i] = new RectF();
                 if (list.get(i).key.equals(focusedKey)) index = i;   // a device came on: keep focus on the same button
             }
@@ -1629,7 +1691,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             tileSlide = new Spring[list.size()];
             tileRects = new RectF[list.size()];
             for (int i = 0; i < tileFocus.length; i++) {
-                tileFocus[i] = new Spring(0.34f, 0.74f, 0);
+                tileFocus[i] = Spring.focus(0);
                 tileSlide[i] = new Spring(0.32f, 0.86f, 0);
                 tileRects[i] = new RectF();
             }
@@ -1733,9 +1795,11 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         // Only a new title bounces the bars and is said to TalkBack: not a subtitle some players rewrite every second (the
         // time), and not the same title again when the screen shows.
         String title = playing.title, now = playing.text;
+        if(title==null&&shownTitle!=null){clearNotice("media:"+shownTitle);shownTitle=null;}
         if (title != null && now != null && running && playingTab != null && !title.equals(shownTitle)) {
             shownTitle = title;
             bounceBars();
+            notice("media:"+title,Ui.trf("Now playing: {what}","what",now));
             if (readerOn()) announceForAccessibility(Ui.trf("Now playing: {what}", "what", now.replace(" · ", ", ")));
         }
     }
@@ -1863,11 +1927,13 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         HomeApps.Item it = shelf.get(i);
         // Lifted to be moved: a little bigger than focused, with a deeper shadow.
         float l = !reorderTop && i == liftIndex ? Math.max(0, moveLift.value) : 0;
-        float f = tileFocus[i].value, fc = Ui.clamp(f), s = 1 + (gold()?0.06f:FOCUS_GROW) * f + LIFT_GROW * l;
+        float f = tileFocus[i].value, fc = Ui.clamp(f), s = 1 + (gold()?0.03f:FOCUS_GROW) * fc + LIFT_GROW * l;
         RectF base = tileRects[i];
         float bw = base.width(), bh = base.height(), r0 = TILE_RADIUS * k;
         float cx = base.centerX(), cy = base.centerY();
         cell.set(cx - bw * s / 2, cy - bh * s / 2, cx + bw * s / 2, cy + bh * s / 2);
+        s*=pressScale(a11yId(Z_SHELF,i));
+        cell.set(cx-bw*s/2,cy-bh*s/2,cx+bw*s/2,cy+bh*s/2);
         float r = r0 * s;
         // Shadow at the resting icon size, enlarged by the transform (so the blur stays cached): short at rest, deep
         // and lower when focused.
@@ -1911,7 +1977,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             c.drawRoundRect(cell, r, r, tileFill);
             drawLogo(c, it, cell, s, 0);
         } else {
-            if (it.tile != null) roundImage(c, it.tile, it.tileShader, cell, r);
+            if (it.tile != null){if(gold())fitAppImage(c,it,cell,r);else roundImage(c,it.tile,it.tileShader,cell,r);}
         }
         if(gold()&&fc>0.01f){goldSkin.focus(c,cell,r,k,fc);return;}
         if (fc > 0.01f) {
@@ -1941,6 +2007,14 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         c.restore();
     }
 
+    private void fitAppImage(Canvas c,HomeApps.Item item,RectF bounds,float radius){
+        tileFill.setShader(null);tileFill.setColor(0xFF161618);c.drawRoundRect(bounds,radius,radius,tileFill);
+        float scale=Math.min(bounds.width()*0.90f/item.tile.getWidth(),bounds.height()*0.90f/item.tile.getHeight());
+        float width=item.tile.getWidth()*scale,height=item.tile.getHeight()*scale;
+        tmp.set(bounds.centerX()-width/2,bounds.centerY()-height/2,bounds.centerX()+width/2,bounds.centerY()+height/2);
+        roundImage(c,item.tile,item.tileShader,tmp,Math.min(radius,Math.min(width,height)/2));
+    }
+
     /** The image cropped at the center to the cell's shape (not stretched), at `alpha`. */
     private void coverImage(Canvas c, Bitmap image, BitmapShader shader, RectF cell, float r, float alpha) {
         float iw = image.getWidth(), ih = image.getHeight();
@@ -1964,10 +2038,11 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
      * rest it is drawn pixel for pixel, without resampling (on a 720p UI, shrinking at draw time made it look jagged).
      */
     private void drawLogo(Canvas c, HomeApps.Item it, RectF box, float s, int mode) {
-        boolean rest = s < 1 + FOCUS_GROW / 2;
+        float grow=gold()?0.03f:FOCUS_GROW;
+        boolean rest = s < 1 + grow / 2;
         Bitmap logo = crispLogo(it, mode == 2 && it.logoDark != null, rest);
         if (logo == null) return;
-        float scale = rest ? s : s / (1 + FOCUS_GROW);
+        float scale = rest ? s : s / (1 + grow);
         float dw = logo.getWidth() * scale, dh = logo.getHeight() * scale;
         float left = box.centerX() - dw / 2, top = box.centerY() - dh / 2;
         if (rest ? Math.abs(scale - 1) < 0.002f : scale > 0.998f) {
@@ -1986,11 +2061,13 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         String key = it.key + "@" + System.identityHashCode(src) + "@" + Math.round(tileRects[0].width()) + (rest ? "@rest" : "");
         Bitmap cached = crispLogos.get(key);
         if (cached != null) return cached;
-        float bw = tileRects[0].width() * (1 + FOCUS_GROW), bh = tileRects[0].height() * (1 + FOCUS_GROW);
+        float grow=gold()?0.03f:FOCUS_GROW;
+        float bw = tileRects[0].width() * (1 + grow), bh = tileRects[0].height() * (1 + grow);
         float lw = src.getWidth(), lh = src.getHeight();
         float scale = (float) Math.sqrt(bw * bh * 0.085f / (lw * lh * Math.max(0.08f, it.logoInk))) * it.logoScale;
         scale = Math.min(scale, Math.min(bw * 0.76f / lw, bh * 0.58f / lh));
-        if (rest) scale /= 1 + FOCUS_GROW;
+        if(gold())scale=Math.min(bw*0.80f/lw,bh*0.62f/lh);
+        if (rest) scale /= 1 + grow;
         Bitmap out = Ui.downscale(src, Math.round(lw * scale), Math.round(lh * scale));
         crispLogos.put(key, out);
         return out;
@@ -2021,7 +2098,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             drawerFocus = new Spring[list.size()];
             drawerRects = new RectF[list.size()];
             for (int i = 0; i < drawerFocus.length; i++) {
-                drawerFocus[i] = new Spring(0.28f, 0.85f, 0);
+                drawerFocus[i] = Spring.focus(0);
                 drawerRects[i] = new RectF();
             }
             drawerIndex = Math.min(drawerIndex, Math.max(0, list.size() - 1));
@@ -2069,7 +2146,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         drawer.target = 1;
         zone = Z_DRAWER;
         drawerIndex = shelf.isEmpty() ? 0 : nearest(drawerRects, tileRects[shelfIndex].centerX());
-        for (int i = 0; i < drawerFocus.length; i++) drawerFocus[i].snap(i == drawerIndex ? 1 : 0);
+        for (int i = 0; i < drawerFocus.length; i++) drawerFocus[i].target=i == drawerIndex ? 1 : 0;
         drawerDirty = true;
         readHome();
     }
@@ -2078,7 +2155,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         drawerOpen = false;
         drawer.target = 0;
         zone = Z_SHELF;
-        for (Spring f : drawerFocus) f.snap(0);   // the drawer goes away: its focus doesn't need to animate
+        for (Spring f : drawerFocus) {if(gold())f.target=0;else f.snap(0);}   // the drawer goes away: its focus doesn't need to animate
         handler.removeCallbacks(homeTick);
         if (!shelf.isEmpty() && drawerIndex < drawerRects.length) shelfIndex = nearest(tileRects, drawerRects[drawerIndex].centerX());
     }
@@ -2174,7 +2251,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     /** Square drawer button: symbol and name; an input with no device is dimmed. Focused: white, with dark text. */
     private void drawDrawerTile(Canvas c, int i) {
         HomeApps.Item it = drawerItems.get(i);
-        float f = Ui.clamp(drawerFocus[i].value), s = 1 + 0.07f * f;
+        float f = Ui.clamp(drawerFocus[i].value), s = (1 + (gold()?0.03f:0.07f) * f)*pressScale(a11yId(Z_DRAWER,i));
         RectF base = drawerRects[i];
         float cx = base.centerX(), cy = base.centerY();
         cell.set(cx - base.width() * s / 2, cy - base.height() * s / 2, cx + base.width() * s / 2, cy + base.height() * s / 2);
@@ -2258,8 +2335,14 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             }
         }
         if(gold()){
-            c.drawText(goldWind,hx,r.top+285*k,cardDim);
-            c.drawText(goldHumidity,r.right-34*k-cardDim.measureText(goldHumidity),r.top+285*k,cardDim);
+            cardDim.setTextSize(20*k);
+            c.drawText(goldWind,hx,r.top+252*k,cardDim);
+            c.drawText(goldHumidity,r.right-34*k-cardDim.measureText(goldHumidity),r.top+252*k,cardDim);
+            cardDim.setTextSize(17*k);
+            c.drawText(goldRain,hx,r.top+294*k,cardDim);
+            c.drawText(goldAqi,hx+155*k,r.top+294*k,cardDim);
+            c.drawText(goldUpdated,r.right-28*k-cardDim.measureText(goldUpdated),r.top+294*k,cardDim);
+            cardDim.setTextSize(23*k);
             return;
         }
         float sx = hx, base = r.top + 258 * k;
@@ -2272,10 +2355,11 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         boolean settings = Prefs.version != textPrefs || !Ui.language.equals(textLanguage);
         textPrefs = Prefs.version;
         textLanguage = Ui.language;
-        if (wx != textWeather || settings) {
+        if (wx != textWeather || settings || textAir!=data.airQuality || textWeatherAt!=data.weatherAt||textMetaMinute!=System.currentTimeMillis()/60_000) {
+            textAir=data.airQuality;textWeatherAt=data.weatherAt;textMetaMinute=System.currentTimeMillis()/60_000;
             textWeather = wx;
             weatherTitle = Prefs.city().isEmpty() ? Ui.tr("Weather") : Prefs.city();
-            nowTemp = HomeData.degrees(wx.temp);
+            nowTemp = gold()?HomeData.degreesWithUnit(wx.temp):HomeData.degrees(wx.temp);
             highLow = HomeData.highLow(wx, "   ");
             textDays = Prefs.forecast().equals("days") && !wx.days.isEmpty();   // no days yet (an older forecast, offline): the hours
             for (int i = 0; textDays && i < wx.days.size() && i < 5; i++) {
@@ -2288,6 +2372,9 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                 hourTempText[i] = HomeData.degrees(wx.hourTemp.get(i));
             }
             boolean ar=Ui.language.equals("ar");
+            goldRain=Double.isNaN(wx.rain)||data.weatherAt<=0||System.currentTimeMillis()-data.weatherAt>2*3600_000L?"":(ar?"المطر ":"Rain ")+Math.round(wx.rain)+"%";
+            goldAqi=data.aqi();
+            goldUpdated=data.weatherAt<=0?"":(ar?"تحديث ":"Updated ")+Ui.time(data.weatherAt);
             goldHumidity=(ar?"الرطوبة: ":"Humidity: ")+(Double.isNaN(wx.humidity)?"—":String.format(Ui.locale(),"%.0f%%",wx.humidity));
             goldWind=(ar?"الرياح: ":"Wind: ")+(Double.isNaN(wx.wind)?"—":String.format(Ui.locale(),"%.0f",wx.wind)+(ar?" كم/س":" km/h"));
             sunriseText = Ui.trf("Sunrise {time}", "time", Ui.time(wx.sunrise));
@@ -2424,7 +2511,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private void setOthers(List<HomeApps.Item> list) {
         others = list;
         gridFocus = new Spring[list.size()];
-        for (int i = 0; i < gridFocus.length; i++) gridFocus[i] = new Spring(0.3f, 0.82f, 0);
+        for (int i = 0; i < gridFocus.length; i++) gridFocus[i] = Spring.focus(0);
         gridLabels = null;
         gridIndex = Math.min(gridIndex, Math.max(0, list.size() - 1));
         retargetGrid(true);
@@ -2500,7 +2587,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             float x = left + col * (GRID_W + GRID_GAP) * k;
             gridCell.set(x, y, x + GRID_W * k, y + GRID_H * k);
             float f = gridFocus[i].value;
-            drawCard(c, others.get(i), gridCell, GRID_RADIUS * k, f, 0.08f);
+            drawCard(c, others.get(i), gridCell, GRID_RADIUS * k, f, 0.08f,i);
             if (sheetOpen && i == gridIndex) focusedCell.set(cell);
             gridLabel.setColor(blend(0x99FFFFFF, 0xFFFFFFFF, Ui.clamp(f)));
             c.drawText(gridLabels[i], gridCell.centerX(), gridCell.bottom + (40 + 6 * f) * k, gridLabel);
@@ -2508,8 +2595,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     }
 
     /** 16:9 sheet card. Focused (the shelf's subtle focus): it grows, with a shadow, a soft sheen and a thin border. */
-    private void drawCard(Canvas c, HomeApps.Item it, RectF base, float radius, float f, float grow) {
-        float s = 1 + grow * f;
+    private void drawCard(Canvas c, HomeApps.Item it, RectF base, float radius, float f, float grow,int index) {
+        float s = (1 + (gold()?0.03f:grow) * Ui.clamp(f))*pressScale(a11yId(GRID,index));
         float cx = base.centerX(), cy = base.centerY();
         cell.set(cx - base.width() * s / 2, cy - base.height() * s / 2, cx + base.width() * s / 2, cy + base.height() * s / 2);
         float r = radius * s;
@@ -2520,7 +2607,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             shadow.setColor(Ui.alpha(0xFF000000, 0.55f * fc));
             shadows.draw(c, tmp, r, SHADOW_BLUR * k, shadow);
         }
-        if (it.tile != null) roundImage(c, it.tile, it.tileShader, cell, r);
+        if (it.tile != null){if(gold())fitAppImage(c,it,cell,r);else roundImage(c,it.tile,it.tileShader,cell,r);}
         if (f > 0.01f) {
             float bh = base.height();
             if (cardSheen == null || cardSheenH != bh) {
@@ -2541,6 +2628,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             veil.setColor(Ui.alpha(0xFF000000, 0.08f * (1 - fc)));
             c.drawRoundRect(cell, r, r, veil);
         }
+        if(gold()){goldSkin.focus(c,cell,r,k,fc);return;}
         border.setColor(0x14FFFFFF);
         c.drawRoundRect(cell, r, r, border);
         if (f > 0.01f) {
@@ -2555,6 +2643,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     // MARK: - Toasts
 
     void showToast(String text) {
+        if(text==null||text.isEmpty())return;
+        if(toasts.size()>=3)toasts.poll();
         toasts.add(text);
         announceForAccessibility(text);
         wake();
@@ -2562,6 +2652,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     /** Advances the toast queue; returns true while a toast fades in or out (animation). */
     private boolean tickToast(long up) {
+        if(islandToast&&up>=islandUntil){toast=null;islandToast=false;toastLayer.invalidate();status.invalidate();}
         if (toast != null && up - toastAt > TOAST_MS) {
             toast = null;
             toastLayer.invalidate();
@@ -2569,9 +2660,13 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         if (toast == null && toastPaint != null) {
             String next = toasts.poll();
             if (next != null) {
-                toast = layout(next);
+                toast = layout(next);islandToast=false;
                 toastAt = up;
             }
+        }
+        if(toast==null&&pendingIsland!=null){
+            if(up<islandUntil){toast=gold()&&!lightButtons.isEmpty()?layoutIsland(pendingIsland):layout(pendingIsland);toastAt=up;islandToast=true;activeIslandKey=pendingIslandKey;status.invalidate();}
+            pendingIsland=null;
         }
         if (toast == null) return false;
         long age = up - toastAt;
@@ -2580,6 +2675,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         return fading;
     }
 
+    private final RectF noticeBounds=new RectF();
     private float titleRight;   // where the top title ends (0: none), so toasts don't cover it
 
     private void drawToast(Canvas c) {
@@ -2587,18 +2683,32 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         float age = (SystemClock.uptimeMillis() - toastAt) / 1000f;
         float a = Math.min(Ui.clamp(age / 0.3f), Ui.clamp((TOAST_MS / 1000f - age) / 0.4f));
         if (a <= 0) return;
+        if(gold()&&islandToast&&!lightButtons.isEmpty()){
+            tmp.set(topRects[3].left-(Prefs.statusIcons()?102:18)*k,44*k,CONTENT_R*k+18*k,127*k);
+            noticeBounds.set(tmp);
+            int saved=c.saveLayerAlpha(tmp.left,tmp.top,tmp.right,tmp.bottom,Math.round(a*255));
+            c.translate(tmp.left+18*k,tmp.centerY()-toast.getHeight()/2f);toast.draw(c);c.restoreToCount(saved);return;
+        }
         float padX = 28 * k, padY = 18 * k, icon = 26 * k, iconW = Symbols.width(getContext(), "bell", icon);
         float tw = toast.getWidth() + iconW + 16 * k, th = toast.getHeight();
         float toastTop = 64 * k - (1 - a) * 16 * k;
         // Centered, unless that covers the title (a long one, such as Continue Watching): then just right of it.
         float left = Math.max((w - tw) / 2f - padX, Math.min(titleRight + 40 * k, w - tw - 2 * padX - MARGIN * k));
         tmp.set(left, toastTop, left + tw + 2 * padX, toastTop + th + 2 * padY);
+        noticeBounds.set(tmp);
         int save = c.saveLayerAlpha(tmp.left - 4, tmp.top - 4, tmp.right + 4, tmp.bottom + 4, Math.round(255 * a));
         scene.glass(c, tmp, Math.min(tmp.height() / 2, 32 * k), SMOKE, 0.55f, 0, 0, 0.02f, 1);
         Symbols.draw(getContext(), c, "bell", tmp.left + padX + iconW / 2, tmp.centerY(), icon, 0xEBFFFFFF);
         c.translate(tmp.left + padX + iconW + 16 * k, tmp.top + padY);
         toast.draw(c);
         c.restoreToCount(save);
+    }
+
+    private StaticLayout layoutIsland(String text){
+        float width=CONTENT_R*k+18*k-(topRects[3].left-(Prefs.statusIcons()?102:18)*k)-36*k;
+        return StaticLayout.Builder.obtain(text,0,text.length(),islandPaint,Math.max(1,Math.round(width)))
+                .setAlignment(Layout.Alignment.ALIGN_CENTER).setIncludePad(false).setMaxLines(2)
+                .setEllipsize(TextUtils.TruncateAt.END).build();
     }
 
     private StaticLayout layout(String text) {
@@ -3009,8 +3119,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         }
         if (reordering) return reorderKey(e, down);
         int code = e.getKeyCode();
+        if(down&&islandToast)clearNotice(activeIslandKey);
         if (down && code != KeyEvent.KEYCODE_DPAD_CENTER && code != KeyEvent.KEYCODE_ENTER
                 && code != KeyEvent.KEYCODE_NUMPAD_ENTER) {
+            press.target=0;
             holdArmed = false;      // another key while OK is held: no move mode, no menu
             handler.removeCallbacks(holdStart);
         }
@@ -3037,7 +3149,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                 // whichever comes first; the release after a hold opens nothing.
                 if (down) {
                     if (e.getRepeatCount() == 0) {
-                        okDown = true;
+                        okDown = true;pressedId=a11yFocused();press.target=1;
                         okHeld = false;
                         handler.removeCallbacks(holdStart);
                         holdArmed = sheetOpen ? canToggleShelf(gridIndex) : canReorder() || canHold();
@@ -3046,7 +3158,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                         hold();
                     }
                 } else {
-                    holdArmed = false;
+                    holdArmed = false;press.target=0;
                     handler.removeCallbacks(holdStart);
                     if (okDown && !okHeld && !e.isCanceled() && spoken.keyClick()) activate();
                     okDown = okHeld = false;
@@ -3317,12 +3429,14 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         boolean opened = HomeApps.open(activity, it, this, Math.round(r.left), Math.round(r.top),
                 Math.round(r.width()), Math.round(r.height()));
         if (!opened) showToast(Ui.trf("Couldn't open {app}.", "app", it.label));
+        else if(it.kind==HomeApps.APP)notice("app:"+it.pkg,(Ui.language.equals("ar")?"فتح ":"Opened ")+it.label);
     }
 
     // MARK: - Holding OK: All Apps puts the app on the shelf or takes it off; on the shelf, the app is lifted to move;
     // on a Continue Watching card, its menu opens
 
     private void hold() {
+        press.target=0;
         if (sheetOpen) {
             toggleShelf();
         } else if (canReorder()) {
@@ -3630,7 +3744,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     // MARK: - TalkBack: every reachable item as a virtual node (Spoken). Id = group * 1000 + index + 1.
 
     /** The drawer's weather (0) and prayer (1) cards: read by TalkBack, never focused by the remote. */
-    private static final int GRID = 9, WIDGETS = 8, MENU_ITEMS = 10, RECENT_CARDS = 11;
+    private static final int GRID = 9, WIDGETS = 8, MENU_ITEMS = 10, RECENT_CARDS = 11,NOTICE=12;
 
     private boolean recentsOpen() {
         return recents != null && recents.isOpen();   // not while it fades out: TalkBack reads the home screen again
@@ -3657,6 +3771,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             for (int i = 0; i < others.size(); i++) out.add(a11yId(GRID, i));
             return;
         }
+        if(toast!=null)out.add(a11yId(NOTICE,0));
         for (int i = picksMode() ? 0 : 3; i < 3 + lightButtons.size(); i++) out.add(a11yId(Z_TOP, i));
         for (int i = 0; i < Math.min(Recs.MAX_CARDS, cards.size()); i++) out.add(a11yId(Z_CARDS, i));
         if (continueMode()) for (int i = 0; i < watching.size(); i++) out.add(a11yId(Z_WATCH, i));
@@ -3701,6 +3816,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                 return label(shelf, i);
             case Z_DRAWER: return label(drawerItems, i);
             case WIDGETS: return i == 0 ? weatherText() : prayersText();
+            case NOTICE:return toast==null?"":toast.getText().toString();
             default: return "";
         }
     }
@@ -3758,6 +3874,9 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                 a11yRect.set(drawerRects[i]);
                 dy = gold()||drawerOpen ? 0 : h;
                 break;
+            case NOTICE:
+                if(toast==null)return false;
+                a11yRect.set(noticeBounds);dy=0;break;
             case WIDGETS:
                 if (!gold()&&!drawerOpen) return false;
                 a11yRect.set(i == 0 ? weatherCard : prayerCard);
@@ -3921,7 +4040,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         StringBuilder s = new StringBuilder(Prefs.city().isEmpty() ? Ui.tr("Weather") : Prefs.city());
         HomeData.Weather wx = data.weather;
         if (Double.isNaN(wx.temp)) return s.append(". ").append(Ui.tr("No weather data right now.")).toString();
-        s.append(". ").append(HomeData.degrees(wx.temp)).append(", ").append(HomeData.condition(wx.code, wx.isDay)).append(". ")
+        s.append(". ").append(gold()?HomeData.degreesWithUnit(wx.temp):HomeData.degrees(wx.temp)).append(", ").append(HomeData.condition(wx.code, wx.isDay)).append(". ")
                 .append(Ui.trf("High {max}, low {min}.", "max", HomeData.degrees(wx.max), "min", HomeData.degrees(wx.min)));
         if (Prefs.forecast().equals("days") && !wx.days.isEmpty()) {   // as the card: the hours until there are days
             StringBuilder list = new StringBuilder();
@@ -3944,6 +4063,11 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         }
         if (wx.sunrise != 0) s.append(' ').append(Ui.trf("talkback|Sunrise {time}", "time", Ui.time(wx.sunrise))).append('.');
         if (wx.sunset != 0) s.append(' ').append(Ui.trf("Sunset {time}", "time", Ui.time(wx.sunset))).append('.');
+        refreshDrawerText();
+        s.append(". ").append(goldWind).append(". ").append(goldHumidity);
+        if(!goldRain.isEmpty())s.append(". ").append(goldRain);
+        if(!goldAqi.isEmpty())s.append(". ").append(goldAqi);
+        if(!goldUpdated.isEmpty())s.append(". ").append(goldUpdated);
         return s.toString();
     }
 
@@ -3955,6 +4079,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         text.append(". ").append(day.date);
         for(int i=0;i<5;i++)text.append(". ").append(PrayerTimes.name(i)).append(' ').append(PrayerTimes.time(day,i));
         if(prayers.fromCache)text.append(". ").append(Ui.tr("Saved times"));
+        if(!goldCountdown.isEmpty())text.append(". ").append(goldCountdown);
         return text.toString();
     }
 
@@ -4664,14 +4789,18 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         if(lightButtons.isEmpty())return;
         goldRow.set(topRects[3].left-(Prefs.statusIcons()?102:18)*k,44*k,CONTENT_R*k+18*k,127*k);
         goldSkin.panel(c,goldRow,40*k,k,0);
+        if(islandToast)return;
         if(Prefs.statusIcons()){
         Symbols.draw(getContext(),c,network==2?"ethernet":"wifi",topRects[3].left-73*k,85*k,26*k,network==0?0x77FFFFFF:GoldenHomeSkin.WHITE);
         Symbols.draw(getContext(),c,"bluetooth",topRects[3].left-30*k,85*k,26*k,bluetoothConnected?GoldenHomeSkin.WHITE:0x77FFFFFF);
         }
         for(int i=0;i<lightButtons.size();i++){
             HomeApps.Item it=lightButtons.get(i);RectF r=topRects[3+i];float focus=Ui.clamp(topFocus[3+i].value);
+            float scaling=(1+0.03f*focus)*pressScale(a11yId(Z_TOP,3+i));
+            c.save();c.scale(scaling,scaling,r.centerX(),r.centerY());
             if(focus>0.01f)goldSkin.focus(c,r,r.height()/2,k,focus);
             Symbols.draw(getContext(),c,it.symbol,r.centerX(),r.centerY(),27*k,it.kind==HomeApps.SETTINGS||focus>0.01f?GoldenHomeSkin.GOLD:GoldenHomeSkin.WHITE);
+            c.restore();
             if(focus>0.01f){
                 lTip.setColor(Ui.alpha(GoldenHomeSkin.GOLD,focus));
                 float center=Math.min(r.centerX(),CONTENT_R*k-lTip.measureText(it.label)/2);
@@ -4705,6 +4834,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         }
         cardText.setTextAlign(Paint.Align.LEFT);cardText.setTextSize(29*k);cardText.setColor(GoldenHomeSkin.WHITE);
         prayerTimePaint.setTextAlign(Paint.Align.RIGHT);prayerTimePaint.setColor(GoldenHomeSkin.WHITE);
+        goldSkin.countdown(c,r,k,goldCountdown);
         c.drawText(goldPrayerFooter,r.right-24*k,r.bottom-18*k,cardDimRight);cardDimRight.setTextSize(21*k);
     }
 

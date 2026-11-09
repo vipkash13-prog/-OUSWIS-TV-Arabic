@@ -1048,6 +1048,7 @@ public class SettingsActivity extends Activity {
                 SAVER_ROW = 9, ANDROID_APPS_ROW = 10, STATUS_ICONS_ROW = 11, RECENTS_ROW = 12, POWER_ON_ROW = 13,
                 WEATHER_ROW = 14, CITY_ROW = 15, FORECAST_ROW = 16, PLAYING_ROW = 17, HOME_ROW = Config.HOME_ASSISTANT ? 18 : -1,
                 PRAYER_ROW = Config.HOME_ASSISTANT ? 19 : 18;
+        private static final int PRAYER_ALERT_ROW=PRAYER_ROW+1,ISLAND_ROW=PRAYER_ROW+2;
         /** No "home" on Xiaomi TVs: their remote sends one Home press as a burst of presses (HomeView.BURST_MS). */
         private static final String[] RECENTS = RemoteKeys.XIAOMI ? new String[] {"off", "drawer"}
                 : new String[] {"off", "drawer", "home"};
@@ -1080,6 +1081,8 @@ public class SettingsActivity extends Activity {
             l.add(Ui.tr("Now Playing widget"));
             if (HOME_ROW >= 0) l.add("Home Assistant");
             l.add(Ui.tr("Prayer times widget"));
+            l.add(Ui.language.equals("ar")?"تنبيه اقتراب الصلاة":"Upcoming prayer notice");
+            l.add(Ui.language.equals("ar")?"تنبيهات الجزيرة":"Island notifications");
             l.add(Ui.tr("TMDB key"));
             l.add(Ui.tr("Watchmode key"));
             l.add(Ui.tr("Updates"));
@@ -1185,6 +1188,9 @@ public class SettingsActivity extends Activity {
             v[PLAYING_ROW] = onOff(Prefs.nowPlaying());
             if (HOME_ROW >= 0) v[HOME_ROW] = onOff(HomeAssistant.on(getContext()));
             v[PRAYER_ROW] = onOff(Prefs.prayers());
+            v[PRAYER_ALERT_ROW]=onOff(Prefs.prayerAlerts());
+            v[ISLAND_ROW]=Prefs.islandNotifications()&&!NowPlaying.allowed(getContext())
+                    ?(Ui.language.equals("ar")?"يلزم السماح بالتنبيهات":"Notification access required"):onOff(Prefs.islandNotifications());
             v[v.length - 3] = keyValue(Recs.key());
             v[v.length - 2] = keyValue(Recs.watchmodeKey());
             v[v.length - 1] = updatesValue();
@@ -1547,6 +1553,15 @@ public class SettingsActivity extends Activity {
                     if (!Prefs.homeAssistant()) HomeAssistant.forget(getContext());
                     return;
                 case PRAYER_ROW: Prefs.setPrayers(!Prefs.prayers()); break;
+                case PRAYER_ALERT_ROW: Prefs.setPrayerAlerts(!Prefs.prayerAlerts());break;
+                case ISLAND_ROW:
+                    Prefs.setIslandNotifications(!Prefs.islandNotifications());
+                    NowPlaying.refreshNotices(getContext());
+                    if(Prefs.islandNotifications()&&!NowPlaying.allowed(getContext())){
+                        try{activity.startActivity(new android.content.Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS));}
+                        catch(RuntimeException ignored){}
+                    }
+                    break;
                 default:
                     return;
             }

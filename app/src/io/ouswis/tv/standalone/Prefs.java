@@ -181,7 +181,7 @@ final class Prefs {
 
     /** "auto", "C" or "F". */
     static String temperature() {
-        String v = sp().getString("temperature", Config.TEMPERATURE).trim().toUpperCase(Locale.ROOT);
+        String v = sp().getString("temperature", "C").trim().toUpperCase(Locale.ROOT);
         return v.startsWith("F") ? "F" : v.startsWith("C") ? "C" : "auto";
     }
 
@@ -347,6 +347,13 @@ final class Prefs {
     static boolean quotes() { return false; }
     static boolean prayers() { return sp().getBoolean("prayers", true); }
     static void setPrayers(boolean on) { put("prayers", on); }
+    static long lastPrayerNotice(){return sp().getLong("lastPrayerNotice",0);}
+    static void notePrayerNotice(long at){sp().edit().putLong("lastPrayerNotice",at).apply();}
+    static boolean prayerAlerts(){return sp().getBoolean("prayerAlerts",false);}
+    static void setPrayerAlerts(boolean value){put("prayerAlerts",value);}
+    static boolean islandNotifications(){return sp().getBoolean("islandNotifications",false);}
+    static void setIslandNotifications(boolean value){put("islandNotifications",value);}
+
     static void setQuotes(boolean on) { put("quotes", on); }
 
     /** Your photos (Photos, sent from a computer) on the screensaver and behind the home screen, once imported. */

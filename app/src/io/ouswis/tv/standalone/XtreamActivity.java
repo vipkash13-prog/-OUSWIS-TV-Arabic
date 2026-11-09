@@ -344,7 +344,9 @@ public final class XtreamActivity extends Activity {
         if(visible.isEmpty())search.requestFocus();else list.requestFocus();
     }
 
+    private String streamEvent;
     private void stopPlayer() {
+        if(streamEvent!=null){IslandEvents.clear(this,streamEvent);streamEvent=null;}
         playbackGeneration++;
         cancelPlaybackTimeout();
         if(recovery!=null){main.removeCallbacks(recovery);recovery=null;}
@@ -407,6 +409,8 @@ public final class XtreamActivity extends Activity {
                     if(video==fitted)fitted.frameSize(width,height);
                 });
                 fitted.start();
+                streamEvent="stream:"+channels.get(index).id;
+                IslandEvents.post(this,streamEvent,channels.get(index).name);
             });
             fitted.setOnErrorListener((mp,what,extra)->{
                 if(video==fitted&&generation==playbackGeneration)

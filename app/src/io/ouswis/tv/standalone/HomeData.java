@@ -49,7 +49,7 @@ final class HomeData {
     // Both forecasts in one answer, the next 48 hours and today plus 5 days: Home Settings → Forecast switches without
     // asking again, and offline too.
     private static final String WEATHER_QUERY = "&current=temperature_2m,weather_code,is_day,relative_humidity_2m,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset,weather_code"
-            + "&hourly=temperature_2m,weather_code,is_day&timezone=auto&forecast_days=6&forecast_hours=48&wind_speed_unit=kmh";
+            + "&hourly=temperature_2m,weather_code,is_day,precipitation_probability&timezone=auto&forecast_days=6&forecast_hours=48&wind_speed_unit=kmh";
 
     private static String weatherPlace() {
         return Prefs.latitude() + "," + Prefs.longitude();
@@ -135,7 +135,7 @@ final class HomeData {
     }
 
     static final class Weather {
-        double temp = Double.NaN, max = Double.NaN, min = Double.NaN, humidity=Double.NaN, wind=Double.NaN;
+        double temp = Double.NaN, max = Double.NaN, min = Double.NaN, humidity=Double.NaN, wind=Double.NaN,rain=Double.NaN;
         int code = -1;
         boolean isDay = true;
         long sunrise, sunset;   // today's, in epoch ms
@@ -163,6 +163,10 @@ final class HomeData {
     final double[] changes = {Double.NaN, Double.NaN, Double.NaN, Double.NaN};
     volatile long pricesAt, weatherAt;
     volatile Weather weather = new Weather();
+    volatile EnvironmentReading airQuality;
+    private final ExecutorService airIo=Executors.newSingleThreadExecutor();
+    private volatile boolean fetchingAir;
+    private volatile long airAttempt;
 
     private final SharedPreferences cache;
     private final ExecutorService io = Executors.newSingleThreadExecutor();
@@ -176,6 +180,7 @@ final class HomeData {
     private HomeData(Context c) {
         cache = c.getSharedPreferences("homedata", Context.MODE_PRIVATE);
         inDollars = CURRENCY.equals(cache.getString("dollarsFor", ""));
+        try{airQuality=EnvironmentReading.parse(cache.getString("airQuality",""),cache.getString("airPlace",""),System.currentTimeMillis());}catch(Exception ignored){}
         try {
             if (Prefs.quotes()) {
                 String p = cache.getString("prices", null);
@@ -213,6 +218,7 @@ final class HomeData {
     /** Fetches whatever is stale. The screen calls this when it appears and every minute while it's visible. */
     void refreshIfStale() {
         long now = System.currentTimeMillis();
+        refreshAir(now);
         // A negative age (the TV's clock went back) counts as stale: otherwise the data would freeze.
         if (!fetchingPrices && coinCount() > 0 && (now - pricesAt > PRICES_EVERY || now < pricesAt) && !failedRecently(pricesFailedAt, now)) {
             fetchingPrices = true;
@@ -309,6 +315,23 @@ final class HomeData {
         if (found == 0) pricesAt = 0;   // cached in another currency (config changed): fetch again
     }
 
+    private void refreshAir(long now){
+        if(!Prefs.weather()||fetchingAir||(!weatherPlace().isEmpty()&&airQuality!=null&&airQuality.available(now,weatherPlace())&&now>=airAttempt&&now-airAttempt<3600_000L))return;
+        if(airAttempt>0&&now>=airAttempt&&now-airAttempt<60_000L)return;
+        fetchingAir=true;airAttempt=now;
+        airIo.execute(()->{
+            String place=weatherPlace();
+            try{
+                String body=get("https://air-quality-api.open-meteo.com/v1/air-quality?latitude="+Prefs.latitude()+"&longitude="+Prefs.longitude()+"&current=us_aqi&timezone=UTC");
+                EnvironmentReading value=EnvironmentReading.parse(body,place,System.currentTimeMillis());
+                if(place.equals(weatherPlace())){
+                    airQuality=value;cache.edit().putString("airQuality",body).putString("airPlace",place).apply();notifyListeners();
+                }
+            }catch(Exception e){AppLog.w("air quality unavailable");}
+            finally{fetchingAir=false;}
+        });
+    }
+    String aqi(){EnvironmentReading a=airQuality;return a!=null&&a.available(System.currentTimeMillis(),weatherPlace())?"AQI "+Math.round(a.aqi):"";}
     private static Weather parseWeather(String body) throws Exception {
         JSONObject o = new JSONObject(body);
         // Open-Meteo writes every time at the place's offset of now, even past a DST change (Berlin's sunrise after the
@@ -333,7 +356,12 @@ final class HomeData {
             JSONArray temps = hourly.getJSONArray("temperature_2m");
             JSONArray codes = hourly.getJSONArray("weather_code");
             JSONArray days = hourly.optJSONArray("is_day");
+            JSONArray probabilities=hourly.optJSONArray("precipitation_probability");
             long now = System.currentTimeMillis();
+            for(int i=0;probabilities!=null&&i<times.length();i++){
+                long at=localTime(times.getString(i),zone);
+                if(at<=now&&now<at+3600_000L){w.rain=EnvironmentReading.probability(probabilities.optDouble(i,Double.NaN));break;}
+            }
             for (int i = 0; i < times.length() && w.hours.size() < 6; i++) {
                 long at = localTime(times.getString(i), zone);
                 if (at <= now) continue;
@@ -502,6 +530,8 @@ final class HomeData {
         if (Double.isNaN(v)) return "—";
         return Math.round(fahrenheit() ? v * 9 / 5 + 32 : v) + "°";
     }
+
+    static String degreesWithUnit(double value){return degrees(value)+(fahrenheit()?"F":"C");}
 
     private static boolean fahrenheit() {
         String unit = Prefs.temperature();

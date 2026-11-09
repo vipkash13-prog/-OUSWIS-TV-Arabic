@@ -1,0 +1,161 @@
+name: OUSWIS TV preview-16 enhancements
+on:
+  push:
+    branches: [feature/preview16-polish]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: ouswis-polish-preview
+  cancel-in-progress: false
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Android SDK
+        shell: bash
+        run: |
+          set +o pipefail
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$RUNNER_TEMP/sdk" "build-tools;34.0.0" "platforms;android-34" > /dev/null
+          echo "ANDROID_HOME=$RUNNER_TEMP/sdk" >> "$GITHUB_ENV"
+      - name: Restore the permanent repository signing key
+        env:
+          KEY_PASS: ${{ secrets.OUSWIS_SIGNING_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KEY_PASS" || { echo "OUSWIS_SIGNING_PASSWORD is required. No replacement key will be generated."; exit 1; }
+          test -s signing/ouswis-release.jks.b64 || { echo "Permanent signing key is missing. Restore it; do not create a new one."; exit 1; }
+          umask 077
+          base64 --decode signing/ouswis-release.jks.b64 > "$RUNNER_TEMP/ouswis-official.keystore"
+          derived=$(printf '%s' "$KEY_PASS" | sha256sum | cut -d ' ' -f1)
+          echo "::add-mask::$derived"
+          echo "FREEMYTV_KEYSTORE=$RUNNER_TEMP/ouswis-official.keystore" >> "$GITHUB_ENV"
+          echo "FREEMYTV_KEYSTORE_PASS=$derived" >> "$GITHUB_ENV"
+      - name: Verify new upgrade number
+        run: grep -q 'android:versionCode="10076"' app/AndroidManifest.xml
+      - name: Check translations and build upgrade baseline
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/translate.py --check
+          node tests/ArabicI18nTest.js
+          bash tools/test-update-release.sh
+          echo "PRIVATE_RELEASES=$(gh api "repos/$GITHUB_REPOSITORY" --jq .private)" >> "$GITHUB_ENV"
+          published_tag=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)
+          published_code=$(python3 -c 'import re,sys; print(re.fullmatch(r"v1\.0-official-(\d+)-\d+-\d+",sys.argv[1])[1])' "$published_tag")
+          gh release download "$published_tag" --repo "$GITHUB_REPOSITORY" --pattern OUSWIS-TV-1.0.apk --output "$RUNNER_TEMP/published.apk"
+          published_package=$("$ANDROID_HOME/build-tools/34.0.0/aapt2" dump badging "$RUNNER_TEMP/published.apk" | sed -n "s/^package: name='\([^']*\)'.*/\1/p")
+          if [ "$published_package" = io.freemytv ]; then
+            echo "INAPP_EXPECT_LEGACY_REJECTION=1" >> "$GITHUB_ENV"
+          else
+            test "$published_package" = io.ouswis.tv.standalone
+          fi
+          gh release download matches-preview-1 --repo "$GITHUB_REPOSITORY" --pattern OUSWIS-TV-preview.apk --output "$RUNNER_TEMP/legacy.apk"
+          printf '474cb5b4b38c7f9e32c9077e05368635b42d6e13d4952e60d52d3a3c784db120  %s\n' "$RUNNER_TEMP/legacy.apk" | sha256sum --check
+          echo "LEGACY_APK=$RUNNER_TEMP/legacy.apk" >> "$GITHUB_ENV"
+          echo "INAPP_RELEASE_CODE=$published_code" >> "$GITHUB_ENV"
+          export INAPP_RELEASE_CODE="$published_code"
+          cp app/AndroidManifest.xml "$RUNNER_TEMP/AndroidManifest.xml"
+          trap 'cp "$RUNNER_TEMP/AndroidManifest.xml" app/AndroidManifest.xml' EXIT
+          python3 - <<'PYCODE'
+          import re
+          from pathlib import Path
+          p = Path('app/AndroidManifest.xml')
+          s = p.read_text()
+          code = int(re.search(r'android:versionCode="(\d+)"', s)[1])
+          assert code >= 10003
+          import os
+          prior = int(os.environ['INAPP_RELEASE_CODE']) - 1
+          assert 10003 <= prior < code
+          p.write_text(re.sub(r'android:versionCode="\d+"', f'android:versionCode="{prior}"', s, count=1))
+          PYCODE
+          ./build.sh --generic --release
+          cp FreeMyTV.apk "$RUNNER_TEMP/previous.apk"
+          if [ "$(gh api "repos/$GITHUB_REPOSITORY" --jq .private)" = true ]; then
+            cp "$RUNNER_TEMP/published.apk" "$RUNNER_TEMP/previous.apk"
+          fi
+      - name: Build final signed OUSWIS TV 1.0
+        run: |
+          ./build.sh --generic --release
+          python3 tools/verify-release-apk.py FreeMyTV.apk
+          bash tools/test-remote.sh
+          bash tools/test-order.sh
+          bash tools/test-video-fit.sh
+          bash tools/test-xtream-catalog.sh
+          bash tools/test-matches-feed.sh --live
+          bash tools/test-home-enhancements.sh
+          bash tools/test-saudi-dates.sh
+          bash tools/test-prayer-times.sh --live
+      - name: Playback test image reader
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg > /dev/null
+          python3 -m pip install --target "$RUNNER_TEMP/video-test-libs" Pillow
+          echo "PYTHONPATH=$RUNNER_TEMP/video-test-libs" >> "$GITHUB_ENV"
+          ffmpeg -version > /dev/null
+      - name: Enable emulator hardware acceleration
+        run: sudo chmod 666 /dev/kvm
+      - name: Actual Android 14 installation and update test
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: default
+          arch: x86_64
+          ram-size: 4096M
+          heap-size: 512M
+          disable-animations: true
+          script: |
+            bash tools/test-install-upgrade.sh "$RUNNER_TEMP/previous.apk" FreeMyTV.apk install-evidence
+            python3 tools/test-feature-entrypoints.py install-evidence
+            python3 tools/test-prayer-widget.py install-evidence
+            python3 tools/test-gold-home.py install-evidence
+            python3 tools/test-polish-ui.py install-evidence
+            python3 tools/test-live-playback.py install-evidence
+            python3 tools/test-coexistence.py verify install-evidence
+      - name: Native 4K Arabic remote test
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: default
+          arch: x86_64
+          profile: tv_4k
+          avd-name: ouswis-4k
+          ram-size: 4096M
+          heap-size: 512M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -skin 3840x2160
+          script: |
+            python3 tools/test-card-backgrounds.py FreeMyTV.apk install-evidence
+            python3 tools/test-rtl-4k.py install-evidence
+            python3 tools/test-gold-home.py install-evidence
+            python3 tools/test-polish-ui.py install-evidence
+      - name: Save install evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: OUSWIS-TV-Android14-install-evidence
+          path: install-evidence/
+          if-no-files-found: warn
+      - name: Publish as a pre-release (never the latest release)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          shopt -s nullglob
+          cp FreeMyTV.apk OUSWIS-TV-preview.apk
+          tag="polish-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ID}"
+          gh release create "$tag" OUSWIS-TV-preview.apk install-evidence/*.log install-evidence/*.png \
+            --prerelease --target "$GITHUB_SHA" --title "OUSWIS TV 1.0 — preview-16 enhancements" \
+            --notes "From approved preview-16 on feature/preview16-polish, versionCode 10076. Emulator tests passed; not tested on a physical MECOOL KM2 Plus."
+          echo "https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/OUSWIS-TV-preview.apk" >> "$GITHUB_STEP_SUMMARY"
+      - name: Remove runner signing key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/ouswis-official.keystore"

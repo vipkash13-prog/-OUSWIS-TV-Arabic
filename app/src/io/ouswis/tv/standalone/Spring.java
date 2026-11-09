@@ -4,6 +4,9 @@ package io.ouswis.tv.standalone;
 final class Spring {
     float value, velocity, target;
     private final float response, damping;
+    private boolean timed;
+    private float elapsed,start,lastTarget;
+    static Spring focus(float initial){Spring s=new Spring(0.15f,1,initial);s.timed=true;s.lastTarget=initial;return s;}
 
     Spring(float response, float damping, float initial) {
         this.response = response;
@@ -13,11 +16,18 @@ final class Spring {
 
     void snap(float v) {
         value = target = v;
-        velocity = 0;
+        velocity = 0;elapsed=0;start=lastTarget=v;
     }
 
     /** Advances `dt` seconds; returns true while still moving. */
     boolean step(float dt) {
+        if(timed){
+            if(target!=lastTarget){start=value;lastTarget=target;elapsed=0;}
+            if(value==target)return false;
+            elapsed+=Math.max(0,dt);
+            float t=Math.min(1,(elapsed+0.000001f)/0.15f),e=t*t*(3-2*t);
+            value=t>=1?target:start+(target-start)*e;return true;
+        }
         if (settled()) {
             value = target;
             velocity = 0;

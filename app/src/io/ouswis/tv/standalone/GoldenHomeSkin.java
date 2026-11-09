@@ -20,6 +20,7 @@ final class GoldenHomeSkin {
     static final int GOLD=0xFFFFD384,WHITE=0xFFF4F1E9;
     private final Paint image=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
     private final Paint glass=new Paint(Paint.ANTI_ALIAS_FLAG),line=new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint countdown=new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint temperature=new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint header=new Paint(Paint.ANTI_ALIAS_FLAG),clock=new Paint(Paint.ANTI_ALIAS_FLAG),small=new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF box=new RectF(),art=new RectF();
@@ -48,6 +49,7 @@ final class GoldenHomeSkin {
     void resize(float k,float width,float height){
         glass.setShader(new LinearGradient(0,0,width,height,new int[]{0xED29313E,0xF2090D16,0xF5080B11},new float[]{0,0.45f,1},Shader.TileMode.CLAMP));
         header.setTypeface(Ui.semibold);header.setTextSize(25*k);header.setColor(WHITE);
+        countdown.setTypeface(Ui.semibold);countdown.setTextSize(21*k);countdown.setColor(GOLD);
         clock.setTypeface(Ui.light);clock.setTextSize(86*k);clock.setColor(WHITE);
         clock.setTextAlign(Paint.Align.CENTER);clock.setFontFeatureSettings("'tnum'");
         clock.setShadowLayer(3*k,0,2*k,0x88000000);
@@ -72,7 +74,7 @@ final class GoldenHomeSkin {
     void focus(Canvas c,RectF r,float radius,float k,float focus){
         for(int i=3;i>=1;i--){
             box.set(r);box.inset(-i*2*k,-i*2*k);
-            line.setStrokeWidth((3+i)*k);line.setColor(Ui.alpha(GOLD,focus*(0.09f-0.02f*i)));
+            line.setStrokeWidth((4+i)*k);line.setColor(Ui.alpha(GOLD,focus*(0.16f-0.03f*i)));
             c.drawRoundRect(box,radius+i*2*k,radius+i*2*k,line);
         }
         line.setColor(Ui.alpha(0xFFFFE9B4,focus));line.setStrokeWidth(3*k);
@@ -81,6 +83,7 @@ final class GoldenHomeSkin {
     void highlight(Canvas c,RectF r,float k){
         Paint.Style style=line.getStyle();line.setStyle(Paint.Style.FILL);line.setColor(0xFFFFD77C);
         c.drawRoundRect(r,15*k,15*k,line);line.setStyle(style);
+        focus(c,r,15*k,k,0.35f);
     }
     void download(Canvas c,float cx,float cy,float size,int color){
         float u=size/2;line.setColor(color);line.setStrokeWidth(size/14);
@@ -146,6 +149,16 @@ final class GoldenHomeSkin {
         c.drawText(value,left,baseline,p);p.setTextScaleX(1);
     }
     /** Jeddah's bridge, fading into the weather card's lower left as in the approved design. */
+    void countdown(Canvas c,RectF r,float k,String text){
+        if(text.isEmpty())return;
+        box.set(r.right-270*k,r.bottom-108*k,r.right-24*k,r.bottom-42*k);
+        line.setStyle(Paint.Style.FILL);line.setColor(0xEC080B12);c.drawRoundRect(box,14*k,14*k,line);
+        line.setStyle(Paint.Style.STROKE);line.setStrokeWidth(k);line.setColor(Ui.alpha(GOLD,0.65f));c.drawRoundRect(box,14*k,14*k,line);
+        countdown.setTextAlign(Paint.Align.CENTER);
+        float size=countdown.getTextSize(),width=box.width()-12*k,measured=countdown.measureText(text);
+        if(measured>width)countdown.setTextSize(size*width/measured);
+        c.drawText(text,box.centerX(),box.centerY()+Ui.halfCap(countdown),countdown);countdown.setTextSize(size);
+    }
     void weatherArt(Canvas c,RectF r,float k){
         if(weatherPhoto==null)return;
         float w=r.width()*0.46f,h=w*weatherPhoto.getHeight()/weatherPhoto.getWidth();

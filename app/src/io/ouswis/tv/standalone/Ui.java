@@ -528,6 +528,12 @@ final class Ui {
         return clockPattern("format|h:mm", "Hm", "hmma").format(now);
     }
 
+    static String clockWithPeriod(long now){
+        String value=clock(now);
+        String period=new java.text.SimpleDateFormat("a",locale()).format(new Date(now));
+        return value.contains(period)?value:value+" "+period;
+    }
+
     /** "5:21 PM" (sunrise and sunset), following the clock's 12/24-hour choice. */
     static String time(long at) {
         return once(h24() ? "time24" : "time", at, () -> clockPattern("format|h:mm a", "Hm", "hmma").format(at));

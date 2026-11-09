@@ -26,13 +26,32 @@ import java.util.Objects;
 /**
  * What any app is playing (title, artist or channel, the app), from the media session each app publishes for the remote's
  * play/pause and the Assistant: one way for music, videos, radio and live streams alike. Reading the sessions needs this
- * notification listener allowed (HomeMode does it while Home Settings' Now Playing widget is on); it never reads a
- * notification and asks the system to unbind it at once, so no process stays up for it.
+ * notification listener allowed. Notification titles are read only with the separate optional Island notifications
+ * setting; otherwise the listener unbinds immediately, retaining the existing media-session behavior.
  */
 public class NowPlaying extends NotificationListenerService {
 
+    private static NowPlaying connected;
     @Override public void onListenerConnected() {
-        requestUnbind();
+        connected=this;
+        if(!Prefs.islandNotifications()){requestUnbind();connected=null;}
+    }
+    @Override public void onListenerDisconnected(){if(connected==this)connected=null;}
+    @Override public void onDestroy(){if(connected==this)connected=null;super.onDestroy();}
+
+    @Override public void onNotificationPosted(android.service.notification.StatusBarNotification status){
+        if(!Prefs.islandNotifications()||status==null||getPackageName().equals(status.getPackageName()))return;
+        android.app.Notification n=status.getNotification();
+        if(n==null||n.extras==null||android.app.Notification.CATEGORY_TRANSPORT.equals(n.category))return;
+        CharSequence title=n.extras.getCharSequence(android.app.Notification.EXTRA_TITLE);
+        if(title!=null)IslandEvents.post(this,"notification:"+status.getKey(),title.toString());
+    }
+    @Override public void onNotificationRemoved(android.service.notification.StatusBarNotification status){
+        if(status!=null&&Prefs.islandNotifications())IslandEvents.clear(this,"notification:"+status.getKey());
+    }
+    static void refreshNotices(Context c){
+        if(Prefs.islandNotifications()&&allowed(c)){try{requestRebind(component(c));}catch(RuntimeException ignored){}}
+        else if(!Prefs.islandNotifications()&&connected!=null){connected.requestUnbind();connected=null;}
     }
 
     private static final float[] STILL = {0.55f, 1, 0.75f}, PERIOD_MS = {170, 230, 200};
@@ -92,7 +111,7 @@ public class NowPlaying extends NotificationListenerService {
         }
 
         void start() {
-            if (on || !Prefs.nowPlaying()) return;   // off in Home Settings: nothing watched at all
+            if (on || (!Prefs.nowPlaying()&&!Prefs.islandNotifications())) return;   // off in Home Settings: nothing watched at all
             MediaSessionManager m = context.getSystemService(MediaSessionManager.class);
             try {
                 m.addOnActiveSessionsChangedListener(this, component(context), handler);
@@ -101,7 +120,7 @@ public class NowPlaying extends NotificationListenerService {
             } catch (SecurityException e) {
                 // On, but not allowed (it was on when Original or the watchdog took it back): asked once, as Free My TV
                 // mode's switch itself never allows it. A TV that refused it shows the row unavailable instead.
-                if (!asked && Capabilities.adb(context) && !Capabilities.refused(context, Capabilities.LISTENER)) {
+                if (Prefs.nowPlaying()&&!asked && Capabilities.adb(context) && !Capabilities.refused(context, Capabilities.LISTENER)) {
                     asked = true;
                     HomeMode.nowPlayingAccess(context);
                 }
