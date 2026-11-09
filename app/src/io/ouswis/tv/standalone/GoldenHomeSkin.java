@@ -80,10 +80,24 @@ final class GoldenHomeSkin {
         line.setColor(Ui.alpha(0xFFFFE9B4,focus));line.setStrokeWidth(3*k);
         c.drawRoundRect(r,radius,radius,line);
     }
+    /** The next prayer: a transparent pill inside a glowing gold line (the approved design), not a solid fill. */
     void highlight(Canvas c,RectF r,float k){
-        Paint.Style style=line.getStyle();line.setStyle(Paint.Style.FILL);line.setColor(0xFFFFD77C);
-        c.drawRoundRect(r,15*k,15*k,line);line.setStyle(style);
-        focus(c,r,15*k,k,0.35f);
+        Paint.Style style=line.getStyle();float width=line.getStrokeWidth();int color=line.getColor();
+        line.setStyle(Paint.Style.FILL);line.setColor(Ui.alpha(GOLD,0.10f));c.drawRoundRect(r,15*k,15*k,line);
+        line.setStyle(Paint.Style.STROKE);
+        for(int i=3;i>=1;i--){line.setStrokeWidth((1.6f+i*3.2f)*k);line.setColor(Ui.alpha(GOLD,0.07f+0.03f*(4-i)));c.drawRoundRect(r,15*k,15*k,line);}
+        line.setStrokeWidth(2f*k);line.setColor(0xFFFFC857);c.drawRoundRect(r,15*k,15*k,line);
+        line.setStyle(style);line.setStrokeWidth(width);line.setColor(color);
+    }
+    /** The weather card's lower strip: faint glass inside a gold outline with a soft glow. */
+    void statBar(Canvas c,RectF r,float k){
+        Paint.Style style=line.getStyle();float width=line.getStrokeWidth();int color=line.getColor();
+        float radius=22*k;
+        line.setStyle(Paint.Style.FILL);line.setColor(0x26000000);c.drawRoundRect(r,radius,radius,line);
+        line.setStyle(Paint.Style.STROKE);
+        for(int i=2;i>=1;i--){line.setStrokeWidth((1.4f+i*3f)*k);line.setColor(Ui.alpha(GOLD,0.06f+0.03f*(3-i)));c.drawRoundRect(r,radius,radius,line);}
+        line.setStrokeWidth(1.6f*k);line.setColor(Ui.alpha(GOLD,0.9f));c.drawRoundRect(r,radius,radius,line);
+        line.setStyle(style);line.setStrokeWidth(width);line.setColor(color);
     }
     void download(Canvas c,float cx,float cy,float size,int color){
         float u=size/2;line.setColor(color);line.setStrokeWidth(size/14);
@@ -149,14 +163,19 @@ final class GoldenHomeSkin {
         c.drawText(value,left,baseline,p);p.setTextScaleX(1);
     }
     /** Jeddah's bridge, fading into the weather card's lower left as in the approved design. */
+    /** The time to the next prayer: a small transparent box with a gold line, in the free strip beside the title. */
     void countdown(Canvas c,RectF r,float k,String text){
         if(text.isEmpty())return;
-        box.set(r.right-270*k,r.top+68*k,r.right-24*k,r.top+134*k);
-        line.setStyle(Paint.Style.FILL);line.setColor(0xEC080B12);c.drawRoundRect(box,14*k,14*k,line);
-        line.setStyle(Paint.Style.STROKE);line.setStrokeWidth(k);line.setColor(Ui.alpha(GOLD,0.65f));c.drawRoundRect(box,14*k,14*k,line);
+        box.set(r.left+318*k,r.top+24*k,r.left+318*k+205*k,r.top+68*k);
+        Paint.Style style=line.getStyle();float width=line.getStrokeWidth();int color=line.getColor();
+        line.setStyle(Paint.Style.STROKE);
+        line.setStrokeWidth(5*k);line.setColor(Ui.alpha(GOLD,0.12f));c.drawRoundRect(box,16*k,16*k,line);
+        line.setStrokeWidth(1.4f*k);line.setColor(Ui.alpha(GOLD,0.9f));c.drawRoundRect(box,16*k,16*k,line);
+        line.setStyle(style);line.setStrokeWidth(width);line.setColor(color);
         countdown.setTextAlign(Paint.Align.CENTER);
-        float size=countdown.getTextSize(),width=box.width()-12*k,measured=countdown.measureText(text);
-        if(measured>width)countdown.setTextSize(size*width/measured);
+        float size=countdown.getTextSize();countdown.setTextSize(19*k);
+        float fit=box.width()-16*k,measured=countdown.measureText(text);
+        if(measured>fit)countdown.setTextSize(19*k*fit/measured);
         c.drawText(text,box.centerX(),box.centerY()+Ui.halfCap(countdown),countdown);countdown.setTextSize(size);
     }
     void weatherArt(Canvas c,RectF r,float k){

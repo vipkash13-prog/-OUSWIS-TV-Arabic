@@ -141,6 +141,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private Paint prayerLinePaint;
     private float prayerLineWidth;
     private String goldHumidity="",goldWind="",goldRain="",goldAqi="",goldUpdated="",goldCountdown="";
+    private final String[] goldStatLabel=new String[5],goldStatValue=new String[5];
     private EnvironmentReading textAir;
     private long textWeatherAt=-1,textMetaMinute=-1,prayerNoticeAt=-1;
     private final Spring press=Spring.focus(0);
@@ -2335,14 +2336,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             }
         }
         if(gold()){
-            cardDim.setTextSize(20*k);
-            c.drawText(goldWind,hx,r.top+252*k,cardDim);
-            c.drawText(goldHumidity,r.right-34*k-cardDim.measureText(goldHumidity),r.top+252*k,cardDim);
-            cardDim.setTextSize(17*k);
-            c.drawText(goldRain,hx,r.top+294*k,cardDim);
-            c.drawText(goldAqi,hx+155*k,r.top+294*k,cardDim);
-            c.drawText(goldUpdated,r.right-28*k-cardDim.measureText(goldUpdated),r.top+294*k,cardDim);
-            cardDim.setTextSize(23*k);
+            drawGoldStats(c,r,split);
             return;
         }
         float sx = hx, base = r.top + 258 * k;
@@ -2376,10 +2370,43 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             goldAqi=data.aqi();
             goldUpdated=data.weatherAt<=0?"":(ar?"تحديث ":"Updated ")+Ui.time(data.weatherAt);
             goldHumidity=(ar?"الرطوبة: ":"Humidity: ")+(Double.isNaN(wx.humidity)?"—":String.format(Ui.locale(),"%.0f%%",wx.humidity));
+            boolean fresh=data.weatherAt>0&&System.currentTimeMillis()-data.weatherAt<=2*3600_000L;
+            goldStatLabel[0]=ar?"جودة الهواء":"Air quality";goldStatValue[0]=data.aqi().isEmpty()?"—":data.aqi();
+            goldStatLabel[1]=ar?"احتمال المطر":"Rain chance";goldStatValue[1]=Double.isNaN(wx.rain)||!fresh?"—":Math.round(wx.rain)+"%";
+            goldStatLabel[2]=ar?"الرياح":"Wind";goldStatValue[2]=Double.isNaN(wx.wind)?"—":String.format(Ui.locale(),"%.0f",wx.wind)+(ar?" كم/س":" km/h");
+            goldStatLabel[3]=ar?"الرطوبة":"Humidity";goldStatValue[3]=Double.isNaN(wx.humidity)?"—":String.format(Ui.locale(),"%.0f%%",wx.humidity);
+            goldStatLabel[4]=ar?"آخر تحديث":"Last update";goldStatValue[4]=data.weatherAt<=0?"—":Ui.time(data.weatherAt);
             goldWind=(ar?"الرياح: ":"Wind: ")+(Double.isNaN(wx.wind)?"—":String.format(Ui.locale(),"%.0f",wx.wind)+(ar?" كم/س":" km/h"));
             sunriseText = Ui.trf("Sunrise {time}", "time", Ui.time(wx.sunrise));
             sunsetText = Ui.trf("Sunset {time}", "time", Ui.time(wx.sunset));
         }
+    }
+
+    /**
+     * The weather card's lower strip: five equal columns (label over a larger value) inside one gold-outlined glass bar,
+     * in the approved order (right to left in Arabic: last update, humidity, wind, rain chance, air quality).
+     */
+    private void drawGoldStats(Canvas c,RectF r,float split){
+        float left=split+18*k,right=r.right-26*k,bottom=r.bottom-22*k,top=bottom-84*k;
+        goldRow.set(left,top,right,bottom);
+        goldSkin.statBar(c,goldRow,k);
+        float colW=(right-left)/5f;
+        Paint.Align labelAlign=cardDim.getTextAlign();float labelSize=cardDim.getTextSize(),valueSize=hourTemp.getTextSize();
+        cardDim.setTextAlign(Paint.Align.CENTER);cardDim.setTextSize(18*k);hourTemp.setTextSize(27*k);
+        boolean rtl=Ui.isRtl();
+        for(int col=0;col<5;col++){
+            int i=rtl?4-col:col;   // Arabic: index 4 (last update) at the right edge, as in the reference
+            float cx=left+colW*(col+0.5f),fit=colW-14*k;
+            if(col>0){fill.setShader(null);fill.setColor(Ui.alpha(GoldenHomeSkin.GOLD,0.35f));c.drawRect(left+colW*col-0.5f*k,top+14*k,left+colW*col+0.5f*k,bottom-14*k,fill);}
+            drawFit(c,goldStatLabel[i],cx,top+31*k,fit,cardDim);
+            drawFit(c,goldStatValue[i],cx,top+68*k,fit,hourTemp);
+        }
+        cardDim.setTextAlign(labelAlign);cardDim.setTextSize(labelSize);hourTemp.setTextSize(valueSize);
+    }
+    private static void drawFit(Canvas c,String text,float cx,float base,float width,Paint p){
+        float measured=p.measureText(text);
+        p.setTextScaleX(measured>width?width/measured:1f);
+        c.drawText(text,cx,base,p);p.setTextScaleX(1f);
     }
 
     private float sunItem(Canvas c, String symbol, String label, float x, float base) {
@@ -4827,7 +4854,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         for(int i=0;i<5;i++){
             float base=r.top+(94+i*38)*k;
             if(i==next){goldRow.set(x-8*k,base-29*k,colRight+8*k,base+8*k);goldSkin.highlight(c,goldRow,k);}
-            int color=i==next?0xFF191207:GoldenHomeSkin.WHITE;
+            int color=GoldenHomeSkin.WHITE;
             cardText.setColor(color);prayerTimePaint.setColor(color);
             c.drawText(goldPrayerNames[i],x+6*k,base,cardText);   // the approved design: name left, time right
             c.drawText(goldPrayerTimes[i],colRight-6*k,base,prayerTimePaint);
