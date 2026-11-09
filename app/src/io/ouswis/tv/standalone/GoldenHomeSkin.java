@@ -151,7 +151,7 @@ final class GoldenHomeSkin {
     /** Jeddah's bridge, fading into the weather card's lower left as in the approved design. */
     void countdown(Canvas c,RectF r,float k,String text){
         if(text.isEmpty())return;
-        box.set(r.right-270*k,r.bottom-108*k,r.right-24*k,r.bottom-42*k);
+        box.set(r.right-270*k,r.top+68*k,r.right-24*k,r.top+134*k);
         line.setStyle(Paint.Style.FILL);line.setColor(0xEC080B12);c.drawRoundRect(box,14*k,14*k,line);
         line.setStyle(Paint.Style.STROKE);line.setStrokeWidth(k);line.setColor(Ui.alpha(GOLD,0.65f));c.drawRoundRect(box,14*k,14*k,line);
         countdown.setTextAlign(Paint.Align.CENTER);
