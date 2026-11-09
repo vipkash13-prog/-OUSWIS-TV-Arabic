@@ -126,6 +126,7 @@ jobs:
             python3 tools/test-prayer-widget.py install-evidence
             python3 tools/test-gold-home.py install-evidence
             python3 tools/test-live-playback.py install-evidence
+            python3 tools/test-card-backgrounds.py FreeMyTV.apk install-evidence
             python3 tools/test-coexistence.py verify install-evidence
       - name: Native 4K Arabic remote test
         uses: reactivecircus/android-emulator-runner@v2

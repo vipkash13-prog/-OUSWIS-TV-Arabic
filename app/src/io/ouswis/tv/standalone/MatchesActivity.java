@@ -78,9 +78,10 @@ public final class MatchesActivity extends Activity {
         window.setGravity(Gravity.CENTER_HORIZONTAL);
         int pad=Math.round(18*scale);
         window.setPadding(pad,pad,pad,Math.round(10*scale));
-        GradientDrawable bg=new GradientDrawable(GradientDrawable.Orientation.TL_BR,new int[]{0xFF14151A,0xFF050507});
+        GradientDrawable bg=new GradientDrawable(GradientDrawable.Orientation.TL_BR,new int[]{0x7714151A,0x99050507});
         bg.setCornerRadius(34*scale);bg.setStroke(Math.max(1,Math.round(1.5f*scale)),0x55FFC857);
-        window.setBackground(bg);
+        window.setBackground(new android.graphics.drawable.LayerDrawable(new android.graphics.drawable.Drawable[]{
+                CardBackdrop.async(this,"themes/card-matches.jpg",true,34*scale),bg}));
         window.setClickable(true);
         heading=new TextView(this);
         heading.setTextColor(0xFFFFFFFF);heading.setTextSize(22*scale);heading.setGravity(Gravity.CENTER);

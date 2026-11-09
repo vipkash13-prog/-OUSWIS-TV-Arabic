@@ -85,7 +85,7 @@ public final class XtreamActivity extends Activity {
     }
     private void shell() {
         root=new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(Ui.pageBackground(this)); setContentView(root);
+        root.setBackground(CardBackdrop.async(this,"themes/card-live.jpg",Ui.pageDark(this),0)); setContentView(root);
     }
     private void login() {
         // Editing an account must detach the old catalogue job from the login screen.

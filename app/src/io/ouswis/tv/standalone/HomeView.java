@@ -2304,7 +2304,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     /** Jeddah prayer times, with the same glass and day/night text as the weather card. */
     private void drawPrayerCard(Canvas c, RectF r) {
-        drawerCard(c, r);
+        if(gold())goldSkin.prayerCard(c,r,k);else drawerCard(c,r);
         if (Ui.LEGACY) prayerSnapshot.draw(c, r, drawerCardsKey(), cc -> drawPrayers(cc, r));
         else drawPrayers(c, r);
     }

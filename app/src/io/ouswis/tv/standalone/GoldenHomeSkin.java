@@ -28,6 +28,7 @@ final class GoldenHomeSkin {
     private final TextPaint datePaint=new TextPaint(Paint.ANTI_ALIAS_FLAG),hijriPaint=new TextPaint(Paint.ANTI_ALIAS_FLAG);
     private final SaudiDates dates=new SaudiDates();
     private StaticLayout gregorianLayout,hijriLayout;
+    private CardBackdrop prayerBackdrop;
     private Bitmap wallpaper,prayerArt,weatherPhoto,calendarIcon,mosqueIcon;
     private long minute=-1;
     private int generation=-1;
@@ -35,6 +36,7 @@ final class GoldenHomeSkin {
     void load(Context context){
         wallpaper=decode(context,"themes/gold-sunset.png");
         prayerArt=decode(context,"themes/gold-prayers.png");
+        prayerBackdrop=CardBackdrop.load(context,"themes/card-prayer.jpg",true,0);
         weatherPhoto=decode(context,"themes/gold-weather.png");
         calendarIcon=decode(context,"themes/gold-calendar.png");
         mosqueIcon=decode(context,"themes/gold-mosque.png");
@@ -111,7 +113,9 @@ final class GoldenHomeSkin {
                 .setTextDirection(rtl?TextDirectionHeuristics.RTL:TextDirectionHeuristics.LTR).build();
     }
     /** Shared local-coordinate black glass for only the weather and prayer cards. */
-    void informationCard(Canvas c,RectF r,float k){
+    void informationCard(Canvas c,RectF r,float k){informationCard(c,r,k,false);}
+    void prayerCard(Canvas c,RectF r,float k){informationCard(c,r,k,true);}
+    private void informationCard(Canvas c,RectF r,float k,boolean prayer){
         float radius=30*k;
         // Layered strokes make a soft shadow/glow without off-screen blur layers on older TVs.
         line.setShader(null);
@@ -123,6 +127,7 @@ final class GoldenHomeSkin {
         cardGlass.getShader().setLocalMatrix(cardMatrix);cardRim.getShader().setLocalMatrix(cardMatrix);
         cardReflection.getShader().setLocalMatrix(cardMatrix);
         c.drawRoundRect(r,radius,radius,cardGlass);
+        if(prayer&&prayerBackdrop!=null)prayerBackdrop.drawIn(c,r,radius);
         c.drawRoundRect(r,radius,radius,cardReflection);
         for(int i=4;i>=1;i--){
             box.set(r);box.inset(-i*k,-i*k);

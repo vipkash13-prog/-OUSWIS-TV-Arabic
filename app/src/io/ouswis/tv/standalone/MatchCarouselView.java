@@ -156,7 +156,7 @@ public final class MatchCarouselView extends View {
     private void glass(Canvas canvas,float cw,float ch,boolean focused){
         float r=Math.min(cw,ch)*0.09f;
         box.set(0,0,cw,ch);
-        fill.setShader(new LinearGradient(0,0,cw,ch,new int[]{0xFF22242B,0xFF111218,0xFF050507},new float[]{0f,.55f,1f},Shader.TileMode.CLAMP));
+        fill.setShader(new LinearGradient(0,0,cw,ch,new int[]{0xAA22242B,0xAA111218,0xBB050507},new float[]{0f,.55f,1f},Shader.TileMode.CLAMP));
         canvas.drawRoundRect(box,r,r,fill);
         fill.setShader(new LinearGradient(0,0,0,ch*0.45f,0x30FFFFFF,0x00FFFFFF,Shader.TileMode.CLAMP));
         canvas.drawRoundRect(box,r,r,fill);
