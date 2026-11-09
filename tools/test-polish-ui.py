@@ -13,7 +13,14 @@ def adb(*args,binary=False):
     r=subprocess.run([ADB,*args],capture_output=True,check=True,timeout=90)
     return r.stdout if binary else r.stdout.decode('utf-8','replace').replace('\r','')
 def ui():
-    adb('shell','uiautomator','dump','/data/local/tmp/polish.xml');return ET.fromstring(adb('shell','cat','/data/local/tmp/polish.xml'))
+    for attempt in range(3):
+        try:
+            adb('shell','rm','-f','/data/local/tmp/polish.xml')
+            adb('shell','uiautomator','dump','/data/local/tmp/polish.xml')
+            return ET.fromstring(adb('shell','cat','/data/local/tmp/polish.xml'))
+        except (subprocess.CalledProcessError, ET.ParseError):
+            if attempt==2:raise
+            time.sleep(1)
 def shot(name): (OUT/name).write_bytes(adb('exec-out','screencap','-p',binary=True))
 def note(text):
     print(text,flush=True)
