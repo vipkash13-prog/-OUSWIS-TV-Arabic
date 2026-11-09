@@ -4850,6 +4850,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         c.drawText(Ui.tr("Prayer times"),x+56*k,r.top+48*k,cardTitle);
         cardDimRight.setTextSize(18*k);c.drawText(goldPrayerPlace,r.right-24*k,r.top+48*k,cardDimRight);
         int next=day==null?-1:day.next(System.currentTimeMillis());
+        if(day!=null&&next<0)next=0; // after Isha the next prayer is tomorrow's Fajr
         cardText.setTextAlign(Paint.Align.LEFT);cardText.setTextSize(24*k);prayerTimePaint.setTextAlign(Paint.Align.RIGHT);
         for(int i=0;i<5;i++){
             float base=r.top+(94+i*38)*k;
