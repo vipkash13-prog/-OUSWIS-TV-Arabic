@@ -9,26 +9,29 @@ import android.graphics.Paint;
 import android.graphics.RectF;
 import android.graphics.Shader;
 import java.io.InputStream;
-import java.util.Locale;
+import android.graphics.Matrix;
+import android.text.Layout;
+import android.text.StaticLayout;
+import android.text.TextDirectionHeuristics;
+import android.text.TextPaint;
 
 /** Static artwork and reusable paints for the approved sunset/black/gold home. No allocations per panel draw. */
 final class GoldenHomeSkin {
     static final int GOLD=0xFFFFD384,WHITE=0xFFF4F1E9;
     private final Paint image=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
     private final Paint glass=new Paint(Paint.ANTI_ALIAS_FLAG),line=new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint temperature=new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint header=new Paint(Paint.ANTI_ALIAS_FLAG),clock=new Paint(Paint.ANTI_ALIAS_FLAG),small=new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF box=new RectF(),art=new RectF();
+    private final Paint cardGlass=new Paint(Paint.ANTI_ALIAS_FLAG),cardRim=new Paint(Paint.ANTI_ALIAS_FLAG),cardReflection=new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Matrix cardMatrix=new Matrix();
+    private final TextPaint datePaint=new TextPaint(Paint.ANTI_ALIAS_FLAG),hijriPaint=new TextPaint(Paint.ANTI_ALIAS_FLAG);
+    private final SaudiDates dates=new SaudiDates();
+    private StaticLayout gregorianLayout,hijriLayout;
     private Bitmap wallpaper,prayerArt;
     private long minute=-1;
     private int generation=-1;
-    private String date="",hijri="";
-    private final android.icu.util.IslamicCalendar calendar=new android.icu.util.IslamicCalendar();
-    private final android.icu.text.SimpleDateFormat hijriFormat=new android.icu.text.SimpleDateFormat("d MMMM yyyy",new Locale("ar"));
-    GoldenHomeSkin(){
-        line.setStyle(Paint.Style.STROKE);
-        calendar.setCalculationType(android.icu.util.IslamicCalendar.CalculationType.ISLAMIC_UMALQURA);
-        hijriFormat.setCalendar(calendar);
-    }
+    GoldenHomeSkin(){line.setStyle(Paint.Style.STROKE);cardRim.setStyle(Paint.Style.STROKE);}
     void load(Context context){
         wallpaper=decode(context,"themes/gold-sunset.png");
         prayerArt=decode(context,"themes/gold-prayers.png");
@@ -40,8 +43,16 @@ final class GoldenHomeSkin {
     void resize(float k,float width,float height){
         glass.setShader(new LinearGradient(0,0,width,height,new int[]{0xED29313E,0xF2090D16,0xF5080B11},new float[]{0,0.45f,1},Shader.TileMode.CLAMP));
         header.setTypeface(Ui.semibold);header.setTextSize(25*k);header.setColor(WHITE);
-        clock.setTypeface(Ui.displaySemibold);clock.setTextSize(70*k);clock.setColor(WHITE);
+        clock.setTypeface(Ui.light);clock.setTextSize(86*k);clock.setColor(WHITE);
+        clock.setTextAlign(Paint.Align.CENTER);clock.setFontFeatureSettings("'tnum'");
+        clock.setShadowLayer(3*k,0,2*k,0x88000000);
+        temperature.setTypeface(Ui.displaySemibold);temperature.setTextSize(70*k);temperature.setColor(WHITE);
+        gregorianLayout=null;hijriLayout=null;
+        cardGlass.setShader(new LinearGradient(0,0,0,1,new int[]{0xF3121418,0xF905070A,0xF5030508},new float[]{0,0.5f,1},Shader.TileMode.CLAMP));
+        cardRim.setShader(new LinearGradient(0,0,1,1,new int[]{0xFFFFE6AF,0xFFA67B34,0xFFFFCF70,0xFF91702F,0xFFFFE6B3},new float[]{0,0.28f,0.55f,0.8f,1},Shader.TileMode.CLAMP));
+        cardReflection.setShader(new LinearGradient(0,0,0,1,new int[]{0x26FFFFFF,0x06FFFFFF,0x00FFFFFF},new float[]{0,0.18f,0.5f},Shader.TileMode.CLAMP));
         small.setTypeface(Ui.medium);small.setTextSize(22*k);small.setColor(0xE0F0E6D4);
+        datePaint.set(header);hijriPaint.set(small);
     }
     void background(Canvas c,RectF screen){
         c.drawColor(0xFF060A13);
@@ -76,19 +87,50 @@ final class GoldenHomeSkin {
     }
     void header(Canvas c,float k,String time,HomeData.Weather weather,String city){
         long now=System.currentTimeMillis();
-        if(now/60000!=minute||Ui.generation!=generation){
+        if(now/60000!=minute||Ui.generation!=generation||gregorianLayout==null){
             minute=now/60000;generation=Ui.generation;
-            date=new java.text.SimpleDateFormat("EEEE d MMMM yyyy",Ui.locale()).format(new java.util.Date(now));
-            hijri=hijriFormat.format(new java.util.Date(now));
+            boolean changed=dates.update(now,Ui.locale());
+            if(changed||gregorianLayout==null){
+                boolean rtl="ar".equals(Ui.locale().getLanguage());
+                gregorianLayout=dateLayout(dates.gregorian,datePaint,510*k,rtl);
+                hijriLayout=dateLayout(dates.hijri,hijriPaint,510*k,true);
+            }
         }
-        fitText(c,date,95*k,91*k,510*k,header);
-        fitText(c,hijri,95*k,137*k,510*k,small);
-        box.set(745*k,33*k,1165*k,157*k);panel(c,box,60*k,k,0);
-        fitText(c,time,box.centerX()-clock.measureText(time)/2,119*k,390*k,clock);
-
+        int save=c.save();c.translate(95*k,62*k);gregorianLayout.draw(c);c.restoreToCount(save);
+        save=c.save();c.translate(95*k,112*k);hijriLayout.draw(c);c.restoreToCount(save);
+        // Large, light numerals directly on the wallpaper: no opaque clock capsule.
+        fitText(c,time,955*k,121*k,390*k,clock);
+    }
+    private static StaticLayout dateLayout(String value,TextPaint paint,float width,boolean rtl){
+        return StaticLayout.Builder.obtain(value,0,value.length(),paint,Math.max(1,Math.round(width)))
+                .setAlignment(Layout.Alignment.ALIGN_NORMAL).setIncludePad(false)
+                .setTextDirection(rtl?TextDirectionHeuristics.RTL:TextDirectionHeuristics.LTR).build();
+    }
+    /** Shared local-coordinate black glass for only the weather and prayer cards. */
+    void informationCard(Canvas c,RectF r,float k){
+        float radius=30*k;
+        // Layered strokes make a soft shadow/glow without off-screen blur layers on older TVs.
+        line.setShader(null);
+        for(int i=4;i>=1;i--){
+            box.set(r);box.offset(0,3*k);box.inset(-i*k,-i*k);
+            line.setStrokeWidth((i*2+2)*k);line.setColor(0x18000000);c.drawRoundRect(box,radius,radius,line);
+        }
+        cardMatrix.setScale(r.width(),r.height());cardMatrix.postTranslate(r.left,r.top);
+        cardGlass.getShader().setLocalMatrix(cardMatrix);cardRim.getShader().setLocalMatrix(cardMatrix);
+        cardReflection.getShader().setLocalMatrix(cardMatrix);
+        c.drawRoundRect(r,radius,radius,cardGlass);
+        c.drawRoundRect(r,radius,radius,cardReflection);
+        for(int i=4;i>=1;i--){
+            box.set(r);box.inset(-i*k,-i*k);
+            line.setStrokeWidth((2+i)*k);line.setColor(Ui.alpha(0xFFFFBE4C,0.07f-0.01f*i));
+            c.drawRoundRect(box,radius+i*k,radius+i*k,line);
+        }
+        cardRim.setAlpha(255);cardRim.setStrokeWidth(1.6f*k);c.drawRoundRect(r,radius,radius,cardRim);
+        box.set(r);box.inset(2.4f*k,2.4f*k);cardRim.setAlpha(65);cardRim.setStrokeWidth(0.7f*k);
+        c.drawRoundRect(box,radius-2*k,radius-2*k,cardRim);cardRim.setAlpha(255);
     }
     void text(Canvas c,String value,float left,float baseline,float width,float k,boolean large){
-        fitText(c,value,left,baseline,width,large?clock:small);
+        fitText(c,value,left,baseline,width,large?temperature:small);
     }
     private static void fitText(Canvas c,String value,float left,float baseline,float width,Paint p){
         float measured=p.measureText(value);p.setTextScaleX(measured>width?width/measured:1);

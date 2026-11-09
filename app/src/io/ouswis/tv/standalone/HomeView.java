@@ -2143,6 +2143,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     }
 
     private void drawerCard(Canvas c, RectF r) {
+        if(gold()){goldSkin.informationCard(c,r,k);return;}
         drawerGlass(c, r, 30 * k, 0.72f, 0x1A000000, 10 * k);
     }
 

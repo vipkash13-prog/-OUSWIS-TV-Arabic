@@ -73,6 +73,16 @@ try:
     p=bounds(prayer);assert p[1]>h*.55 and p[3]<=h,(p,w,h)
     # Dark glass must be visibly different from the old pale home, at both resolutions.
     r,g,b=im.getpixel((int(1200*k),int(940*k)));assert max(r,g,b)<180,(r,g,b)
+    for px in (100,1140):
+        color=im.getpixel((int(px*k),int(940*k)))
+        assert max(color)<50 and max(color)-min(color)<16,('Black glass interior',px,color)
+    # The clock must leave the skyline visible instead of an opaque capsule.
+    root=next(n for n in nodes if n.get('class')=='android.view.ViewGroup' and bounds(n)[0]==0)
+    content_height=bounds(root)[3]-bounds(root)[1]
+    wallpaper=Image.open('app/assets/themes/gold-sunset.png').convert('RGB').resize((w,content_height),Image.Resampling.BILINEAR)
+    x,y=int(955*k),int(40*k)
+    expected=wallpaper.getpixel((x,y));actual=im.getpixel((x,y))
+    assert max(abs(a-b) for a,b in zip(actual,expected))<20,('Opaque clock background',actual,expected)
     focus=next(n for n in nodes if n.get('focused')=='true' and n.get('package')==PKG and n.get('clickable')=='true')
     first=bounds(focus);assert h*.25<first[1]<h*.5,first
     key('RIGHT');tree=ui();second=bounds(next(n for n in tree.iter('node') if n.get('focused')=='true' and n.get('package')==PKG and n.get('clickable')=='true'))

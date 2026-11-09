@@ -23,6 +23,7 @@ if [ "$what" = all ] || [ "$what" = android ]; then
   bash tools/test-video-fit.sh
   bash tools/test-xtream-catalog.sh
   bash tools/test-matches-feed.sh
+  bash tools/test-saudi-dates.sh
   bash tools/test-prayer-times.sh
 fi
 
