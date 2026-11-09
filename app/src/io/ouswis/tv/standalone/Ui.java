@@ -303,7 +303,14 @@ final class Ui {
         return lang.equals("in") ? "id" : lang.equals("iw") ? "he" : lang.equals("no") || lang.equals("nn") ? "nb" : lang;
     }
 
+    /** Arabic keeps its words but writes digits as 0-9, as in the approved design (times, temperatures, dates). */
     private static Locale localeOf(String lang) {
+        Locale base = localeOf0(lang);
+        if (!"ar".equals(base.getLanguage())) return base;
+        return new Locale.Builder().setLocale(base).setUnicodeLocaleKeyword("nu", "latn").build();
+    }
+
+    private static Locale localeOf0(String lang) {
         if (lang.equals("en")) return Locale.US;
         if (lang.equals("pt")) return new Locale("pt", "BR");
         if (lang.indexOf('-') > 0) return Locale.forLanguageTag(lang);

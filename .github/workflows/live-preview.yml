@@ -1,12 +1,12 @@
-name: OUSWIS TV live fix preview (branch)
+name: OUSWIS TV preview build (branch)
 on:
   push:
-    branches: [fix/live-remote-4k]
+    branches: [feature/reference-match]
   workflow_dispatch:
 permissions:
   contents: write
 concurrency:
-  group: ouswis-live-preview
+  group: ouswis-preview
   cancel-in-progress: false
 jobs:
   android:
@@ -42,13 +42,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: python
         run: |
-          import re, subprocess
+          import os, re, subprocess
           from pathlib import Path
-          tag = subprocess.check_output(['gh','release','view','--repo',__import__('os').environ['GITHUB_REPOSITORY'],'--json','tagName','--jq','.tagName'], text=True).strip()
+          tag = subprocess.check_output(['gh','release','view','--repo',os.environ['GITHUB_REPOSITORY'],'--json','tagName','--jq','.tagName'], text=True).strip()
           published = int(re.fullmatch(r'v1\.0-official-(\d+)-\d+-\d+', tag)[1])
           p = Path('app/AndroidManifest.xml')
-          s = p.read_text()
-          p.write_text(re.sub(r'android:versionCode="\d+"', f'android:versionCode="{published + 1}"', s, count=1))
+          p.write_text(re.sub(r'android:versionCode="\d+"', f'android:versionCode="{published + 1}"', p.read_text(), count=1))
       - name: Check translations and build upgrade baseline
         env:
           GH_TOKEN: ${{ github.token }}
@@ -101,6 +100,7 @@ jobs:
           bash tools/test-video-fit.sh
           bash tools/test-xtream-catalog.sh
           bash tools/test-matches-feed.sh --live
+          bash tools/test-saudi-dates.sh
           bash tools/test-prayer-times.sh --live
       - name: Playback test image reader
         run: |
@@ -124,6 +124,7 @@ jobs:
             bash tools/test-install-upgrade.sh "$RUNNER_TEMP/previous.apk" FreeMyTV.apk install-evidence
             python3 tools/test-feature-entrypoints.py install-evidence
             python3 tools/test-prayer-widget.py install-evidence
+            python3 tools/test-gold-home.py install-evidence
             python3 tools/test-live-playback.py install-evidence
             python3 tools/test-coexistence.py verify install-evidence
       - name: Native 4K Arabic remote test
@@ -141,6 +142,7 @@ jobs:
           script: |
             adb install --no-streaming FreeMyTV.apk
             python3 tools/test-rtl-4k.py install-evidence
+            python3 tools/test-gold-home.py install-evidence
       - name: Save install evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -153,12 +155,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          cp FreeMyTV.apk OUSWIS-TV-live-preview.apk
-          tag="live-preview-${GITHUB_RUN_NUMBER}"
-          gh release create "$tag" OUSWIS-TV-live-preview.apk install-evidence/live-playback.log install-evidence/feature-navigation.log \
-            --prerelease --target "$GITHUB_SHA" --title "OUSWIS TV live fix (preview ${GITHUB_RUN_NUMBER})" \
-            --notes "Preview. Android 14 emulator install, upgrade and synthetic-stream playback tests passed. Not tested on a MECOOL KM2 Plus or a real provider."
-          echo "https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/OUSWIS-TV-live-preview.apk" >> "$GITHUB_STEP_SUMMARY"
+          shopt -s nullglob
+          cp FreeMyTV.apk OUSWIS-TV-preview.apk
+          tag="preview-${GITHUB_RUN_NUMBER}"
+          gh release create "$tag" OUSWIS-TV-preview.apk install-evidence/*.log install-evidence/*.png \
+            --prerelease --target "$GITHUB_SHA" --title "OUSWIS TV preview ${GITHUB_RUN_NUMBER}" \
+            --notes "Preview from branch feature/reference-match. Emulator tests passed; not tested on a physical MECOOL KM2 Plus."
+          echo "https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/OUSWIS-TV-preview.apk" >> "$GITHUB_STEP_SUMMARY"
       - name: Remove runner signing key
         if: always()
         run: rm -f "$RUNNER_TEMP/ouswis-official.keystore"

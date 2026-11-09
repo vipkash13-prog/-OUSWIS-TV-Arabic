@@ -4691,14 +4691,14 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         cardTitle.setColor(GoldenHomeSkin.WHITE);c.drawText(Ui.tr("Prayer times"),x,r.top+48*k,cardTitle);
         cardDimRight.setTextSize(18*k);c.drawText(goldPrayerPlace,r.right-24*k,r.top+48*k,cardDimRight);
         int next=day==null?-1:day.next(System.currentTimeMillis());
-        cardText.setTextAlign(Paint.Align.RIGHT);cardText.setTextSize(24*k);prayerTimePaint.setTextAlign(Paint.Align.LEFT);
+        cardText.setTextAlign(Paint.Align.LEFT);cardText.setTextSize(24*k);prayerTimePaint.setTextAlign(Paint.Align.RIGHT);
         for(int i=0;i<5;i++){
             float base=r.top+(94+i*38)*k;
             if(i==next){goldRow.set(x-8*k,base-29*k,colRight+8*k,base+8*k);goldSkin.highlight(c,goldRow,k);}
             int color=i==next?0xFF191207:GoldenHomeSkin.WHITE;
             cardText.setColor(color);prayerTimePaint.setColor(color);
-            c.drawText(goldPrayerNames[i],colRight,base,cardText);
-            c.drawText(goldPrayerTimes[i],x+4*k,base,prayerTimePaint);
+            c.drawText(goldPrayerNames[i],x+6*k,base,cardText);   // the approved design: name left, time right
+            c.drawText(goldPrayerTimes[i],colRight-6*k,base,prayerTimePaint);
         }
         cardText.setTextAlign(Paint.Align.LEFT);cardText.setTextSize(29*k);cardText.setColor(GoldenHomeSkin.WHITE);
         prayerTimePaint.setTextAlign(Paint.Align.RIGHT);prayerTimePaint.setColor(GoldenHomeSkin.WHITE);

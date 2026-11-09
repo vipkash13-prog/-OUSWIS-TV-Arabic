@@ -92,8 +92,8 @@ final class GoldenHomeSkin {
             boolean changed=dates.update(now,Ui.locale());
             if(changed||gregorianLayout==null){
                 boolean rtl="ar".equals(Ui.locale().getLanguage());
-                gregorianLayout=dateLayout(dates.gregorian,datePaint,510*k,rtl);
-                hijriLayout=dateLayout(dates.hijri,hijriPaint,510*k,true);
+                gregorianLayout=dateLayout(dates.gregorian,datePaint,410*k,rtl);
+                hijriLayout=dateLayout(dates.hijri,hijriPaint,410*k,true);
             }
         }
         int save=c.save();c.translate(95*k,62*k);gregorianLayout.draw(c);c.restoreToCount(save);
@@ -140,7 +140,7 @@ final class GoldenHomeSkin {
         if(prayerArt==null)return;
         // Transparent frontal artwork merges with the glass. Fit rather than stretch the Kaaba and minarets.
         float right=r.right-10*k,bottom=r.bottom-28*k;
-        float scale=Math.min(r.width()*0.44f/prayerArt.getWidth(),(r.height()-96*k)/prayerArt.getHeight());
+        float scale=Math.min(r.width()*0.50f/prayerArt.getWidth(),(r.height()-70*k)/prayerArt.getHeight());
         art.set(right-prayerArt.getWidth()*scale,bottom-prayerArt.getHeight()*scale,right,bottom);
         c.drawBitmap(prayerArt,null,art,image);
     }
