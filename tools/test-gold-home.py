@@ -73,7 +73,7 @@ try:
     p=bounds(prayer);assert p[1]>h*.55 and p[3]<=h,(p,w,h)
     # Dark glass must be visibly different from the old pale home, at both resolutions.
     r,g,b=im.getpixel((int(1200*k),int(940*k)));assert max(r,g,b)<180,(r,g,b)
-    for px,py in ((100,740),(1140,690)):
+    for px,py in ((100,740),(1140,940)):
         color=im.getpixel((int(px*k),int(py*k)))   # the card's top: the bridge and Haram artwork fill the lower part
         assert max(color)<50 and max(color)-min(color)<16,('Black glass interior',px,color)
     # The clock must leave the skyline visible instead of an opaque capsule.
