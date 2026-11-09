@@ -16,8 +16,14 @@ def adb(*args,binary=False):
     r=subprocess.run([ADB,*args],capture_output=True,check=True,timeout=90)
     return r.stdout if binary else r.stdout.decode('utf-8','replace').replace('\r','')
 def ui():
-    adb('shell','uiautomator','dump','/data/local/tmp/gold.xml')
-    return ET.fromstring(adb('shell','cat','/data/local/tmp/gold.xml'))
+    for attempt in range(4):
+        try:
+            adb('shell','rm','-f','/data/local/tmp/gold.xml')
+            adb('shell','uiautomator','dump','/data/local/tmp/gold.xml')
+            return ET.fromstring(adb('shell','cat','/data/local/tmp/gold.xml'))
+        except (subprocess.CalledProcessError, ET.ParseError):
+            if attempt==3:raise
+            time.sleep(1)
 def bounds(n):return list(map(int,re.findall(r'\d+',n.get('bounds',''))))
 def label(n):return n.get('text','')+' '+n.get('content-desc','')
 def key(k):adb('shell','input','keyevent','KEYCODE_DPAD_'+k)
