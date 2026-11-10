@@ -614,7 +614,8 @@ final class HomeApps {
 
     /** Opens the item with the system zoom transition growing out of the card (the app starts opening right away). */
     static boolean open(Activity a, Item it, View from, int x, int y, int w, int h) {
-        return open(a, it, ActivityOptions.makeScaleUpAnimation(from, x, y, Math.max(w, 1), Math.max(h, 1)).toBundle());
+        // A plain cross-fade: the zoom showed the home screen enlarged, with its top icons, while the app started.
+        return open(a, it, ActivityOptions.makeCustomAnimation(a, android.R.anim.fade_in, android.R.anim.fade_out).toBundle());
     }
 
     /** Opens the item; `options` for the transition, or null (the screensaver has no card to grow out of). */

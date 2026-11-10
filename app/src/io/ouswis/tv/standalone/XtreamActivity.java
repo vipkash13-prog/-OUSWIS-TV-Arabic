@@ -395,7 +395,8 @@ public final class XtreamActivity extends Activity {
                     renderedAt=android.os.SystemClock.elapsedRealtime();
                     cancelPlaybackTimeout();
                 }else if(what==MediaPlayer.MEDIA_INFO_BUFFERING_START){
-                    watchPlayback(fitted,generation,index,attempt,ext);
+                    // Mid-playback buffering is normal on live streams: wait longer before reconnecting from scratch.
+                    watchPlayback(fitted,generation,index,attempt,ext,renderedAt>0?45000:12000);
                 }else if(what==MediaPlayer.MEDIA_INFO_BUFFERING_END&&renderedAt>0){
                     cancelPlaybackTimeout();
                 }
@@ -422,14 +423,14 @@ public final class XtreamActivity extends Activity {
                 if(video==fitted&&generation==playbackGeneration)recover(index,attempt,ext,0,0);
             });
             fitted.setVideoURI(Uri.parse(url));
-            watchPlayback(fitted,generation,index,attempt,ext);
+            watchPlayback(fitted,generation,index,attempt,ext,12000);
             fitted.requestFocus();
         } catch(Exception e){recover(index,attempt,ext,MediaPlayer.MEDIA_ERROR_UNKNOWN,0);}
     }
     private void cancelPlaybackTimeout() {
         if(playbackTimeout!=null){main.removeCallbacks(playbackTimeout);playbackTimeout=null;}
     }
-    private void watchPlayback(FitVideoView fitted,int generation,int index,int attempt,String format) {
+    private void watchPlayback(FitVideoView fitted,int generation,int index,int attempt,String format,long waitMs) {
         if(video!=fitted||generation!=playbackGeneration)return;
         cancelPlaybackTimeout();
         // Some Android decoders retry a dead HTTP source silently for over thirty seconds.
@@ -437,7 +438,7 @@ public final class XtreamActivity extends Activity {
             if(video==fitted&&generation==playbackGeneration)
                 recover(index,attempt,format,MediaPlayer.MEDIA_ERROR_UNKNOWN,MediaPlayer.MEDIA_ERROR_TIMED_OUT);
         };
-        main.postDelayed(playbackTimeout,12000);
+        main.postDelayed(playbackTimeout,waitMs);
     }
     private void recover(int index,int attempt,String format,int what,int extra) {
         // Numeric diagnostics only: provider URLs contain the viewer's credentials.
