@@ -64,19 +64,29 @@ public final class UpdatesActivity extends Activity {
         action.setEnabled(!working && !Updates.busy(state));
     }
 
-    private void check() {
+    private void check() { check(false); }
+
+    /** `thenInstall`: the viewer pressed the button, so a found update goes straight on to downloading. */
+    private void check(boolean thenInstall) {
         if (working) return;
         working = true;
         refresh();
         new Thread(() -> {
             try { Updates.check(getApplicationContext()); }
-            finally { working = false; handler.post(() -> { if (visible) refresh(); }); }
+            finally {
+                working = false;
+                handler.post(() -> {
+                    if (!visible) return;
+                    refresh();
+                    if (thenInstall && Updates.ready(Updates.state(UpdatesActivity.this), Updates.installedBuild(UpdatesActivity.this))) act();
+                });
+            }
         }, "ouswis-update-check").start();
     }
 
     private void act() {
         if (!Updates.ready(Updates.state(this), Updates.installedBuild(this))) {
-            check();
+            check(true);
             return;
         }
         if (!getPackageManager().canRequestPackageInstalls()) {
