@@ -17,6 +17,8 @@ public final class SaudiDatesTest {
             // A TV set to another country must still roll over at midnight in Jeddah (21:00 UTC).
             for(String zone:new String[]{"UTC","America/Los_Angeles","Pacific/Kiritimati"}){
                 TimeZone.setDefault(TimeZone.getTimeZone(zone));Locale.setDefault(Locale.US);
+                check(SaudiDates.clock(at("2026-11-10T16:41:00Z"),AR,false).equals("7:41 م"),"Jeddah clock agrees with prayer epoch regardless of device zone");
+                check(SaudiDates.clock(at("2026-11-10T21:00:00Z"),AR,false).equals("12:00 ص"),"Saudi midnight and period");
                 SaudiDates dates=new SaudiDates();
                 check(dates.update(at("2024-03-10T20:59:59Z"),AR),"first date");
                 check(dates.hijri.contains("شعبان"),"29 Shaaban before Saudi midnight: "+dates.hijri);

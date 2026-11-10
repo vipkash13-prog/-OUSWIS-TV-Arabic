@@ -53,7 +53,7 @@ final class GoldenHomeSkin {
         glass.setShader(new LinearGradient(0,0,width,height,new int[]{0xED29313E,0xF2090D16,0xF5080B11},new float[]{0,0.45f,1},Shader.TileMode.CLAMP));
         header.setTypeface(Ui.semibold);header.setTextSize(24*k);header.setColor(WHITE);
         countdown.setTypeface(Ui.semibold);countdown.setTextSize(21*k);countdown.setColor(GOLD);countdown.setFontFeatureSettings("'tnum'");
-        clock.setTypeface(Ui.light);clock.setTextSize(80*k);clock.setColor(WHITE);
+        clock.setTypeface(Ui.light);clock.setTextSize(86*k);clock.setColor(WHITE);
         clock.setTextAlign(Paint.Align.CENTER);clock.setFontFeatureSettings("'tnum'");
         clock.setShadowLayer(3*k,0,2*k,0x88000000);
         temperature.setTypeface(Ui.displaySemibold);temperature.setTextSize(70*k);temperature.setColor(WHITE);

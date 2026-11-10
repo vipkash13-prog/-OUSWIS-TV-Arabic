@@ -529,9 +529,9 @@ final class Ui {
     }
 
     static String clockWithPeriod(long now){
-        String value=clock(now);
-        String period=new java.text.SimpleDateFormat("a",locale()).format(new Date(now));
-        return value.contains(period)?value:value+" "+period;
+        String pattern=clockPattern("format|h:mm", "Hm", "hmma").text;
+        boolean use24=pattern.replaceAll("'[^']*'", "").matches(".*[Hk].*");
+        return SaudiDates.clock(now,locale(),use24);
     }
 
     /** "5:21 PM" (sunrise and sunset), following the clock's 12/24-hour choice. */

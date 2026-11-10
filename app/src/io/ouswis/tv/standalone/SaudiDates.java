@@ -12,6 +12,9 @@ import java.util.Locale;
 /** Both civil dates roll over at midnight in Jeddah, regardless of the device's time zone. */
 final class SaudiDates {
     static final ZoneId ZONE = ZoneId.of("Asia/Riyadh");
+    static String clock(long now,Locale locale,boolean h24){
+        return DateTimeFormatter.ofPattern(h24?"HH:mm a":"h:mm a",locale).withZone(ZONE).format(Instant.ofEpochMilli(now));
+    }
     private static final Locale ARABIC = Locale.forLanguageTag("ar-SA-u-nu-latn");
     private static final String[] HIJRI_MONTHS = {
         "محرم", "صفر", "ربيع الأول", "ربيع الآخر", "جمادى الأولى", "جمادى الآخرة",

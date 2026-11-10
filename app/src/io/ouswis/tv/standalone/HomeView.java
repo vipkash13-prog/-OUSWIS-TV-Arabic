@@ -140,6 +140,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private String prayerLine="";
     private Paint prayerLinePaint;
     private float prayerLineWidth;
+    private PrayerCountdown goldNextPrayer;
     private String goldHumidity="",goldWind="",goldRain="",goldAqi="",goldUpdated="",goldCountdown="";
     private final String[] goldStatLabel=new String[5],goldStatValue=new String[5];
     private EnvironmentReading textAir;
@@ -1021,11 +1022,11 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         cardDimRight = Ui.text(Ui.medium, 21 * k, 0x99FFFFFF);
         cardDimRight.setTextAlign(Paint.Align.RIGHT);
         bigTemp = Ui.numbers(gold()?Ui.medium:Ui.light, 100 * k, 0xFFFFFFFF);
-        hourPaint = Ui.numbers(Ui.medium, 22 * k, 0xADFFFFFF);
+        hourPaint = Ui.numbers(Ui.medium, (gold()?24:22) * k, 0xADFFFFFF);
         hourPaint.setTextAlign(Paint.Align.CENTER);
-        hourTemp = Ui.numbers(Ui.medium, 26 * k, 0xF2FFFFFF);
+        hourTemp = Ui.numbers(Ui.medium, (gold()?29:26) * k, 0xF2FFFFFF);
         hourTemp.setTextAlign(Paint.Align.CENTER);
-        dayLow = Ui.numbers(Ui.medium, 22 * k, 0xADFFFFFF);
+        dayLow = Ui.numbers(Ui.medium, (gold()?24:22) * k, 0xADFFFFFF);
         dayLow.setTextAlign(Paint.Align.CENTER);
         prayerTimePaint = Ui.numbers(Ui.medium, 26 * k, 0xF2FFFFFF);
         prayerTimePaint.setTextAlign(Paint.Align.RIGHT);
@@ -1248,7 +1249,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         if(gold()||Prefs.prayerAlerts()){
             PrayerCountdown next=PrayerCountdown.next(prayers.today(),prayers.tomorrow(),now);
             boolean ar=Ui.language.equals("ar");
-            goldCountdown=next==null?"":(ar?"المتبقي ":"Remaining ")+next.minutes(now)+(ar?" دقيقة":" min");
+            goldNextPrayer=next;goldPrayerMinute=-1;
+            goldCountdown=next==null?"":(ar?"المتبقي ":"Remaining ")+next.compact(now,ar);
             if(next!=null&&Prefs.prayerAlerts()&&next.approaching(now)&&prayerNoticeAt!=next.at&&Prefs.lastPrayerNotice()!=next.at){
                 prayerNoticeAt=next.at;Prefs.notePrayerNotice(next.at);notice("prayer:"+next.at,PrayerTimes.name(next.index)+" · "+goldCountdown);
             }
@@ -2311,7 +2313,12 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         Symbols.draw(getContext(), c, symbol, x + sw / 2, r.top + 132 * k, 52 * k, gold()?GoldenHomeSkin.GOLD:drawerInk(0.95f));
         c.drawText(nowTemp, x + sw + 18 * k - Ui.leftBearing(bigTemp, nowTemp), r.top + 170 * k, bigTemp);
         c.drawText(HomeData.condition(wx.code, wx.isDay), x, r.top + 220 * k, cardText);
-        c.drawText(highLow, x, r.top + 258 * k, cardDim);
+        if(gold()){
+            float size=cardDim.getTextSize();cardDim.setTextSize(25*k);
+            cardDim.setTextScaleX(Math.min(1,350*k/Math.max(1,cardDim.measureText(highLow))));
+            c.drawText(highLow,x,r.top+258*k,cardDim);
+            cardDim.setTextScaleX(1);cardDim.setTextSize(size);
+        }else c.drawText(highLow, x, r.top + 258 * k, cardDim);
         float split = r.left + 392 * k;
         fill.setShader(null);
         fill.setColor(tone(0x1A000000, 0x24FFFFFF));
@@ -2397,7 +2404,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         Paint.Align labelAlign=cardDim.getTextAlign();float labelSize=cardDim.getTextSize(),valueSize=hourTemp.getTextSize();
         int labelColor=cardDim.getColor(),valueColor=hourTemp.getColor();
         cardDim.setColor(0xE6FFFFFF);hourTemp.setColor(0xFFFFFFFF);
-        cardDim.setTextAlign(Paint.Align.CENTER);cardDim.setTextSize(18*k);hourTemp.setTextSize(27*k);
+        cardDim.setTextAlign(Paint.Align.CENTER);cardDim.setTextSize(20*k);hourTemp.setTextSize(30*k);
         boolean rtl=Ui.isRtl();
         for(int col=0;col<5;col++){
             int i=rtl?4-col:col;   // Arabic: index 4 (last update) at the right edge, as in the reference
@@ -4110,7 +4117,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         PrayerSchedule day=prayers.today();
         if(day==null)return text.append(". ").append(prayers.status()).toString();
         text.append(". ").append(day.date);
-        for(int i=0;i<5;i++)text.append(". ").append(PrayerTimes.name(i)).append(' ').append(PrayerTimes.time(day,i));
+        for(int i=0;i<5;i++)text.append(". ").append(gold()?goldPrayerNames[i]:PrayerTimes.name(i)).append(' ').append(gold()?goldPrayerTimes[i]:PrayerTimes.time(day,i));
+        if(gold()&&goldNextPrayer!=null)text.append(". ").append(Ui.language.equals("ar")?"الصلاة القادمة: ":"Next prayer: ").append(goldPrayerNames[goldNextPrayer.index]);
         if(prayers.fromCache)text.append(". ").append(Ui.tr("Saved times"));
         if(!goldCountdown.isEmpty())text.append(". ").append(goldCountdown);
         return text.toString();
@@ -4846,6 +4854,11 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         if(minute!=goldPrayerMinute||prayers.changedAt!=goldPrayerChange||Ui.generation!=goldPrayerGeneration||Prefs.version!=goldPrayerPrefs){
             goldPrayerMinute=minute;goldPrayerChange=prayers.changedAt;goldPrayerGeneration=Ui.generation;goldPrayerPrefs=Prefs.version;
             for(int i=0;i<5;i++){goldPrayerNames[i]=PrayerTimes.name(i);goldPrayerTimes[i]=day==null?"—":PrayerTimes.time(day,i);}
+            if(goldNextPrayer!=null&&goldNextPrayer.followingDay(day)){
+                int i=goldNextPrayer.index;
+                goldPrayerNames[i]+=(Ui.language.equals("ar")?" · غدًا":" · tomorrow");
+                goldPrayerTimes[i]=PrayerTimes.time(goldNextPrayer.schedule,i);
+            }
             goldPrayerPlace=PrayerTimes.place();
             goldPrayerFooter=day==null?prayers.status():day.date.format(GOLD_DAY)+" · AlAdhan"+(prayers.fromCache?" · "+Ui.tr("Saved times"):"");
         }
@@ -4855,8 +4868,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         goldSkin.mosque(c,x,r.top+40*k,42*k);
         c.drawText(Ui.tr("Prayer times"),x+56*k,r.top+48*k,cardTitle);
         cardDimRight.setTextSize(18*k);c.drawText(goldPrayerPlace,r.right-24*k,r.top+48*k,cardDimRight);
-        int next=day==null?-1:day.next(System.currentTimeMillis());
-        if(day!=null&&next<0)next=0; // after Isha the next prayer is tomorrow's Fajr
+        int next=goldNextPrayer==null?-1:goldNextPrayer.index;
         cardText.setTextAlign(Paint.Align.LEFT);cardText.setTextSize(24*k);prayerTimePaint.setTextAlign(Paint.Align.RIGHT);
         for(int i=0;i<5;i++){
             float base=r.top+(94+i*38)*k;
