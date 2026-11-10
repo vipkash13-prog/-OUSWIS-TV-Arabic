@@ -63,6 +63,10 @@ jobs:
           published_code=$(python3 -c 'import re,sys; print(re.fullmatch(r"v1\.0-official-(\d+)-\d+-\d+",sys.argv[1])[1])' "$published_tag")
           gh release download "$published_tag" --repo "$GITHUB_REPOSITORY" --pattern OUSWIS-TV-1.0.apk --output "$RUNNER_TEMP/published.apk"
           published_package=$("$ANDROID_HOME/build-tools/34.0.0/aapt2" dump badging "$RUNNER_TEMP/published.apk" | sed -n "s/^package: name='\([^']*\)'.*/\1/p")
+          actual_code=$("$ANDROID_HOME/build-tools/34.0.0/aapt2" dump badging "$RUNNER_TEMP/published.apk" | sed -n "s/^package: .*versionCode='\([0-9]*\)'.*/\1/p")
+          test "$actual_code" = "$published_code"
+          candidate_code=$(sed -n 's/.*android:versionCode="\([0-9]*\)".*/\1/p' app/AndroidManifest.xml)
+          test "$candidate_code" -gt "$actual_code"
           if [ "$published_package" = io.freemytv ]; then
             echo "INAPP_EXPECT_LEGACY_REJECTION=1" >> "$GITHUB_ENV"
           else
@@ -96,6 +100,7 @@ jobs:
         run: |
           ./build.sh --generic --release
           python3 tools/verify-release-apk.py FreeMyTV.apk
+          bash tools/test-home-enhancements.sh
           bash tools/test-remote.sh
           bash tools/test-order.sh
           bash tools/test-video-fit.sh
@@ -141,7 +146,7 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -skin 3840x2160
           script: |
-            adb install --no-streaming FreeMyTV.apk
+            python3 tools/test-official-visual.py "$RUNNER_TEMP/published.apk" FreeMyTV.apk install-evidence
             python3 tools/test-rtl-4k.py install-evidence
             python3 tools/test-gold-home.py install-evidence
       - name: Save install evidence
@@ -161,7 +166,10 @@ jobs:
           cp FreeMyTV.apk OUSWIS-TV-1.0.apk
           code=$(sed -n 's/.*android:versionCode="\([0-9]*\)".*/\1/p' app/AndroidManifest.xml)
           tag="v1.0-official-${code}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          gh release create "$tag" OUSWIS-TV-1.0.apk install-evidence/install-upgrade.log install-evidence/coexistence.log install-evidence/inapp-update.log install-evidence/inapp-*.png install-evidence/prayer-widget.log install-evidence/prayer-times-jeddah.png install-evidence/new-app-icon.png install-evidence/feature-navigation.log install-evidence/live-playback.log install-evidence/live-input-single.png install-evidence/live-fit-16x9.png install-evidence/live-fit-4x3.png install-evidence/settings-features.png install-evidence/xtream-login.png install-evidence/matches-screen.png install-evidence/matches-details.png install-evidence/home-features.png install-evidence/gold-home.log install-evidence/gold-home-ar-*.png \
+          # A visual-review commit holds publication until the actual screenshots have been reviewed.
+          review_flags=()
+          if git log -1 --format=%s | grep -q '\[visual-review\]'; then review_flags=(--draft); fi
+          gh release create "$tag" "${review_flags[@]}" OUSWIS-TV-1.0.apk install-evidence/install-upgrade.log install-evidence/coexistence.log install-evidence/inapp-update.log install-evidence/inapp-*.png install-evidence/prayer-widget.log install-evidence/prayer-times-jeddah.png install-evidence/new-app-icon.png install-evidence/feature-navigation.log install-evidence/live-playback.log install-evidence/live-input-single.png install-evidence/live-fit-16x9.png install-evidence/live-fit-4x3.png install-evidence/settings-features.png install-evidence/xtream-login.png install-evidence/matches-screen.png install-evidence/matches-details.png install-evidence/home-features.png install-evidence/gold-home.log install-evidence/gold-home-ar-*.png install-evidence/official-visual.log install-evidence/official-layout-comparison.json install-evidence/official-*-home-3840x2160.png \
             --target "$GITHUB_SHA" --title "OUSWIS TV 1.0 — Official" \
             --notes "Independent package io.ouswis.tv.standalone, OUSWIS TV 1.0. Android 14 emulator installation alongside the supplied legacy io.freemytv APK passed; the legacy APK, app ID, first-install time and private data were retained. Standalone update/data-retention and feature/remote/playback checks passed. Permanent repository signing certificate aa97cc826f59fa9ba8d37f4ba3978bd968bcc8f94a0f5aa9b458f55151a177b7. No app removal is needed. Settings belong to the new independent app. See inapp-update.log for online updater availability; private repositories require a signed-in manual download. Physical MECOOL testing is separate."
           echo "https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/OUSWIS-TV-1.0.apk" >> "$GITHUB_STEP_SUMMARY"

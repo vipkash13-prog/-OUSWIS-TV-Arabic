@@ -21,6 +21,9 @@ final class GoldenHomeSkin {
     private final Paint image=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
     private final Paint glass=new Paint(Paint.ANTI_ALIAS_FLAG),line=new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint countdown=new Paint(Paint.ANTI_ALIAS_FLAG);
+    private int accent=GOLD;
+    private boolean warmLight;
+    private final Paint shelfReflection=new Paint(Paint.ANTI_ALIAS_FLAG),weatherShade=new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint temperature=new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint header=new Paint(Paint.ANTI_ALIAS_FLAG),clock=new Paint(Paint.ANTI_ALIAS_FLAG),small=new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF box=new RectF(),art=new RectF();
@@ -48,9 +51,9 @@ final class GoldenHomeSkin {
     }
     void resize(float k,float width,float height){
         glass.setShader(new LinearGradient(0,0,width,height,new int[]{0xED29313E,0xF2090D16,0xF5080B11},new float[]{0,0.45f,1},Shader.TileMode.CLAMP));
-        header.setTypeface(Ui.semibold);header.setTextSize(25*k);header.setColor(WHITE);
-        countdown.setTypeface(Ui.semibold);countdown.setTextSize(21*k);countdown.setColor(GOLD);
-        clock.setTypeface(Ui.light);clock.setTextSize(86*k);clock.setColor(WHITE);
+        header.setTypeface(Ui.semibold);header.setTextSize(24*k);header.setColor(WHITE);
+        countdown.setTypeface(Ui.semibold);countdown.setTextSize(21*k);countdown.setColor(GOLD);countdown.setFontFeatureSettings("'tnum'");
+        clock.setTypeface(Ui.light);clock.setTextSize(80*k);clock.setColor(WHITE);
         clock.setTextAlign(Paint.Align.CENTER);clock.setFontFeatureSettings("'tnum'");
         clock.setShadowLayer(3*k,0,2*k,0x88000000);
         temperature.setTypeface(Ui.displaySemibold);temperature.setTextSize(70*k);temperature.setColor(WHITE);
@@ -58,6 +61,8 @@ final class GoldenHomeSkin {
         cardGlass.setShader(new LinearGradient(0,0,0,1,new int[]{0xF3121418,0xF905070A,0xF5030508},new float[]{0,0.5f,1},Shader.TileMode.CLAMP));
         cardRim.setShader(new LinearGradient(0,0,1,1,new int[]{0xFFFFE6AF,0xFFA67B34,0xFFFFCF70,0xFF91702F,0xFFFFE6B3},new float[]{0,0.28f,0.55f,0.8f,1},Shader.TileMode.CLAMP));
         cardReflection.setShader(new LinearGradient(0,0,0,1,new int[]{0x26FFFFFF,0x06FFFFFF,0x00FFFFFF},new float[]{0,0.18f,0.5f},Shader.TileMode.CLAMP));
+        shelfReflection.setShader(new LinearGradient(0,0,0,1,new int[]{0x16FFFFFF,0x04FFFFFF,0x00FFFFFF},new float[]{0,0.23f,0.55f},Shader.TileMode.CLAMP));
+        weatherShade.setShader(new LinearGradient(0,0,0,1,new int[]{0x26000000,0x10000000,0x48000000},new float[]{0,0.55f,1},Shader.TileMode.CLAMP));
         small.setTypeface(Ui.medium);small.setTextSize(22*k);small.setColor(0xE0F0E6D4);
         datePaint.set(header);hijriPaint.set(small);
     }
@@ -67,26 +72,40 @@ final class GoldenHomeSkin {
     }
     void panel(Canvas c,RectF r,float radius,float k,float focus){
         c.drawRoundRect(r,radius,radius,glass);
-        line.setColor(0x80D2B47D);line.setStrokeWidth(k);
+        line.setColor(Ui.alpha(accent,0.42f));line.setStrokeWidth(k);
         c.drawRoundRect(r,radius,radius,line);
         if(focus>0.01f)focus(c,r,radius,k,focus);
     }
+    /** A quiet accent changes only at the existing minute tick; no shaders or bitmaps are recreated. */
+    boolean lighting(long now,long sunrise,long sunset){
+        int hour=java.time.Instant.ofEpochMilli(now).atZone(PrayerSchedule.ZONE).getHour();
+        boolean valid=sunrise>0&&sunset>sunrise&&Math.abs(now-sunrise)<36*3600_000L;
+        boolean night=valid?(now<sunrise||now>=sunset):(hour<6||hour>=18);
+        if(night==warmLight)return false;
+        warmLight=night;accent=night?0xFFFFC477:GOLD;return true;
+    }
+    void shelf(Canvas c,RectF r,float k){
+        panel(c,r,45*k,k,0);
+        cardMatrix.setScale(r.width(),r.height());cardMatrix.postTranslate(r.left,r.top);
+        shelfReflection.getShader().setLocalMatrix(cardMatrix);
+        c.drawRoundRect(r,45*k,45*k,shelfReflection);
+    }
     void focus(Canvas c,RectF r,float radius,float k,float focus){
-        for(int i=3;i>=1;i--){
+        for(int i=2;i>=1;i--){
             box.set(r);box.inset(-i*2*k,-i*2*k);
-            line.setStrokeWidth((4+i)*k);line.setColor(Ui.alpha(GOLD,focus*(0.16f-0.03f*i)));
+            line.setStrokeWidth((3+i)*k);line.setColor(Ui.alpha(accent,focus*(warmLight?0.065f:0.045f)));
             c.drawRoundRect(box,radius+i*2*k,radius+i*2*k,line);
         }
-        line.setColor(Ui.alpha(0xFFFFE9B4,focus));line.setStrokeWidth(3*k);
+        line.setColor(Ui.alpha(accent,focus*0.88f));line.setStrokeWidth(2*k);
         c.drawRoundRect(r,radius,radius,line);
     }
     /** The next prayer: a transparent pill inside a glowing gold line (the approved design), not a solid fill. */
     void highlight(Canvas c,RectF r,float k){
         Paint.Style style=line.getStyle();float width=line.getStrokeWidth();int color=line.getColor();
-        line.setStyle(Paint.Style.FILL);line.setColor(Ui.alpha(GOLD,0.10f));c.drawRoundRect(r,15*k,15*k,line);
+        line.setStyle(Paint.Style.FILL);line.setColor(Ui.alpha(accent,0.045f));c.drawRoundRect(r,15*k,15*k,line);
         line.setStyle(Paint.Style.STROKE);
-        for(int i=3;i>=1;i--){line.setStrokeWidth((1.6f+i*3.2f)*k);line.setColor(Ui.alpha(GOLD,0.07f+0.03f*(4-i)));c.drawRoundRect(r,15*k,15*k,line);}
-        line.setStrokeWidth(2f*k);line.setColor(0xFFFFC857);c.drawRoundRect(r,15*k,15*k,line);
+        for(int i=2;i>=1;i--){line.setStrokeWidth((1.4f+i*2f)*k);line.setColor(Ui.alpha(accent,0.055f));c.drawRoundRect(r,15*k,15*k,line);}
+        line.setStrokeWidth(2f*k);line.setColor(Ui.alpha(accent,0.85f));c.drawRoundRect(r,15*k,15*k,line);
         line.setStyle(style);line.setStrokeWidth(width);line.setColor(color);
     }
     /** The weather card's lower strip: faint glass inside a gold outline with a soft glow. */
@@ -148,7 +167,7 @@ final class GoldenHomeSkin {
         c.drawRoundRect(r,radius,radius,cardReflection);
         for(int i=4;i>=1;i--){
             box.set(r);box.inset(-i*k,-i*k);
-            line.setStrokeWidth((2+i)*k);line.setColor(Ui.alpha(0xFFFFBE4C,0.07f-0.01f*i));
+            line.setStrokeWidth((2+i)*k);line.setColor(Ui.alpha(accent,(warmLight?1f:0.7f)*(0.07f-0.01f*i)));
             c.drawRoundRect(box,radius+i*k,radius+i*k,line);
         }
         cardRim.setAlpha(255);cardRim.setStrokeWidth(1.6f*k);c.drawRoundRect(r,radius,radius,cardRim);
@@ -173,9 +192,9 @@ final class GoldenHomeSkin {
         line.setStrokeWidth(1.4f*k);line.setColor(Ui.alpha(GOLD,0.9f));c.drawRoundRect(box,16*k,16*k,line);
         line.setStyle(style);line.setStrokeWidth(width);line.setColor(color);
         countdown.setTextAlign(Paint.Align.CENTER);
-        float size=countdown.getTextSize();countdown.setTextSize(19*k);
+        float size=countdown.getTextSize();countdown.setTextSize(21*k);
         float fit=box.width()-16*k,measured=countdown.measureText(text);
-        if(measured>fit)countdown.setTextSize(19*k*fit/measured);
+        if(measured>fit)countdown.setTextSize(21*k*fit/measured);
         c.drawText(text,box.centerX(),box.centerY()+Ui.halfCap(countdown),countdown);countdown.setTextSize(size);
     }
     void weatherArt(Canvas c,RectF r,float k){
@@ -183,6 +202,9 @@ final class GoldenHomeSkin {
         float w=r.width()*0.46f,h=w*weatherPhoto.getHeight()/weatherPhoto.getWidth();
         art.set(r.left+2*k,r.bottom-2*k-h,r.left+2*k+w,r.bottom-2*k);
         c.drawBitmap(weatherPhoto,null,art,image);
+        cardMatrix.setScale(r.width(),r.height());cardMatrix.postTranslate(r.left,r.top);
+        weatherShade.getShader().setLocalMatrix(cardMatrix);
+        c.drawRoundRect(r,30*k,30*k,weatherShade);
     }
     void mosque(Canvas c,float left,float cy,float size){
         if(mosqueIcon==null)return;

@@ -1020,7 +1020,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         cardDim = Ui.numbers(Ui.medium, 23 * k, 0xADFFFFFF);
         cardDimRight = Ui.text(Ui.medium, 21 * k, 0x99FFFFFF);
         cardDimRight.setTextAlign(Paint.Align.RIGHT);
-        bigTemp = Ui.numbers(Ui.light, 100 * k, 0xFFFFFFFF);
+        bigTemp = Ui.numbers(gold()?Ui.medium:Ui.light, 100 * k, 0xFFFFFFFF);
         hourPaint = Ui.numbers(Ui.medium, 22 * k, 0xADFFFFFF);
         hourPaint.setTextAlign(Paint.Align.CENTER);
         hourTemp = Ui.numbers(Ui.medium, 26 * k, 0xF2FFFFFF);
@@ -1242,6 +1242,9 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         if (minute == clockMinute || clockPaint == null) return false;
         clockMinute = minute;
         clockText = gold()?Ui.clockWithPeriod(now):Ui.clock(now);
+        if(gold()&&goldSkin.lighting(now,data.weather.sunrise,data.weather.sunset)){
+            platter.invalidate();tiles.invalidate();drawerLayer.invalidate();status.invalidate();
+        }
         if(gold()||Prefs.prayerAlerts()){
             PrayerCountdown next=PrayerCountdown.next(prayers.today(),prayers.tomorrow(),now);
             boolean ar=Ui.language.equals("ar");
@@ -1746,7 +1749,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     /** Shelf layer: the glass bar and its shadow (it only changes with the background). */
     private void drawPlatter(Canvas c) {
-        if(gold()){goldSkin.panel(c,platterRect,45*k,k,0);return;}
+        if(gold()){goldSkin.shelf(c,platterRect,k);return;}
         if (shelf.isEmpty()) return;
         float radius = (TILE_RADIUS + SHELF_PAD) * k;
         tmp.set(platterRect);
@@ -2392,6 +2395,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         goldSkin.statBar(c,goldRow,k);
         float colW=(right-left)/5f;
         Paint.Align labelAlign=cardDim.getTextAlign();float labelSize=cardDim.getTextSize(),valueSize=hourTemp.getTextSize();
+        int labelColor=cardDim.getColor(),valueColor=hourTemp.getColor();
+        cardDim.setColor(0xE6FFFFFF);hourTemp.setColor(0xFFFFFFFF);
         cardDim.setTextAlign(Paint.Align.CENTER);cardDim.setTextSize(18*k);hourTemp.setTextSize(27*k);
         boolean rtl=Ui.isRtl();
         for(int col=0;col<5;col++){
@@ -2402,6 +2407,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             drawFit(c,goldStatValue[i],cx,top+68*k,fit,hourTemp);
         }
         cardDim.setTextAlign(labelAlign);cardDim.setTextSize(labelSize);hourTemp.setTextSize(valueSize);
+        cardDim.setColor(labelColor);hourTemp.setColor(valueColor);
     }
     private static void drawFit(Canvas c,String text,float cx,float base,float width,Paint p){
         float measured=p.measureText(text);
