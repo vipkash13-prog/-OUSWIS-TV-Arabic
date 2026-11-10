@@ -100,12 +100,12 @@ jobs:
         run: |
           ./build.sh --generic --release
           python3 tools/verify-release-apk.py FreeMyTV.apk
-          bash tools/test-home-enhancements.sh
           bash tools/test-remote.sh
           bash tools/test-order.sh
           bash tools/test-video-fit.sh
           bash tools/test-xtream-catalog.sh
           bash tools/test-matches-feed.sh --live
+          bash tools/test-home-enhancements.sh
           bash tools/test-saudi-dates.sh
           bash tools/test-prayer-times.sh --live
       - name: Playback test image reader
