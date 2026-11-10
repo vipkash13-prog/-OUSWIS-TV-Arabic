@@ -70,10 +70,10 @@ try:
     adb('shell','chown',uid+':'+uid,probe)
     before_settings=hashlib.sha256(adb('shell','cat',settings,binary=True)).hexdigest()
     adb('install','--no-streaming','-r',str(APK))
-    after=info();assert after[:2]==before[:2] and after[2]=='10076',(before,after)
+    after=info();assert after[:2]==before[:2] and after[2]=='10077',(before,after)
     assert adb('shell','cat',probe).strip()=='preview16-retained'
     assert hashlib.sha256(adb('shell','cat',settings,binary=True)).hexdigest()==before_settings
-    note('PASS: the supplied preview-16 (10075) was installed, then the new 10076 APK updated it. App UID, first-install time, private file and account preferences survived; no uninstall or data clear.')
+    note('PASS: the supplied preview-16 (10075) was installed, then the new 10077 APK updated it. App UID, first-install time, private file and account preferences survived; no uninstall or data clear.')
     prefs(b'<map/>')
     new_live=fields(open_page('XtreamActivity'));shot('card-live-background.png')
     assert new_live==old_live,(old_live,new_live)

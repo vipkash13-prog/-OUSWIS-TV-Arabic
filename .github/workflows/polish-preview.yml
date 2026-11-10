@@ -38,7 +38,7 @@ jobs:
           echo "FREEMYTV_KEYSTORE=$RUNNER_TEMP/ouswis-official.keystore" >> "$GITHUB_ENV"
           echo "FREEMYTV_KEYSTORE_PASS=$derived" >> "$GITHUB_ENV"
       - name: Verify new upgrade number
-        run: grep -q 'android:versionCode="10076"' app/AndroidManifest.xml
+        run: grep -q 'android:versionCode="10077"' app/AndroidManifest.xml
       - name: Check translations and build upgrade baseline
         env:
           GH_TOKEN: ${{ github.token }}
@@ -154,7 +154,7 @@ jobs:
           tag="polish-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ID}"
           gh release create "$tag" OUSWIS-TV-preview.apk install-evidence/*.log install-evidence/*.png \
             --prerelease --target "$GITHUB_SHA" --title "OUSWIS TV 1.0 — preview-16 enhancements" \
-            --notes "From approved preview-16 on feature/preview16-polish, versionCode 10076. Emulator tests passed; not tested on a physical MECOOL KM2 Plus."
+            --notes "From approved preview-16 on feature/preview16-polish, versionCode 10077. Emulator tests passed; not tested on a physical MECOOL KM2 Plus."
           echo "https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/OUSWIS-TV-preview.apk" >> "$GITHUB_STEP_SUMMARY"
       - name: Remove runner signing key
         if: always()
