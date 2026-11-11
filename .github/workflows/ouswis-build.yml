@@ -8,7 +8,7 @@ permissions:
   contents: write
 concurrency:
   group: ouswis-release-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.ref == 'refs/heads/feature/build80-cinematic' }}
 jobs:
   android:
     runs-on: ubuntu-latest
@@ -111,19 +111,19 @@ jobs:
       - name: Playback test image reader
         run: |
           if ! command -v ffmpeg > /dev/null; then
-            for apt_source in /etc/apt/apt-mirrors.txt /etc/apt/sources.list.d/ubuntu.sources; do
-              if [ -f "$apt_source" ]; then
-                sudo sed -i 's|azure.archive.ubuntu.com|archive.ubuntu.com|g' "$apt_source"
-              fi
-            done
-            sudo apt-get -o Acquire::Retries=1 -o Acquire::http::Timeout=20 update -qq
-            sudo apt-get -o Acquire::Retries=1 -o Acquire::http::Timeout=20 install -y ffmpeg > /dev/null
+            python3 -m pip install --target "$RUNNER_TEMP/video-test-libs" imageio-ffmpeg==0.6.0
+            ffmpeg_binary=$(PYTHONPATH="$RUNNER_TEMP/video-test-libs" python3 -c 'import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())')
+            mkdir -p "$RUNNER_TEMP/ouswis-test-bin"
+            ln -s "$ffmpeg_binary" "$RUNNER_TEMP/ouswis-test-bin/ffmpeg"
+            echo "$RUNNER_TEMP/ouswis-test-bin" >> "$GITHUB_PATH"
+          else
+            ffmpeg_binary=$(command -v ffmpeg)
           fi
           if ! python3 -c 'from PIL import Image; assert hasattr(Image, "Resampling")'; then
             python3 -m pip install --target "$RUNNER_TEMP/video-test-libs" Pillow
           fi
           echo "PYTHONPATH=$RUNNER_TEMP/video-test-libs" >> "$GITHUB_ENV"
-          ffmpeg -version > /dev/null
+          "$ffmpeg_binary" -version > /dev/null
       - name: Enable emulator hardware acceleration
         run: sudo chmod 666 /dev/kvm
       - name: Actual Android 14 installation and update test
