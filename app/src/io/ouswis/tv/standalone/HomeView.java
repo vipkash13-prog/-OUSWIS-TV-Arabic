@@ -912,7 +912,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         // The icons at the top left need the whole width; with them off the layer keeps its old size (the corner buttons
         // only), so the GPU still composites a small layer.
         statusWide = Prefs.statusIcons();
-        measure(status, statusWide ? width : Math.round(1160 * kk), Math.round(240 * kk));
+        measure(status, statusWide || gold() ? width : Math.round(1160 * kk), Math.round(240 * kk));
         // Sized to what they draw (the glass and its shadow; the grown tiles and their shadows): smaller layers are
         // cheaper for the GPU to composite on every frame of the drawer animation.
         measure(platter, width, Math.round((gold()?250:320) * kk));
@@ -934,7 +934,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         float kk = width / 1920f;
         sky.layout(0, 0, width, height);
         place(heroLayer, 0, 0);
-        place(status, statusWide ? 0 : width - status.getMeasuredWidth(), 0);
+        place(status, statusWide || gold() ? 0 : width - status.getMeasuredWidth(), 0);
         place(platter, 0, Math.round((gold()?250:750) * kk));
         place(tiles, 0, Math.round((gold()?290:790) * kk));
         place(drawerLayer, 0, Math.round(470 * kk));
