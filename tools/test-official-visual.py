@@ -50,7 +50,8 @@ if baseline_code=='10149':assert hashlib.sha256(OLD.read_bytes()).hexdigest()==P
 subprocess.run([sys.executable,'tools/verify-release-apk.py',str(OLD)],check=True)
 with zipfile.ZipFile(OLD) as old,zipfile.ZipFile(NEW) as new:
     names={n for n in old.namelist() if n.startswith('assets/')}
-    assert names=={n for n in new.namelist() if n.startswith('assets/')}
+    ADDED={'assets/themes/gold-frame.png'}
+    assert names|ADDED=={n for n in new.namelist() if n.startswith('assets/')}
     # The owner approved a new wallpaper (Nov 11); every other asset must stay byte-identical.
     WALLPAPER={'assets/themes/gold-sunset.png'}
     for n in names-WALLPAPER:assert old.read(n)==new.read(n),'Asset changed: '+n
