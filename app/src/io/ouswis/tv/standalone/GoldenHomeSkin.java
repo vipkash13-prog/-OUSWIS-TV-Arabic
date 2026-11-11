@@ -217,7 +217,7 @@ final class GoldenHomeSkin {
     /** The time to the next prayer: a small transparent box with a gold line, in the free strip beside the title. */
     void countdown(Canvas c,RectF r,float k,String text){
         if(text.isEmpty())return;
-        box.set(r.left+318*k,r.top+24*k,r.left+318*k+205*k,r.top+68*k);
+        box.set(r.left+318*k,r.top+10*k,r.left+318*k+205*k,r.top+54*k);
         Paint.Style style=line.getStyle();float width=line.getStrokeWidth();int color=line.getColor();
         line.setStyle(Paint.Style.STROKE);
         line.setStrokeWidth(5*k);line.setColor(Ui.alpha(GOLD,0.12f));c.drawRoundRect(box,16*k,16*k,line);
