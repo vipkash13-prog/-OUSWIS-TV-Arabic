@@ -33,7 +33,7 @@ final class GoldenHomeSkin {
     private final SaudiDates dates=new SaudiDates();
     private StaticLayout gregorianLayout,hijriLayout;
     private CardBackdrop prayerBackdrop;
-    private Bitmap wallpaper,prayerArt,weatherPhoto,calendarIcon,mosqueIcon;
+    private Bitmap wallpaper,prayerArt,weatherPhoto,calendarIcon,mosqueIcon,frameArt;
     private long minute=-1;
     private final Paint scrim=new Paint(Paint.ANTI_ALIAS_FLAG);
     private int generation=-1;
@@ -45,6 +45,7 @@ final class GoldenHomeSkin {
         weatherPhoto=decode(context,"themes/gold-weather.png");
         calendarIcon=decode(context,"themes/gold-calendar.png");
         mosqueIcon=decode(context,"themes/gold-mosque.png");
+        frameArt=decode(context,"themes/gold-frame.png");
     }
     private static Bitmap decode(Context context,String path){
         try(InputStream in=context.getAssets().open(path)){return BitmapFactory.decodeStream(in);}
@@ -73,8 +74,9 @@ final class GoldenHomeSkin {
         if(wallpaper!=null)c.drawBitmap(wallpaper,null,screen,image);
         frame(c,screen);
     }
-    /** The cinematic gold frame: a thin glowing line just inside the screen's edge, rounded at the corners. */
+    /** The cinematic gold frame: the gold light streaks at the corners and along the bottom (themes/gold-frame.png); a thin line if it is missing. */
     private void frame(Canvas c,RectF screen){
+        if(frameArt!=null){c.drawBitmap(frameArt,null,screen,image);return;}
         float k=screen.width()/1920f;
         box.set(screen);box.inset(9*k,9*k);
         Paint.Style style=line.getStyle();float width=line.getStrokeWidth();int color=line.getColor();
