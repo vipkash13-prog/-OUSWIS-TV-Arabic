@@ -175,17 +175,17 @@ jobs:
             --notes "Independent package io.ouswis.tv.standalone, OUSWIS TV 1.0. Android 14 emulator installation alongside the supplied legacy io.freemytv APK passed; the legacy APK, app ID, first-install time and private data were retained. Standalone update/data-retention and feature/remote/playback checks passed. Permanent repository signing certificate aa97cc826f59fa9ba8d37f4ba3978bd968bcc8f94a0f5aa9b458f55151a177b7. No app removal is needed. Settings belong to the new independent app. See inapp-update.log for online updater availability; private repositories require a signed-in manual download. Physical MECOOL testing is separate."
           echo "https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/OUSWIS-TV-1.0.apk" >> "$GITHUB_STEP_SUMMARY"
       - name: Publish a branch preview with screenshots (never the official release)
-        if: github.ref == 'refs/heads/feature/cinematic-bg'
+        if: startsWith(github.ref, 'refs/heads/feature/')
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           shopt -s nullglob
           cp FreeMyTV.apk OUSWIS-TV-preview.apk
-          gh release create "cinematic-preview-${GITHUB_RUN_ID}" --prerelease --target "$GITHUB_SHA" --title "OUSWIS TV cinematic background preview" \
+          gh release create "preview-${GITHUB_RUN_ID}" --prerelease --target "$GITHUB_SHA" --title "OUSWIS TV cinematic background preview" \
             --notes "Branch preview, not the official release: the version code is still the repository's own and it does not update an installed official build." \
             OUSWIS-TV-preview.apk install-evidence/gold-home-ar-*.png install-evidence/official-*-home-3840x2160.png
-          echo "https://github.com/$GITHUB_REPOSITORY/releases/tag/cinematic-preview-${GITHUB_RUN_ID}" >> "$GITHUB_STEP_SUMMARY"
+          echo "https://github.com/$GITHUB_REPOSITORY/releases/tag/preview-${GITHUB_RUN_ID}" >> "$GITHUB_STEP_SUMMARY"
       - name: Remove runner signing key
         if: always()
         run: rm -f "$RUNNER_TEMP/ouswis-official.keystore"

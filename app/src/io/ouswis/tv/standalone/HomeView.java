@@ -85,7 +85,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     // tvOS grid (Human Interface Guidelines): content inside the safe area, 80 px from the sides and 60 from top and
     // bottom; 40 px between items; 7 columns of 217 px (the apps). The shelf glass extends 36 px past the tiles (the
     // same padding on all four sides) and the tile corners are concentric with it (glass radius = radius + padding).
-    private static final float MARGIN = 80, CONTENT_R = 1840;
+    private static final float MARGIN = 80, CONTENT_R = 1840, GOLD_STATUS_R = 318;
     // Hero, anchored at the bottom (a two-line title grows upward).
     private static final float HERO_TITLE_W = 900;
     // Shelf: tiles with corners concentric with the glass (glass radius = tile radius + padding).
@@ -1712,14 +1712,14 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private void layoutShelf() {
         int n = Math.min(shelf.size(), shelfVisible);
         float pad = (gold()?32:SHELF_PAD) * k, gap = (gold()?18:TILE_GAP) * k;
-        float full = (CONTENT_R - MARGIN) * k;
+        float full = (CONTENT_R - MARGIN) * k - (gold()?2 * pad:0);
         // Tiles in the TV banners' own 16:9, so an app's art is never stretched; never taller than L_TILE_H. The glass
         // keeps its bottom edge, so with more apps it only gets lower.
         float tw = Math.min((gold()?114:L_TILE_H) * 16f / 9 * k, (full - Math.max(0, n - 1) * gap) / Math.max(1, n));
         float th = tw * 9f / 16;
         float width = n * tw + Math.max(0, n - 1) * gap, left = (w - width) / 2f;
         float top = gold()?286*k:(L_PLATTER_TOP + L_TILE_H) * k - th;
-        if(gold())platterRect.set(44*k,286*k,w-44*k,470*k);
+        if(gold())platterRect.set(MARGIN*k,286*k,CONTENT_R*k,470*k);
         else platterRect.set(left - pad, top, left + width + pad, top + th + 2 * pad);
         snap(platterRect);
         shelfFirst = Math.max(0, Math.min(shelfFirst, shelf.size() - n));
@@ -1979,8 +1979,9 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             drawLogo(c, it, cell, s, style[2]);
         } else if (it.logo != null) {
             tileFill.setShader(null);
-            tileFill.setColor(0xFF161618);
+            tileFill.setColor(gold()?0xFF0B0D11:0xFF161618);
             c.drawRoundRect(cell, r, r, tileFill);
+            if(gold())goldSkin.slot(c,cell,r,k);
             drawLogo(c, it, cell, s, 0);
         } else {
             if (it.tile != null){if(gold())fitAppImage(c,it,cell,r);else roundImage(c,it.tile,it.tileShader,cell,r);}
@@ -2014,7 +2015,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     }
 
     private void fitAppImage(Canvas c,HomeApps.Item item,RectF bounds,float radius){
-        tileFill.setShader(null);tileFill.setColor(0xFF161618);c.drawRoundRect(bounds,radius,radius,tileFill);
+        tileFill.setShader(null);tileFill.setColor(0xFF0B0D11);c.drawRoundRect(bounds,radius,radius,tileFill);
+        goldSkin.slot(c,bounds,radius,k);
         float scale=Math.min(bounds.width()*0.90f/item.tile.getWidth(),bounds.height()*0.90f/item.tile.getHeight());
         float width=item.tile.getWidth()*scale,height=item.tile.getHeight()*scale;
         tmp.set(bounds.centerX()-width/2,bounds.centerY()-height/2,bounds.centerX()+width/2,bounds.centerY()+height/2);
@@ -4137,10 +4139,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             snap(topRects[i]);
             x = topRects[i].right + 4 * k;
         }
-        float b = (gold()?56:L_BUTTON) * k, right = CONTENT_R * k, cy = (gold()?85:L_BUTTON_CY) * k;
+        float b = (gold()?48:L_BUTTON) * k, right = (gold()?GOLD_STATUS_R:CONTENT_R) * k, cy = (gold()?85:L_BUTTON_CY) * k;
         for (int i = lightButtons.size() - 1; i >= 0; i--) {
             topRects[3 + i].set(right - b, cy - b / 2, right, cy + b / 2);
-            right -= b + (gold()?12:L_BUTTON_GAP) * k;
+            right -= b + (gold()?6:L_BUTTON_GAP) * k;
         }
         float top = L_CARDS_TOP * k, ch = L_CARD_H * k, g = L_CARD_GAP * k, left = MARGIN * k, tall = L_TALL_W * k;
         for (HomeApps.Item it : lightButtons) {
@@ -4828,12 +4830,12 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     }
     private void drawGoldButtons(Canvas c){
         if(lightButtons.isEmpty())return;
-        goldRow.set(topRects[3].left-(Prefs.statusIcons()?102:18)*k,44*k,CONTENT_R*k+18*k,127*k);
+        goldRow.set(topRects[3].left-(Prefs.statusIcons()?86:12)*k,52*k,GOLD_STATUS_R*k+12*k,118*k);
         goldSkin.panel(c,goldRow,40*k,k,0);
         if(islandToast)return;
         if(Prefs.statusIcons()){
-        Symbols.draw(getContext(),c,network==2?"ethernet":"wifi",topRects[3].left-73*k,85*k,26*k,network==0?0x77FFFFFF:GoldenHomeSkin.WHITE);
-        Symbols.draw(getContext(),c,"bluetooth",topRects[3].left-30*k,85*k,26*k,bluetoothConnected?GoldenHomeSkin.WHITE:0x77FFFFFF);
+        Symbols.draw(getContext(),c,network==2?"ethernet":"wifi",topRects[3].left-61*k,85*k,24*k,network==0?0x77FFFFFF:GoldenHomeSkin.WHITE);
+        Symbols.draw(getContext(),c,"bluetooth",topRects[3].left-27*k,85*k,24*k,bluetoothConnected?GoldenHomeSkin.WHITE:0x77FFFFFF);
         }
         for(int i=0;i<lightButtons.size();i++){
             HomeApps.Item it=lightButtons.get(i);RectF r=topRects[3+i];float focus=Ui.clamp(topFocus[3+i].value);
@@ -4844,7 +4846,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             c.restore();
             if(focus>0.01f){
                 lTip.setColor(Ui.alpha(GoldenHomeSkin.GOLD,focus));
-                float center=Math.min(r.centerX(),CONTENT_R*k-lTip.measureText(it.label)/2);
+                float half=lTip.measureText(it.label)/2,center=Math.max(half+24*k,Math.min(r.centerX(),CONTENT_R*k-half));
                 c.drawText(it.label,center,170*k,lTip);
             }
         }

@@ -69,10 +69,26 @@ final class GoldenHomeSkin {
     void background(Canvas c,RectF screen){
         c.drawColor(0xFF060A13);
         if(wallpaper!=null)c.drawBitmap(wallpaper,null,screen,image);
+        frame(c,screen);
+    }
+    /** The cinematic gold frame: a thin glowing line just inside the screen's edge, rounded at the corners. */
+    private void frame(Canvas c,RectF screen){
+        float k=screen.width()/1920f;
+        box.set(screen);box.inset(9*k,9*k);
+        Paint.Style style=line.getStyle();float width=line.getStrokeWidth();int color=line.getColor();
+        line.setStyle(Paint.Style.STROKE);
+        for(int i=2;i>=1;i--){line.setStrokeWidth((1.6f+i*3f)*k);line.setColor(Ui.alpha(accent,0.045f));c.drawRoundRect(box,70*k,70*k,line);}
+        line.setStrokeWidth(1.6f*k);line.setColor(Ui.alpha(accent,0.55f));c.drawRoundRect(box,70*k,70*k,line);
+        line.setStyle(style);line.setStrokeWidth(width);line.setColor(color);
+    }
+    /** A black glass slot behind an app's art, with a soft gold edge. */
+    void slot(Canvas c,RectF r,float radius,float k){
+        line.setColor(Ui.alpha(accent,0.34f));line.setStrokeWidth(1.2f*k);
+        c.drawRoundRect(r,radius,radius,line);
     }
     void panel(Canvas c,RectF r,float radius,float k,float focus){
         c.drawRoundRect(r,radius,radius,glass);
-        line.setColor(Ui.alpha(accent,0.42f));line.setStrokeWidth(k);
+        line.setColor(Ui.alpha(accent,0.62f));line.setStrokeWidth(1.4f*k);
         c.drawRoundRect(r,radius,radius,line);
         if(focus>0.01f)focus(c,r,radius,k,focus);
     }
@@ -137,9 +153,9 @@ final class GoldenHomeSkin {
                 hijriLayout=dateLayout(dates.hijri,hijriPaint,410*k,true);
             }
         }
-        int save=c.save();c.translate(95*k,62*k);gregorianLayout.draw(c);c.restoreToCount(save);
-        save=c.save();c.translate(95*k,112*k);hijriLayout.draw(c);c.restoreToCount(save);
-        if(calendarIcon!=null){art.set(522*k,76*k,522*k+48*k*calendarIcon.getWidth()/calendarIcon.getHeight(),124*k);c.drawBitmap(calendarIcon,null,art,image);}
+        int save=c.save();c.translate(145*k,62*k);gregorianLayout.draw(c);c.restoreToCount(save);
+        save=c.save();c.translate(145*k,112*k);hijriLayout.draw(c);c.restoreToCount(save);
+        if(calendarIcon!=null){art.set(572*k,76*k,572*k+48*k*calendarIcon.getWidth()/calendarIcon.getHeight(),124*k);c.drawBitmap(calendarIcon,null,art,image);}
         // Large, light numerals directly on the wallpaper: no opaque clock capsule.
         fitText(c,time,955*k,121*k,390*k,clock);
     }
