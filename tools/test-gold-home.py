@@ -55,7 +55,11 @@ try:
     # Use real installed Android apps to exercise the shelf; never fabricate APKs or keys.
     available=adb('shell','pm','list','packages')
     candidates=['com.android.settings','com.android.calendar','com.android.deskclock','com.android.calculator2','com.android.contacts','com.android.gallery3d','com.android.documentsui','com.android.music']
-    shelf=[p for p in candidates if 'package:'+p+'\n' in available]
+    shelf=[]
+    for package in candidates:
+        if 'package:'+package+'\n' not in available:continue
+        launch=adb('shell','cmd','package','resolve-activity','--brief','-a','android.intent.action.MAIN','-c','android.intent.category.LAUNCHER','-p',package)
+        if package+'/' in launch:shelf.append(package)
     assert shelf,'No installed shelf candidates'
     settings=ET.fromstring(saved)
     values={'language':('string','ar'),'topContent':('string','none'),'city':('string','جدة'),'latitude':('string','21.4858'),'longitude':('string','39.1925'),'shelf':('string',','.join(shelf)),'androidapps':('boolean','true'),'weather':('boolean','true'),'prayers':('boolean','true')}
@@ -80,7 +84,7 @@ try:
     (OUT/('gold-home-ar-'+suffix+'.png')).write_bytes(png)
     (OUT/('gold-home-ar-'+suffix+'.xml')).write_bytes(ET.tostring(tree))
     p=bounds(prayer);assert p[1]>h*.55 and p[3]<=h,(p,w,h)
-    assert len(shelf_nodes)==min(8,len(shelf)), 'Every installed shelf app must have a live tile'
+    assert len(shelf_nodes)==min(8,len(shelf)), ('Every launchable installed shelf app must have a live tile',shelf,[(label(n),bounds(n)) for n in shelf_nodes],[(label(n),bounds(n)) for n in nodes if n.get('package')==PKG and n.get('clickable')=='true'])
     for app in shelf_nodes:
         x1,y1,x2,y2=bounds(app);dx=(x2-x1)*.2;dy=(y2-y1)*.2
         region=im.crop((round(x1+dx),round(y1+dy),round(x2-dx),round(y2-dy)))
