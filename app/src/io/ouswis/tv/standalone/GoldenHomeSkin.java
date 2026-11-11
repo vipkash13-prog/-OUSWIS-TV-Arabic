@@ -83,9 +83,9 @@ final class GoldenHomeSkin {
         line.setStrokeWidth(1.6f*k);line.setColor(Ui.alpha(accent,0.55f));c.drawRoundRect(box,70*k,70*k,line);
         line.setStyle(style);line.setStrokeWidth(width);line.setColor(color);
     }
-    /** The status capsule: a gold edge around almost clear glass, so what is behind it still shows. */
+    /** The status capsule: a gold edge around half-clear glass, so the icons read and the flag behind still shows. */
     void clearGlass(Canvas c,RectF r,float radius,float k){
-        line.setStyle(Paint.Style.FILL);line.setColor(0x2E05080D);c.drawRoundRect(r,radius,radius,line);
+        line.setStyle(Paint.Style.FILL);line.setColor(0x8005080D);c.drawRoundRect(r,radius,radius,line);
         line.setStyle(Paint.Style.STROKE);line.setColor(Ui.alpha(accent,0.62f));line.setStrokeWidth(1.4f*k);
         c.drawRoundRect(r,radius,radius,line);
     }
