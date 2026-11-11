@@ -110,9 +110,13 @@ jobs:
           bash tools/test-prayer-times.sh --live
       - name: Playback test image reader
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y ffmpeg > /dev/null
-          python3 -m pip install --target "$RUNNER_TEMP/video-test-libs" Pillow
+          if ! command -v ffmpeg > /dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y ffmpeg > /dev/null
+          fi
+          if ! python3 -c 'from PIL import Image; assert hasattr(Image, "Resampling")'; then
+            python3 -m pip install --target "$RUNNER_TEMP/video-test-libs" Pillow
+          fi
           echo "PYTHONPATH=$RUNNER_TEMP/video-test-libs" >> "$GITHUB_ENV"
           ffmpeg -version > /dev/null
       - name: Enable emulator hardware acceleration

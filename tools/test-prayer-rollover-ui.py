@@ -76,6 +76,19 @@ try:
         (OUT/(name+'.png')).write_bytes(adb('exec-out','screencap','-p',binary=True))
         (OUT/(name+'.xml')).write_bytes(ET.tostring(tree))
         note('PASS: Jeddah '+stamp+' -> '+prayer+(' tomorrow' if tomorrow else ' today')+', '+str(minutes)+' min / '+remaining+'. Device timezone UTC; real AlAdhan method 4, next-day Fajr '+next_fajr+'.')
+        if stamp.endswith('19:41:00'):
+            # Stay inside the same HomeActivity: the separate widget layer must still update on the minute tick.
+            adb('shell','date','-u','@'+str(int(at.timestamp())+60))
+            live_minutes=minutes-1
+            live_text=str(live_minutes//60)+' س '+str(live_minutes%60)+' د'
+            for attempt in range(8):
+                live_tree=ui()
+                if 'المتبقي '+live_text in ET.tostring(live_tree,encoding='unicode'):break
+                time.sleep(1)
+            else:raise AssertionError('The cached live widget did not update without recreating HomeActivity')
+            (OUT/'prayer-jeddah-1942-live.png').write_bytes(adb('exec-out','screencap','-p',binary=True))
+            note('PASS: the same running HomeActivity updated its countdown at 19:42 without recreation; live data is not frozen by the independent widget layer.')
+
     adb('shell','input','keyevent','KEYCODE_DPAD_RIGHT','KEYCODE_DPAD_LEFT','KEYCODE_DPAD_DOWN','KEYCODE_DPAD_UP')
     assert any(n.get('focused')=='true' and n.get('clickable')=='true' and n.get('package')==PKG for n in ui().iter('node'))
     note('PASS: physical remote arrows remain responsive after evening and Saudi midnight transitions.')
