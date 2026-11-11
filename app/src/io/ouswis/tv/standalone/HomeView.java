@@ -4864,7 +4864,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             goldPrayerPlace=PrayerTimes.place();
             goldPrayerFooter=day==null?prayers.status():day.date.format(GOLD_DAY)+" · AlAdhan"+(prayers.fromCache?" · "+Ui.tr("Saved times"):"");
         }
-        goldSkin.prayerScrim(c,r,k);
+
         goldSkin.prayerArt(c,r,k);
         float x=r.left+28*k,colRight=r.left+r.width()*0.55f;
         cardTitle.setColor(GoldenHomeSkin.WHITE);
