@@ -60,24 +60,6 @@ public class HomeActivity extends Activity {
         HomeApps.open(this, HomeApps.action(HomeApps.XTREAM_LIVE, HomeApps.TOP_LIVE, Ui.tr("Live TV"), "live_tv"), null);
     };
 
-    /** The launcher is full screen: Android's navigation bar stays hidden (a swipe still brings it back). */
-    @Override public void onWindowFocusChanged(boolean hasFocus) {
-        super.onWindowFocusChanged(hasFocus);
-        if (!hasFocus) return;
-        try {
-            if (Build.VERSION.SDK_INT >= 30) {
-                android.view.WindowInsetsController controller = getWindow().getInsetsController();
-                if (controller != null) {
-                    controller.hide(android.view.WindowInsets.Type.navigationBars());
-                    controller.setSystemBarsBehavior(android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
-                }
-            } else {
-                getWindow().getDecorView().setSystemUiVisibility(android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                        | android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
-            }
-        } catch (RuntimeException ignored) { }
-    }
-
     @Override protected void onResume() {
         super.onResume();
         resumed = true;
