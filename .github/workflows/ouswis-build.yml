@@ -111,7 +111,7 @@ jobs:
       - name: Playback test image reader
         run: |
           if ! command -v ffmpeg > /dev/null; then
-            python3 -m pip install --target "$RUNNER_TEMP/video-test-libs" imageio-ffmpeg==0.6.0
+            python3 -m pip install --target "$RUNNER_TEMP/video-test-libs" imageio-ffmpeg==0.4.9
             ffmpeg_binary=$(PYTHONPATH="$RUNNER_TEMP/video-test-libs" python3 -c 'import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())')
             mkdir -p "$RUNNER_TEMP/ouswis-test-bin"
             ln -s "$ffmpeg_binary" "$RUNNER_TEMP/ouswis-test-bin/ffmpeg"
