@@ -56,9 +56,14 @@ with tempfile.TemporaryDirectory() as temp:
                         '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-f', 'mpegts', str(path)], check=True)
         clips.append(path.read_bytes())
 
-    subprocess.run(['ffmpeg', '-v', 'error', '-i', str(Path(temp) / '0.ts'), '-c', 'copy',
-                    '-hls_time', '2', '-hls_list_size', '0', '-hls_segment_filename',
-                    str(Path(temp) / 'recovery%03d.ts'), str(Path(temp) / 'recovery.m3u8')], check=True)
+    # HLS VOD may contain one complete 20-second MPEG-TS segment. Reuse the actual encoded
+    # clip rather than invoking a second static-FFmpeg remux (which crashes on these runners).
+    # Android must still fetch the playlist/segment and decode the original green-bordered video.
+    (Path(temp) / 'recovery000.ts').write_bytes(clips[0])
+    (Path(temp) / 'recovery.m3u8').write_text(
+        '#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:20\n'
+        '#EXT-X-MEDIA-SEQUENCE:0\n#EXTINF:20.0,\nrecovery000.ts\n#EXT-X-ENDLIST\n',
+        encoding='utf-8')
     faults = {'ts': False, 'all': False, 'ts_failures': 0, 'hls': 0, 'catalog': False, 'group_error': False, 'hold_groups': False, 'api_down': False}
 
     groups_started = threading.Event()
