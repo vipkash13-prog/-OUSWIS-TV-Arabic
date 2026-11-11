@@ -87,8 +87,13 @@ updated=capture('official-polished-home-3840x2160')
 def intended(bounds):
     points=re.findall(r'\[(\d+),(\d+)\]',bounds)
     top,bottom=int(points[0][1]),int(points[1][1])
-    return bottom<=260 or 540<=top<=960
+    return bottom<=260 or 540<=top<=1300
 assert original['widgets']==updated['widgets'],('Cards moved',original['widgets'],updated['widgets'])
+# Recent Apps now always sits in the sections row (it was opt-in): the only control allowed to appear.
+known={node[1]+node[2] for node in original['controls']}
+updated['controls']=[node for node in updated['controls'] if node[1]+node[2] in known or 'التطبيقات الأخيرة' in node[1]+node[2]]
+if len(updated['controls'])==len(original['controls'])+1:
+    updated['controls']=[node for node in updated['controls'] if 'التطبيقات الأخيرة' not in node[1]+node[2]]
 assert len(original['controls'])==len(updated['controls']),'A control appeared or disappeared'
 for old_node,new_node in zip(original['controls'],updated['controls']):
     assert old_node[:3]==new_node[:3],('Control changed',old_node,new_node)

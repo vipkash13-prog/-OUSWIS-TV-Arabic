@@ -85,7 +85,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     // tvOS grid (Human Interface Guidelines): content inside the safe area, 80 px from the sides and 60 from top and
     // bottom; 40 px between items; 7 columns of 217 px (the apps). The shelf glass extends 36 px past the tiles (the
     // same padding on all four sides) and the tile corners are concentric with it (glass radius = radius + padding).
-    private static final float MARGIN = 80, CONTENT_R = 1840, GOLD_STATUS_R = 318;
+    private static final float MARGIN = 80, CONTENT_R = 1840, GOLD_STATUS_R = 1840;
     // Hero, anchored at the bottom (a two-line title grows upward).
     private static final float HERO_TITLE_W = 900;
     // Shelf: tiles with corners concentric with the glass (glass radius = tile radius + padding).
@@ -1022,13 +1022,13 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         cardDimRight = Ui.text(Ui.medium, 21 * k, 0x99FFFFFF);
         cardDimRight.setTextAlign(Paint.Align.RIGHT);
         bigTemp = Ui.numbers(gold()?Ui.medium:Ui.light, 100 * k, 0xFFFFFFFF);
-        hourPaint = Ui.numbers(Ui.medium, (gold()?24:22) * k, 0xADFFFFFF);
+        hourPaint = Ui.numbers(Ui.medium, (gold()?27:22) * k, gold()?0xE6FFFFFF:0xADFFFFFF);
         hourPaint.setTextAlign(Paint.Align.CENTER);
-        hourTemp = Ui.numbers(Ui.medium, (gold()?29:26) * k, 0xF2FFFFFF);
+        hourTemp = Ui.numbers(Ui.medium, (gold()?32:26) * k, 0xF2FFFFFF);
         hourTemp.setTextAlign(Paint.Align.CENTER);
-        dayLow = Ui.numbers(Ui.medium, (gold()?24:22) * k, 0xADFFFFFF);
+        dayLow = Ui.numbers(Ui.medium, (gold()?27:22) * k, gold()?0xE6FFFFFF:0xADFFFFFF);
         dayLow.setTextAlign(Paint.Align.CENTER);
-        prayerTimePaint = Ui.numbers(Ui.medium, 26 * k, 0xF2FFFFFF);
+        prayerTimePaint = Ui.numbers(Ui.medium, (gold()?29:26) * k, 0xF2FFFFFF);
         prayerTimePaint.setTextAlign(Paint.Align.RIGHT);
         changePaint = Ui.numbers(Ui.semibold, 21 * k, 0xFFFFFFFF);
         changePaint.setTextAlign(Paint.Align.CENTER);
@@ -2316,7 +2316,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         c.drawText(nowTemp, x + sw + 18 * k - Ui.leftBearing(bigTemp, nowTemp), r.top + 170 * k, bigTemp);
         c.drawText(HomeData.condition(wx.code, wx.isDay), x, r.top + 220 * k, cardText);
         if(gold()){
-            float size=cardDim.getTextSize();cardDim.setTextSize(25*k);
+            float size=cardDim.getTextSize();cardDim.setTextSize(28*k);
             cardDim.setTextScaleX(Math.min(1,350*k/Math.max(1,cardDim.measureText(highLow))));
             c.drawText(highLow,x,r.top+258*k,cardDim);
             cardDim.setTextScaleX(1);cardDim.setTextSize(size);
@@ -4831,7 +4831,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private void drawGoldButtons(Canvas c){
         if(lightButtons.isEmpty())return;
         goldRow.set(topRects[3].left-(Prefs.statusIcons()?86:12)*k,52*k,GOLD_STATUS_R*k+12*k,118*k);
-        goldSkin.panel(c,goldRow,40*k,k,0);
+        goldSkin.clearGlass(c,goldRow,33*k,k);   // see-through, so the flag behind it stays visible
         if(islandToast)return;
         if(Prefs.statusIcons()){
         Symbols.draw(getContext(),c,network==2?"ethernet":"wifi",topRects[3].left-61*k,85*k,24*k,network==0?0x77FFFFFF:GoldenHomeSkin.WHITE);
@@ -4864,6 +4864,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             goldPrayerPlace=PrayerTimes.place();
             goldPrayerFooter=day==null?prayers.status():day.date.format(GOLD_DAY)+" · AlAdhan"+(prayers.fromCache?" · "+Ui.tr("Saved times"):"");
         }
+        goldSkin.prayerScrim(c,r,k);
         goldSkin.prayerArt(c,r,k);
         float x=r.left+28*k,colRight=r.left+r.width()*0.55f;
         cardTitle.setColor(GoldenHomeSkin.WHITE);
@@ -4871,10 +4872,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         c.drawText(Ui.tr("Prayer times"),x+56*k,r.top+48*k,cardTitle);
         cardDimRight.setTextSize(18*k);c.drawText(goldPrayerPlace,r.right-24*k,r.top+48*k,cardDimRight);
         int next=goldNextPrayer==null?-1:goldNextPrayer.index;
-        cardText.setTextAlign(Paint.Align.LEFT);cardText.setTextSize(24*k);prayerTimePaint.setTextAlign(Paint.Align.RIGHT);
+        cardText.setTextAlign(Paint.Align.LEFT);cardText.setTextSize(27*k);prayerTimePaint.setTextAlign(Paint.Align.RIGHT);
         for(int i=0;i<5;i++){
-            float base=r.top+(94+i*38)*k;
-            if(i==next){goldRow.set(x-8*k,base-29*k,colRight+8*k,base+8*k);goldSkin.highlight(c,goldRow,k);}
+            float base=r.top+(96+i*40)*k;
+            if(i==next){goldRow.set(x-8*k,base-31*k,colRight+8*k,base+10*k);goldSkin.highlight(c,goldRow,k);}
             int color=GoldenHomeSkin.WHITE;
             cardText.setColor(color);prayerTimePaint.setColor(color);
             c.drawText(goldPrayerNames[i],x+6*k,base,cardText);   // the approved design: name left, time right

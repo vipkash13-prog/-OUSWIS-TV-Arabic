@@ -35,6 +35,7 @@ final class GoldenHomeSkin {
     private CardBackdrop prayerBackdrop;
     private Bitmap wallpaper,prayerArt,weatherPhoto,calendarIcon,mosqueIcon;
     private long minute=-1;
+    private final Paint scrim=new Paint(Paint.ANTI_ALIAS_FLAG);
     private int generation=-1;
     GoldenHomeSkin(){line.setStyle(Paint.Style.STROKE);cardRim.setStyle(Paint.Style.STROKE);}
     void load(Context context){
@@ -63,6 +64,7 @@ final class GoldenHomeSkin {
         cardReflection.setShader(new LinearGradient(0,0,0,1,new int[]{0x26FFFFFF,0x06FFFFFF,0x00FFFFFF},new float[]{0,0.18f,0.5f},Shader.TileMode.CLAMP));
         shelfReflection.setShader(new LinearGradient(0,0,0,1,new int[]{0x16FFFFFF,0x04FFFFFF,0x00FFFFFF},new float[]{0,0.23f,0.55f},Shader.TileMode.CLAMP));
         weatherShade.setShader(new LinearGradient(0,0,0,1,new int[]{0x26000000,0x10000000,0x48000000},new float[]{0,0.55f,1},Shader.TileMode.CLAMP));
+        scrim.setShader(new LinearGradient(0,0,1,0,new int[]{0xB8000000,0x84000000,0x00000000},new float[]{0,0.62f,1},Shader.TileMode.CLAMP));
         small.setTypeface(Ui.medium);small.setTextSize(22*k);small.setColor(0xE0F0E6D4);
         datePaint.set(header);hijriPaint.set(small);
     }
@@ -80,6 +82,18 @@ final class GoldenHomeSkin {
         for(int i=2;i>=1;i--){line.setStrokeWidth((1.6f+i*3f)*k);line.setColor(Ui.alpha(accent,0.045f));c.drawRoundRect(box,70*k,70*k,line);}
         line.setStrokeWidth(1.6f*k);line.setColor(Ui.alpha(accent,0.55f));c.drawRoundRect(box,70*k,70*k,line);
         line.setStyle(style);line.setStrokeWidth(width);line.setColor(color);
+    }
+    /** The status capsule: a gold edge around almost clear glass, so what is behind it still shows. */
+    void clearGlass(Canvas c,RectF r,float radius,float k){
+        line.setStyle(Paint.Style.FILL);line.setColor(0x2E05080D);c.drawRoundRect(r,radius,radius,line);
+        line.setStyle(Paint.Style.STROKE);line.setColor(Ui.alpha(accent,0.62f));line.setStrokeWidth(1.4f*k);
+        c.drawRoundRect(r,radius,radius,line);
+    }
+    /** Darkens the prayer card's left side, under the names and times, so the Haram backdrop never fights the text. */
+    void prayerScrim(Canvas c,RectF r,float k){
+        cardMatrix.setScale(r.width()*0.6f,1);cardMatrix.postTranslate(r.left,0);
+        scrim.getShader().setLocalMatrix(cardMatrix);
+        c.drawRoundRect(r,30*k,30*k,scrim);
     }
     /** A black glass slot behind an app's art, with a soft gold edge. */
     void slot(Canvas c,RectF r,float radius,float k){
@@ -153,9 +167,9 @@ final class GoldenHomeSkin {
                 hijriLayout=dateLayout(dates.hijri,hijriPaint,410*k,true);
             }
         }
-        int save=c.save();c.translate(145*k,62*k);gregorianLayout.draw(c);c.restoreToCount(save);
-        save=c.save();c.translate(145*k,112*k);hijriLayout.draw(c);c.restoreToCount(save);
-        if(calendarIcon!=null){art.set(572*k,76*k,572*k+48*k*calendarIcon.getWidth()/calendarIcon.getHeight(),124*k);c.drawBitmap(calendarIcon,null,art,image);}
+        int save=c.save();c.translate(80*k,62*k);gregorianLayout.draw(c);c.restoreToCount(save);
+        save=c.save();c.translate(80*k,112*k);hijriLayout.draw(c);c.restoreToCount(save);
+        if(calendarIcon!=null){art.set(514*k,76*k,514*k+48*k*calendarIcon.getWidth()/calendarIcon.getHeight(),124*k);c.drawBitmap(calendarIcon,null,art,image);}
         // Large, light numerals directly on the wallpaper: no opaque clock capsule.
         fitText(c,time,955*k,121*k,390*k,clock);
     }
