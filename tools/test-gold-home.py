@@ -58,8 +58,8 @@ try:
     shelf=[]
     for package in candidates:
         if 'package:'+package+'\n' not in available:continue
-        launch=adb('shell','cmd','package','resolve-activity','--brief','-a','android.intent.action.MAIN','-c','android.intent.category.LAUNCHER','-p',package)
-        if package+'/' in launch:shelf.append(package)
+        launch_result=adb('shell','cmd','package','resolve-activity','--brief','-a','android.intent.action.MAIN','-c','android.intent.category.LAUNCHER','-p',package)
+        if package+'/' in launch_result:shelf.append(package)
     assert shelf,'No installed shelf candidates'
     settings=ET.fromstring(saved)
     values={'language':('string','ar'),'topContent':('string','none'),'city':('string','جدة'),'latitude':('string','21.4858'),'longitude':('string','39.1925'),'shelf':('string',','.join(shelf)),'androidapps':('boolean','true'),'weather':('boolean','true'),'prayers':('boolean','true')}
