@@ -1,13 +1,13 @@
 name: OUSWIS TV signed APK
 on:
   push:
-    branches: [main]
+    branches: [main, feature/build80-cinematic]
     paths: ['app/**', 'build.sh', 'tools/**', '.github/workflows/ouswis-build.yml', 'signing/ouswis-release.jks.b64']
   workflow_dispatch:
 permissions:
   contents: write
 concurrency:
-  group: ouswis-release
+  group: ouswis-release-${{ github.ref }}
   cancel-in-progress: false
 jobs:
   android:
@@ -111,8 +111,13 @@ jobs:
       - name: Playback test image reader
         run: |
           if ! command -v ffmpeg > /dev/null; then
-            sudo apt-get update -qq
-            sudo apt-get install -y ffmpeg > /dev/null
+            for apt_source in /etc/apt/apt-mirrors.txt /etc/apt/sources.list.d/ubuntu.sources; do
+              if [ -f "$apt_source" ]; then
+                sudo sed -i 's|azure.archive.ubuntu.com|archive.ubuntu.com|g' "$apt_source"
+              fi
+            done
+            sudo apt-get -o Acquire::Retries=1 -o Acquire::http::Timeout=20 update -qq
+            sudo apt-get -o Acquire::Retries=1 -o Acquire::http::Timeout=20 install -y ffmpeg > /dev/null
           fi
           if ! python3 -c 'from PIL import Image; assert hasattr(Image, "Resampling")'; then
             python3 -m pip install --target "$RUNNER_TEMP/video-test-libs" Pillow
@@ -154,6 +159,22 @@ jobs:
             python3 tools/test-rtl-4k.py install-evidence
             python3 tools/test-gold-home.py install-evidence
             python3 tools/test-prayer-rollover-ui.py install-evidence
+      - name: Reviewable actual Home screenshot
+        if: github.ref == 'refs/heads/feature/build80-cinematic'
+        shell: python
+        run: |
+          import base64
+          from io import BytesIO
+          from PIL import Image
+          image = Image.open('install-evidence/gold-home-ar-3840x2160.png').convert('RGB')
+          image.thumbnail((1280, 720))
+          output = BytesIO()
+          image.save(output, format='JPEG', quality=88)
+          encoded = base64.b64encode(output.getvalue()).decode()
+          print('HOME_PREVIEW_START')
+          for index in range(0, len(encoded), 4096):
+              print('HOME_PREVIEW_CHUNK:' + encoded[index:index+4096])
+          print('HOME_PREVIEW_END')
       - name: Save install evidence
         if: always()
         uses: actions/upload-artifact@v4
