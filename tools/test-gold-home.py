@@ -8,7 +8,7 @@ import sys
 import time
 import xml.etree.ElementTree as ET
 from io import BytesIO
-from PIL import Image
+from PIL import Image, ImageStat
 
 ADB=os.environ.get('ADB','adb'); PKG='io.ouswis.tv.standalone'
 OUT=Path(sys.argv[1]); OUT.mkdir(parents=True,exist_ok=True)
@@ -69,7 +69,10 @@ try:
     for _ in range(8):
         tree=ui(); nodes=list(tree.iter('node'))
         prayer=next((n for n in nodes if 'مواقيت الصلاة' in label(n) and bounds(n)[1]>200),None)
-        if prayer is not None:break
+        root_node=next(n for n in nodes if n.get('class')=='android.view.ViewGroup' and bounds(n)[0]==0)
+        scale=bounds(root_node)[2]/1920
+        shelf_nodes=[n for n in nodes if n.get('package')==PKG and n.get('clickable')=='true' and 250*scale<bounds(n)[1]<470*scale]
+        if prayer is not None and len(shelf_nodes)==min(8,len(shelf)):break
         time.sleep(1)
     assert prayer is not None,'Prayer card not visible without opening drawer'
     png=adb('exec-out','screencap','-p',binary=True);im=Image.open(BytesIO(png)).convert('RGB');w,h=im.size;k=w/1920
@@ -77,6 +80,11 @@ try:
     (OUT/('gold-home-ar-'+suffix+'.png')).write_bytes(png)
     (OUT/('gold-home-ar-'+suffix+'.xml')).write_bytes(ET.tostring(tree))
     p=bounds(prayer);assert p[1]>h*.55 and p[3]<=h,(p,w,h)
+    assert len(shelf_nodes)==min(8,len(shelf)), 'Every installed shelf app must have a live tile'
+    for app in shelf_nodes:
+        x1,y1,x2,y2=bounds(app);dx=(x2-x1)*.2;dy=(y2-y1)*.2
+        region=im.crop((round(x1+dx),round(y1+dy),round(x2-dx),round(y2-dy)))
+        assert max(ImageStat.Stat(region).stddev)>8,('Missing app icon / empty design card',label(app))
     # Dark glass must be visibly different from the old pale home, at both resolutions.
     r,g,b=im.getpixel((int(1200*k),int(940*k)));assert max(r,g,b)<180,(r,g,b)
     for px,py in ((100,740),):
@@ -87,7 +95,11 @@ try:
     # The clock must leave the skyline visible instead of an opaque capsule.
     root=next(n for n in nodes if n.get('class')=='android.view.ViewGroup' and bounds(n)[0]==0)
     content_height=bounds(root)[3]-bounds(root)[1]
-    wallpaper=Image.open('app/assets/themes/gold-sunset.png').convert('RGB').resize((w,content_height),Image.Resampling.BILINEAR)
+    raw=Image.open('app/assets/themes/gold-sunset.png').convert('RGB')
+    scale=min(w/raw.width,content_height/raw.height)
+    fitted=raw.resize((round(raw.width*scale),round(raw.height*scale)),Image.Resampling.BILINEAR)
+    wallpaper=Image.new('RGB',(w,content_height),(6,10,19))
+    wallpaper.paste(fitted,((w-fitted.width)//2,(content_height-fitted.height)//2))
     x,y=int(955*k),int(40*k)
     expected=wallpaper.getpixel((x,y));actual=im.getpixel((x,y))
     # Normalize the screenshot's global color transform using uncovered sky beside the clock.

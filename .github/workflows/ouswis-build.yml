@@ -170,20 +170,20 @@ jobs:
           # A visual-review commit holds publication until the actual screenshots have been reviewed.
           review_flags=()
           if git log -1 --format=%s | grep -q '\[visual-review\]'; then review_flags=(--draft); fi
-          gh release create "$tag" "${review_flags[@]}" OUSWIS-TV-1.0.apk install-evidence/install-upgrade.log install-evidence/coexistence.log install-evidence/inapp-update.log install-evidence/inapp-*.png install-evidence/prayer-widget.log install-evidence/prayer-times-jeddah.png install-evidence/new-app-icon.png install-evidence/feature-navigation.log install-evidence/live-playback.log install-evidence/live-input-single.png install-evidence/live-fit-16x9.png install-evidence/live-fit-4x3.png install-evidence/settings-features.png install-evidence/xtream-login.png install-evidence/matches-screen.png install-evidence/matches-details.png install-evidence/home-features.png install-evidence/gold-home.log install-evidence/gold-home-ar-*.png install-evidence/official-visual.log install-evidence/official-layout-comparison.json install-evidence/official-*-home-3840x2160.png install-evidence/prayer-rollover.log install-evidence/prayer-jeddah-*.png \
+          gh release create "$tag" "${review_flags[@]}" OUSWIS-TV-1.0.apk install-evidence/install-upgrade.log install-evidence/coexistence.log install-evidence/inapp-update.log install-evidence/inapp-*.png install-evidence/prayer-widget.log install-evidence/prayer-times-jeddah.png install-evidence/new-app-icon.png install-evidence/feature-navigation.log install-evidence/live-playback.log install-evidence/live-input-single.png install-evidence/live-fit-16x9.png install-evidence/live-fit-4x3.png install-evidence/settings-features.png install-evidence/xtream-login.png install-evidence/matches-screen.png install-evidence/matches-details.png install-evidence/home-features.png install-evidence/gold-home.log install-evidence/gold-home-ar-*.png install-evidence/official-visual.log install-evidence/official-layout-comparison.json install-evidence/official-*-home-3840x2160.png install-evidence/prayer-rollover.log install-evidence/prayer-jeddah-*.png install-evidence/remote-performance.log install-evidence/*-remote-*.txt \
             --target "$GITHUB_SHA" --title "OUSWIS TV 1.0 — Official" \
             --notes "Independent package io.ouswis.tv.standalone, OUSWIS TV 1.0. Android 14 emulator installation alongside the supplied legacy io.freemytv APK passed; the legacy APK, app ID, first-install time and private data were retained. Standalone update/data-retention and feature/remote/playback checks passed. Permanent repository signing certificate aa97cc826f59fa9ba8d37f4ba3978bd968bcc8f94a0f5aa9b458f55151a177b7. No app removal is needed. Settings belong to the new independent app. See inapp-update.log for online updater availability; private repositories require a signed-in manual download. Physical MECOOL testing is separate."
           echo "https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/OUSWIS-TV-1.0.apk" >> "$GITHUB_STEP_SUMMARY"
       - name: Publish a branch preview with screenshots (never the official release)
-        if: github.ref == 'refs/heads/feature/cinematic-bg'
+        if: github.ref == 'refs/heads/feature/cinematic-bg' || github.ref == 'refs/heads/feature/build80-cinematic'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           shopt -s nullglob
           cp FreeMyTV.apk OUSWIS-TV-preview.apk
-          gh release create "cinematic-preview-${GITHUB_RUN_ID}" --prerelease --target "$GITHUB_SHA" --title "OUSWIS TV cinematic background preview" \
-            --notes "Branch preview, not the official release: the version code is still the repository's own and it does not update an installed official build." \
+          gh release create "cinematic-preview-${GITHUB_RUN_ID}" --draft --prerelease --target "$GITHUB_SHA" --title "OUSWIS TV cinematic background preview" \
+            --notes "Build-80 continuation preview; a newer signed versionCode is assigned. Draft until screenshots and real update/data-retention tests are reviewed. Physical MECOOL testing is separate." \
             OUSWIS-TV-preview.apk install-evidence/gold-home-ar-*.png install-evidence/official-*-home-3840x2160.png
           echo "https://github.com/$GITHUB_REPOSITORY/releases/tag/cinematic-preview-${GITHUB_RUN_ID}" >> "$GITHUB_STEP_SUMMARY"
       - name: Remove runner signing key

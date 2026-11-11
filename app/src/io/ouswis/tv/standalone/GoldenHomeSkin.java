@@ -26,7 +26,9 @@ final class GoldenHomeSkin {
     private final Paint shelfReflection=new Paint(Paint.ANTI_ALIAS_FLAG),weatherShade=new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint temperature=new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint header=new Paint(Paint.ANTI_ALIAS_FLAG),clock=new Paint(Paint.ANTI_ALIAS_FLAG),small=new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final RectF box=new RectF(),art=new RectF();
+    private final RectF box=new RectF(),art=new RectF(),wallpaperSource=new RectF();
+    private final Matrix wallpaperMatrix=new Matrix();
+    private final Paint panelRim=new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint cardGlass=new Paint(Paint.ANTI_ALIAS_FLAG),cardRim=new Paint(Paint.ANTI_ALIAS_FLAG),cardReflection=new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Matrix cardMatrix=new Matrix();
     private final TextPaint datePaint=new TextPaint(Paint.ANTI_ALIAS_FLAG),hijriPaint=new TextPaint(Paint.ANTI_ALIAS_FLAG);
@@ -36,7 +38,7 @@ final class GoldenHomeSkin {
     private Bitmap wallpaper,prayerArt,weatherPhoto,calendarIcon,mosqueIcon;
     private long minute=-1;
     private int generation=-1;
-    GoldenHomeSkin(){line.setStyle(Paint.Style.STROKE);cardRim.setStyle(Paint.Style.STROKE);}
+    GoldenHomeSkin(){line.setStyle(Paint.Style.STROKE);cardRim.setStyle(Paint.Style.STROKE);panelRim.setStyle(Paint.Style.STROKE);}
     void load(Context context){
         wallpaper=decode(context,"themes/gold-sunset.png");
         prayerArt=decode(context,"themes/gold-prayers.png");
@@ -50,7 +52,8 @@ final class GoldenHomeSkin {
         catch(Exception e){AppLog.w("gold artwork unavailable");return null;}
     }
     void resize(float k,float width,float height){
-        glass.setShader(new LinearGradient(0,0,width,height,new int[]{0xED29313E,0xF2090D16,0xF5080B11},new float[]{0,0.45f,1},Shader.TileMode.CLAMP));
+        glass.setShader(new LinearGradient(0,0,1,1,new int[]{0xEA171A20,0xF505080C,0xF8090B0F},new float[]{0,0.46f,1},Shader.TileMode.CLAMP));
+        panelRim.setShader(new LinearGradient(0,0,1,1,new int[]{0xDCEEE8DA,0x777F786A,0xB2C4AE88},new float[]{0,0.55f,1},Shader.TileMode.CLAMP));
         header.setTypeface(Ui.semibold);header.setTextSize(24*k);header.setColor(WHITE);
         countdown.setTypeface(Ui.semibold);countdown.setTextSize(21*k);countdown.setColor(GOLD);countdown.setFontFeatureSettings("'tnum'");
         clock.setTypeface(Ui.light);clock.setTextSize(86*k);clock.setColor(WHITE);
@@ -65,15 +68,23 @@ final class GoldenHomeSkin {
         weatherShade.setShader(new LinearGradient(0,0,0,1,new int[]{0x26000000,0x10000000,0x48000000},new float[]{0,0.55f,1},Shader.TileMode.CLAMP));
         small.setTypeface(Ui.medium);small.setTextSize(22*k);small.setColor(0xE0F0E6D4);
         datePaint.set(header);hijriPaint.set(small);
+        datePaint.setShadowLayer(2*k,0,k,0x99000000);hijriPaint.setShadowLayer(2*k,0,k,0x99000000);
     }
     void background(Canvas c,RectF screen){
         c.drawColor(0xFF060A13);
-        if(wallpaper!=null)c.drawBitmap(wallpaper,null,screen,image);
+        if(wallpaper!=null){
+            wallpaperSource.set(0,0,wallpaper.getWidth(),wallpaper.getHeight());
+            wallpaperMatrix.setRectToRect(wallpaperSource,screen,Matrix.ScaleToFit.CENTER);
+            c.drawBitmap(wallpaper,wallpaperMatrix,image); // contain: no crop and no aspect-ratio distortion
+        }
     }
     void panel(Canvas c,RectF r,float radius,float k,float focus){
+        cardMatrix.setScale(r.width(),r.height());cardMatrix.postTranslate(r.left,r.top);
+        glass.getShader().setLocalMatrix(cardMatrix);panelRim.getShader().setLocalMatrix(cardMatrix);
         c.drawRoundRect(r,radius,radius,glass);
-        line.setColor(Ui.alpha(accent,0.42f));line.setStrokeWidth(k);
-        c.drawRoundRect(r,radius,radius,line);
+        panelRim.setStrokeWidth(1.2f*k);c.drawRoundRect(r,radius,radius,panelRim);
+        line.setColor(0x10FFFFFF);line.setStrokeWidth(0.6f*k);
+        box.set(r);box.inset(2*k,2*k);c.drawRoundRect(box,radius-2*k,radius-2*k,line);
         if(focus>0.01f)focus(c,r,radius,k,focus);
     }
     /** A quiet accent changes only at the existing minute tick; no shaders or bitmaps are recreated. */

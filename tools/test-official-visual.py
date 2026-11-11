@@ -51,9 +51,7 @@ subprocess.run([sys.executable,'tools/verify-release-apk.py',str(OLD)],check=Tru
 with zipfile.ZipFile(OLD) as old,zipfile.ZipFile(NEW) as new:
     names={n for n in old.namelist() if n.startswith('assets/')}
     assert names=={n for n in new.namelist() if n.startswith('assets/')}
-    # The owner approved a new wallpaper (Nov 11); every other asset must stay byte-identical.
-    WALLPAPER={'assets/themes/gold-sunset.png'}
-    for n in names-WALLPAPER:assert old.read(n)==new.read(n),'Asset changed: '+n
+    for n in names:assert old.read(n)==new.read(n),'Existing official asset changed: '+n
     assert not any(n.startswith('lib/') and n.endswith('.so') for n in new.namelist()),'Recheck native ABI coverage'
 note('PASS: all official assets, wallpaper and icons are byte-identical. No native .so/ABI restriction: Java/Dex APK supports armeabi-v7a without a separate native build.')
 assert adb('shell','getprop','ro.kernel.qemu').strip()=='1'
@@ -74,6 +72,7 @@ for path,raw in ((ROOT+'/shared_prefs/settings.xml',ET.tostring(prefs,encoding='
     subprocess.run([ADB,'shell','cat > '+path],input=raw,check=True,timeout=30)
 adb('shell','chown','-R',uid+':'+uid,ROOT+'/shared_prefs',ROOT+'/files')
 original=capture('official-baseline-home-3840x2160')
+subprocess.run([sys.executable,'tools/test-home-remote-performance.py',str(OUT),'build80-baseline'],check=True)
 adb('shell','am','force-stop',PKG)
 settings_hash=hashlib.sha256(adb('shell','cat',ROOT+'/shared_prefs/settings.xml',binary=True)).hexdigest()
 adb('install','--no-streaming','-r',str(NEW))
@@ -83,6 +82,7 @@ assert adb('shell','cat',ROOT+'/files/official-upgrade-probe')=='official-10149-
 assert adb('shell','cat',ROOT+'/shared_prefs/XtreamActivity.xml').strip()=='<map/>'
 note('PASS: actual published '+baseline_code+' -> '+after[2]+': UID, first install, Home settings, private probe and account preference file retained; no uninstall or data clear.')
 updated=capture('official-polished-home-3840x2160')
+subprocess.run([sys.executable,'tools/test-home-remote-performance.py',str(OUT),'cinematic-update'],check=True)
 assert original==updated,('Layout moved',original,updated)
 (OUT/'official-layout-comparison.json').write_text(json.dumps({'before':original,'after':updated},ensure_ascii=False,indent=2))
 note('PASS: all reachable controls, app order, both information-card bounds and relative layout are identical to the actual published official APK at 3840x2160. Live clock/weather/prayer values are not frozen.')

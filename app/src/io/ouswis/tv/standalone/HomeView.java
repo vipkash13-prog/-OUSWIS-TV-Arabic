@@ -110,7 +110,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private static final long TOAST_MS = 6000, FADE_MS = 800;
     /** Blur radii of the shadow and shadowDeep paints (Shadows needs them to draw the same blur on older TVs). */
     private static final float SHADOW_BLUR = 26, DEEP_BLUR = 30;
-    private static final int SKY = 0, HERO = 1, STATUS = 2, PLATTER = 3, TILES = 4, DRAWER = 5, SHEET = 6, TOAST = 7, MENU = 8, RECENT = 9;
+    private static final int SKY = 0, HERO = 1, STATUS = 2, PLATTER = 3, TILES = 4, DRAWER = 5, SHEET = 6, TOAST = 7, MENU = 8, RECENT = 9, GOLD_WIDGETS=10;
     private static final int Z_STATUS = 0, Z_HERO = 1, Z_SHELF = 2, Z_DRAWER = 3;
     private static final ExecutorService LOADER = Executors.newSingleThreadExecutor();
     // Light design (the L_ constants): title, tab bar, three recommendation cards and the shelf.
@@ -207,7 +207,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         @Override public void hold(int id) { if (recentsOpen()) recents.closeFocused(); else if (sheetOpen) a11yHold(); else if (canReorder()) startReorder(); else showMenu(); }
     });
     private final RectF a11yRect = new RectF();
-    private final Layer sky, heroLayer, status, platter, tiles, drawerLayer, sheetLayer, toastLayer, menuLayer, recentLayer;
+    private final Layer sky, heroLayer, status, platter, tiles, drawerLayer, widgetLayer, sheetLayer, toastLayer, menuLayer, recentLayer;
     private RecentApps recents;
     private int zone = Z_SHELF;
 
@@ -457,6 +457,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                 case PLATTER: drawPlatter(c); break;
                 case TILES: drawTiles(c); break;
                 case DRAWER: drawDrawer(c); break;
+                case GOLD_WIDGETS: drawGoldWidgets(c); break;
                 case SHEET: drawSheet(c); break;
                 case MENU: drawMenu(c); break;
                 case RECENT: if (recents != null) recents.draw(c, w, h); break;
@@ -688,6 +689,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         platter = new Layer(a, PLATTER);
         tiles = new Layer(a, TILES);
         drawerLayer = new Layer(a, DRAWER);
+        widgetLayer = new Layer(a, GOLD_WIDGETS);
         sheetLayer = new Layer(a, SHEET);
         toastLayer = new Layer(a, TOAST);
         menuLayer = new Layer(a, MENU);
@@ -696,14 +698,15 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         // Not on Android 8 to 11: on older GPUs (a Mi Box 3's Mali-450) redrawing and compositing a big layer on every
         // frame cost more than drawing straight to the screen (measured: focus on the picks 33 → 12 ms a frame, the
         // drawer 19 → 17 ms).
-        for (View v : new View[] {heroLayer, status, platter, tiles, drawerLayer, sheetLayer}) v.setLayerType(Ui.LEGACY ? LAYER_TYPE_NONE : LAYER_TYPE_HARDWARE, null);
-        for (View v : new View[] {sky, heroLayer, status, platter, tiles, drawerLayer, sheetLayer, menuLayer, toastLayer, recentLayer}) {
+        for (View v : new View[] {heroLayer, status, platter, tiles, drawerLayer, widgetLayer, sheetLayer}) v.setLayerType(Ui.LEGACY ? LAYER_TYPE_NONE : LAYER_TYPE_HARDWARE, null);
+        for (View v : new View[] {sky, heroLayer, status, platter, tiles, drawerLayer, widgetLayer, sheetLayer, menuLayer, toastLayer, recentLayer}) {
             v.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);   // TalkBack reads the items (Spoken)
             addView(v);
         }
         setContentDescription("OUSWIS TV");
         recentLayer.setVisibility(INVISIBLE);
         drawerLayer.setVisibility(INVISIBLE);
+        widgetLayer.setVisibility(INVISIBLE);
         menuLayer.setVisibility(INVISIBLE);
         for (int i = 0; i < topFocus.length; i++) {
             topFocus[i] = Spring.focus(0);
@@ -899,7 +902,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     }
 
     private void invalidateAll() {
-        for (View v : new View[] {sky, heroLayer, status, platter, tiles, drawerLayer}) v.invalidate();
+        for (View v : new View[] {sky, heroLayer, status, platter, tiles, drawerLayer, widgetLayer}) v.invalidate();
     }
 
     // MARK: - Size and layers
@@ -917,7 +920,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         // cheaper for the GPU to composite on every frame of the drawer animation.
         measure(platter, width, Math.round((gold()?250:320) * kk));
         measure(tiles, width, Math.round((gold()?190:270) * kk));
-        measure(drawerLayer, width, Math.round(600 * kk));
+        measure(drawerLayer, width, Math.round((gold()?185:600) * kk));
+        measure(widgetLayer, width, gold()?Math.round(360*kk):0);
         measure(sheetLayer, width, height);
         measure(menuLayer, width, height);
         measure(toastLayer, width, Math.round(220 * kk));   // full width: a toast may sit right of a long title
@@ -938,6 +942,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         place(platter, 0, Math.round((gold()?250:750) * kk));
         place(tiles, 0, Math.round((gold()?290:790) * kk));
         place(drawerLayer, 0, Math.round(470 * kk));
+        place(widgetLayer,0,Math.round(640*kk));
         sheetLayer.layout(0, 0, width, height);
         menuLayer.layout(0, 0, width, height);
         sheetLayer.setPivotX(width / 2f);
@@ -1111,6 +1116,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         if (statusMoving || statusDirty || bgFading) status.invalidate();
         if (heroMoving || heroDirty || heroFading) heroLayer.invalidate();
         if (drawerItemsMoving || drawerDirty || bgFading) drawerLayer.invalidate();
+        if(gold()&&(drawerDirty||bgFading))widgetLayer.invalidate();
         if (gridMoving || gridDirty) sheetLayer.invalidate();
         if (drawerMoving || bgFading) sky.invalidate();
         if (bgFading || (drawerWasMoving && !drawerMoving)) platter.invalidate();
@@ -1135,14 +1141,14 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         else Choreographer.getInstance().postFrameCallbackDelayed(this,toast==null?1000:Math.max(1,Math.min(1000,TOAST_MS-450-(up-toastAt))));
     }
 
-    private final int[] underState = new int[9];
+    private final int[] underState = new int[10];
     private boolean underHidden;
 
     /** Recent Apps covers the screen: the layers below aren't drawn (on slower TVs they cost more than the cards). */
     private void setUnderRecents(boolean covered) {
         if (covered == underHidden) return;
         underHidden = covered;
-        View[] under = {sky, heroLayer, status, platter, tiles, drawerLayer, sheetLayer, menuLayer, toastLayer};
+        View[] under = {sky, heroLayer, status, platter, tiles, drawerLayer, widgetLayer, sheetLayer, menuLayer, toastLayer};
         for (int i = 0; i < under.length; i++) {
             if (covered) {
                 underState[i] = under[i].getVisibility();
@@ -1173,11 +1179,12 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         float home = 1 - s;
         if(gold()){
             show(heroLayer,home,0);show(status,home,0);show(platter,home,0);show(tiles,home,0);
-            show(drawerLayer,home,0);
+            show(drawerLayer,home,0);show(widgetLayer,home,0);
             sheetLayer.setVisibility(s>0.001f||sheetOpen?VISIBLE:INVISIBLE);sheetLayer.setAlpha(s);
             sheetLayer.setScaleX(1.04f-0.04f*s);sheetLayer.setScaleY(1.04f-0.04f*s);
             return;
         }
+        widgetLayer.setVisibility(INVISIBLE);
         float top = home * (1 - smoothstep(0, 0.32f, dc));
         float shift = SHIFT * k;
         float lift = -d * shift;
@@ -1244,7 +1251,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         clockMinute = minute;
         clockText = gold()?Ui.clockWithPeriod(now):Ui.clock(now);
         if(gold()&&goldSkin.lighting(now,data.weather.sunrise,data.weather.sunset)){
-            platter.invalidate();tiles.invalidate();drawerLayer.invalidate();status.invalidate();
+            platter.invalidate();tiles.invalidate();drawerLayer.invalidate();widgetLayer.invalidate();status.invalidate();
         }
         if(gold()||Prefs.prayerAlerts()){
             PrayerCountdown next=PrayerCountdown.next(prayers.today(),prayers.tomorrow(),now);
@@ -1943,14 +1950,16 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         float r = r0 * s;
         // Shadow at the resting icon size, enlarged by the transform (so the blur stays cached): short at rest, deep
         // and lower when focused.
-        c.save();
-        c.translate(cx, cy);
-        c.scale(s, s);
-        tmp.set(-bw / 2, -bh / 2, bw / 2, bh / 2);
-        tmp.offset(0, (4 + 14 * f + 6 * l) * k);
-        shadowDeep.setColor(Ui.alpha(0xFF000000, tone(0.14f, 0.3f) + tone(0.18f, 0.3f) * fc + 0.14f * Ui.clamp(l)));
-        shadows.draw(c, tmp, r0, DEEP_BLUR * k, shadowDeep);
-        c.restore();
+        if(!gold()){
+            c.save();
+            c.translate(cx, cy);
+            c.scale(s, s);
+            tmp.set(-bw / 2, -bh / 2, bw / 2, bh / 2);
+            tmp.offset(0, (4 + 14 * f + 6 * l) * k);
+            shadowDeep.setColor(Ui.alpha(0xFF000000, tone(0.14f, 0.3f) + tone(0.18f, 0.3f) * fc + 0.14f * Ui.clamp(l)));
+            shadows.draw(c, tmp, r0, DEEP_BLUR * k, shadowDeep);
+            c.restore();
+        }
         int[] style = TILE_STYLE.get(it.key);
         if (it.logo != null && style != null) {
             if (tileShaders.length != shelf.size() || tileShaderH != bh) {
@@ -2250,8 +2259,17 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         for (int i = 0; i < drawerItems.size(); i++) if (drawerFocus[i].value > 0.02f && (top < 0 || drawerFocus[i].value > drawerFocus[top].value)) top = i;
         for (int i = 0; i < drawerItems.size(); i++) if (i != top) drawDrawerTile(c, i);
         if (top >= 0) drawDrawerTile(c, top);
-        if (Prefs.weather()) drawWeatherCard(c, weatherCard);
-        if (Prefs.prayers()) drawPrayerCard(c, prayerCard);
+        if(!gold()){
+            if (Prefs.weather()) drawWeatherCard(c, weatherCard);
+            if (Prefs.prayers()) drawPrayerCard(c, prayerCard);
+        }
+    }
+
+    /** Static live-data cards have their own bounded layer; remote focus never redraws their artwork/text. */
+    private void drawGoldWidgets(Canvas c){
+        if(!gold())return;
+        if(Prefs.weather())drawWeatherCard(c,weatherCard);
+        if(Prefs.prayers())drawPrayerCard(c,prayerCard);
     }
 
     /** Square drawer button: symbol and name; an input with no device is dimmed. Focused: white, with dark text. */
@@ -2262,7 +2280,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         float cx = base.centerX(), cy = base.centerY();
         cell.set(cx - base.width() * s / 2, cy - base.height() * s / 2, cx + base.width() * s / 2, cy + base.height() * s / 2);
         float r = 20 * k * s;
-        if (f > 0.01f) {
+        if (!gold()&&f > 0.01f) {
             tmp.set(cell);
             tmp.offset(0, 12 * k * f);
             shadow.setColor(Ui.alpha(0xFF000000, 0.45f * f));
