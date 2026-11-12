@@ -347,6 +347,7 @@ public final class LiveActivity extends Activity {
                     Design.center(c,"اضغط OK لملء الشاشة",476,490,muted);
                 }
             }
+            if(previewOn&&sel>=0&&sel<list.size())a11y.add(72,163,880,582,"معاينة "+list.get(sel).name,column==2&&headerFocus<0,true);
             if(column==2&&headerFocus<0){r.set(72,163,880,582);Design.grown(r,g);Design.focusRing(c,g,26,1,p);}
             // guide card
             r.set(72,603,880,981);Design.card(c,r,26,1,p,Design.SURFACE);
