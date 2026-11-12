@@ -23,7 +23,7 @@ jobs:
         run: ./build.sh --generic
       - name: Tools
         run: |
-          sudo apt-get update -qq && sudo apt-get install -y ffmpeg > /dev/null
+          sudo apt-get update -qq && sudo apt-get install -y ffmpeg python3-pil > /dev/null
           sudo chmod 666 /dev/kvm
       - name: Emulator run, 1920x1080
         uses: reactivecircus/android-emulator-runner@v2
