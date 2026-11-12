@@ -291,7 +291,7 @@ with tempfile.TemporaryDirectory() as temp:
     guide_card = wait_label('الهلال ضد النصر', 'the match found only in the guide')
     assert any(('SSC 1 HD' in l or 'beIN Sports 1 HD' in l or 'AD Sports 1' in l) for l in guide_card), 'The guide match must carry the channel it was found on: ' + str(guide_card)
     for l in cards:
-        if 'الهلال' in l: continue
+        if any(t in l for t in ('الهلال', 'يوفنتوس', 'آرسنال')): continue   # found in the mock guide: confirmed
         assert 'beIN' not in l and 'SSC' not in l and 'AD Sports' not in l and 'beIN SPORTS' not in l, 'No channel may be named without a confirmation: ' + l
         if 'انتهت' not in l: assert 'اختر القناة' in l, 'An unconfirmed match must ask to pick the channel: ' + l
     labs = labels(); i_all = labs.index('الكل'); i_fav = [i for i, l in enumerate(labs) if '★ المفضلة' in l][0]
