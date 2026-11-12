@@ -1,5 +1,8 @@
 name: Probe ESPN slugs
-on: workflow_dispatch
+on:
+  push:
+    branches: ['feature/**']
+    paths: ['.github/workflows/probe-espn.yml']
 jobs:
   probe:
     runs-on: ubuntu-latest
