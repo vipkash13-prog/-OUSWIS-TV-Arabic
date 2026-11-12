@@ -185,7 +185,15 @@ result = adb('shell', 'am', 'start', '-W', '-n', 'io.ouswis.tv.standalone/io.ous
 assert 'Status: ok' in result
 activity('HomeActivity')
 assert not any(n.get('resource-id') == 'io.ouswis.tv.standalone:id/home_matches' for n in xml().iter('node'))
-assert sum(1 for n in nodes() if n.get('text') in ('البث المباشر','المباريات','كل التطبيقات','الأخيرة','التحديثات','الإعدادات') and n.get('clickable') == 'true') == 6, 'The six shortcuts of the new home'
+SIX = ('البث المباشر','المباريات','كل التطبيقات','الأخيرة','التحديثات','الإعدادات')
+for _ in range(20):
+    seen = {n.get('text') for n in nodes() if n.get('text') in SIX and n.get('clickable') == 'true'}
+    if len(seen) == 6:
+        break
+    time.sleep(1)
+else:
+    screenshot('home-features-failure.png')
+    raise AssertionError('The six shortcuts of the new home; saw: ' + str(seen))
 screenshot('home-features.png')
 note('PASS: no floating matches card covers the home screen or drawer.')
 note('No provider credentials were entered. Live stream playback and availability of fixtures require the user/provider network.')
