@@ -355,7 +355,9 @@ public final class XtreamActivity extends Activity {
     }
 
     private String streamEvent;
+    private Runnable noteWatched;
     private void stopPlayer() {
+        if(noteWatched!=null){main.removeCallbacks(noteWatched);noteWatched=null;}
         if(streamEvent!=null){IslandEvents.clear(this,streamEvent);streamEvent=null;}
         playbackGeneration++;
         cancelPlaybackTimeout();
@@ -380,6 +382,10 @@ public final class XtreamActivity extends Activity {
         main.removeCallbacks(hideLabel);
         current=index; XtreamCatalog.Entry c=channels.get(index);
         getPreferences(0).edit().putString("lastChannel",c.id).putString("lastChannelName",c.name).apply();
+        // the home screen's "last channel" and the "Recent" section: only after 10 seconds on this channel
+        final XtreamCatalog.Entry watched=c;final int watchedIndex=index;
+        noteWatched=()->{if(generation==playbackGeneration&&current==watchedIndex&&video!=null)LiveData.noteWatched(this,new LiveData.Channel(watched.id,watched.name,"",String.valueOf(watchedIndex+1),watched.extension==null?"ts":watched.extension));};
+        main.postDelayed(noteWatched,10_000);
         player=new FrameLayout(this);
         player.setBackgroundColor(Color.BLACK);
         setContentView(player);

@@ -99,10 +99,10 @@ with tempfile.TemporaryDirectory() as temp:
     subprocess.run(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', 'testsrc=s=640x360:r=10', '-t', '90',
                     '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-f', 'mpegts', str(clip)], check=True)
     data = clip.read_bytes()
-    CATS = [('11', 'رياضة'), ('12', 'أخبار'), ('13', 'أفلام')]
+    CATS = [('10', 'FR|TF1 HD'), ('11', 'رياضة'), ('12', 'أخبار'), ('13', 'أفلام')]
     STREAMS = {'11': [('101', 'SSC 1 HD', 'ts'), ('102', 'SSC 2 HD', 'ts'), ('103', 'SSC 3 HD', 'ts'), ('110', 'beIN Sports 1 HD', 'ts'),
                       ('111', 'beIN Sports 2', 'ts'), ('112', 'beIN Sports 3', 'm3u8'), ('120', 'AD Sports 1', 'ts')],
-               '12': [('201', 'Al Arabiya', 'ts'), ('202', 'Sky News Arabia', 'ts')], '13': [('301', 'Movies One', 'ts')]}
+               '12': [('201', 'Al Arabiya', 'ts'), ('202', 'Sky News Arabia', 'ts')], '13': [('301', 'Movies One', 'ts')], '10': [('401', 'TF1 HD', 'ts')]}
 
     class Provider(BaseHTTPRequestHandler):
         def log_message(self, *a): pass
@@ -183,6 +183,9 @@ with tempfile.TemporaryDirectory() as temp:
     # 3. the live browser: sections, channels, EPG, a muted preview, favourites, zapping
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.LiveActivity')
     wait_label('قسم رياضة', 'the server categories on the live screen')
+    ls = labels()
+    assert [i for i, l in enumerate(ls) if 'قسم رياضة' in l][0] < [i for i, l in enumerate(ls) if 'قسم FR|TF1 HD' in l][0], 'Arabic and sports sections must come before the foreign ones by default'
+    note('PASS: by default the Arabic/sports sections come before the foreign one (FR|TF1 HD), after favourites and recents.')
     # remote columns: the screen opens on the channels; RIGHT -> sections, DOWN inside them, LEFT -> channels, LEFT -> preview
     assert 'SSC 1 HD' in focused_label() or '101' in focused_label(), 'The channels column must hold the first focus: ' + focused_label()
     keys('DPAD_RIGHT'); assert focused_label().startswith('قسم') and 'الأخيرة' in focused_label(), 'RIGHT must move to the sections column: ' + focused_label()
@@ -215,6 +218,25 @@ with tempfile.TemporaryDirectory() as temp:
     note('PASS: OK plays full screen; CH+ / CH- move through the section (103, then back to 101) and the picture follows.')
     keys('BACK', pause=1.5); front('LiveActivity')
     note('PASS: Back from the player returned to the channel list.')
+
+    # 3b. "last channel" follows what was watched full screen for 10 s, from anywhere; the small preview never counts
+    keys('HOME', pause=1.5)
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.HomeActivity'); wait_label('آخر قناة شاهدتها', 'the home screen')
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.PlayerActivity', '-e', 'id', '110', '-e', 'name', 'beIN Sports 1 HD', '-e', 'ext', 'ts', '-e', 'num', '110')
+    time.sleep(14)    # channel A, longer than 10 s
+    keys('CHANNEL_UP', pause=14)    # channel B, the next one in its section, longer than 10 s
+    keys('BACK', pause=2); front('HomeActivity')
+    got = wait_label('آخر قناة شاهدتها', 'the last-channel card after coming back')
+    assert any('beIN Sports 2' in l for l in got), 'Home must read the last channel again on return: ' + str(got)
+    recent = adb('shell', 'cat', folder + '/ouswis-live.xml')
+    assert recent.index('111') < recent.index('110'), 'Recent must list B before A: ' + recent[:400]
+    note('PASS: watched A (beIN 1) then B (beIN 2), 14 s each: coming back, the home card shows B and Recent lists B before A.')
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.LiveActivity'); wait_label('قسم', 'the live screen')
+    keys('DPAD_DOWN', pause=14)    # the preview plays another channel for 14 s
+    keys('BACK', pause=2); front('HomeActivity')
+    assert any('beIN Sports 2' in l for l in wait_label('آخر قناة شاهدتها', 'the card after a long preview')), 'The small preview must not change the last channel'
+    note('PASS: 14 s on the small preview in the live screen left the last channel unchanged.')
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.LiveActivity'); wait_label('قسم', 'the live screen again')
 
     # 4. a channel whose .m3u8 is refused plays through the .ts fallback
     before = HITS.get('112.m3u8', 0)
@@ -254,4 +276,28 @@ with tempfile.TemporaryDirectory() as temp:
     no_crash('Matches')
     note('PASS: matches screen loaded real fixtures (or an honest empty day) and took keys without a crash.')
     (OUT / 'redesign-logcat.txt').write_text(adb('logcat', '-d', '-t', '800', check=False))
+
+    # 7. sections: order and hiding (Settings)
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.SectionOrderActivity')
+    wait_label('FR|TF1 HD', 'the sections list in Settings')
+    tap('FR|TF1 HD'); tap('إلى أول القائمة')
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.LiveActivity'); wait_label('قسم رياضة', 'the live sections after reordering')
+    ls = labels()
+    assert [i for i, l in enumerate(ls) if 'قسم FR|TF1 HD' in l][0] < [i for i, l in enumerate(ls) if 'قسم رياضة' in l][0], 'A saved order must win'
+    note('PASS: moving a section to the top in Settings changed the live screen order.')
+    keys('BACK', pause=1.5)
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.SectionOrderActivity'); wait_label('أخبار', 'the sections list')
+    tap('أخبار'); tap('إخفاء القسم')
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.LiveActivity'); wait_label('قسم رياضة', 'the live screen after hiding')
+    assert not any('قسم أخبار' in l for l in labels()), 'A hidden section must leave the live screen'
+    note('PASS: a hidden section no longer shows on the live screen.')
+    keys('BACK', pause=1.5)
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.SectionOrderActivity'); wait_label('الترتيب الافتراضي', 'the reset row')
+    tap('الترتيب الافتراضي')
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.LiveActivity'); wait_label('قسم أخبار', 'the hidden section back after the reset')
+    ls = labels()
+    assert [i for i, l in enumerate(ls) if 'قسم رياضة' in l][0] < [i for i, l in enumerate(ls) if 'قسم FR|TF1 HD' in l][0]
+    note('PASS: reset restored the default order and showed the hidden section again.')
+    shot('redesign-live-after-reset.png')
+    no_crash('Sections')
     server.shutdown()

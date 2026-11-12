@@ -183,13 +183,30 @@ final class RedesignHomeView extends View {
         }else c.drawColor(Design.BG);
         a11y.begin(k);
         c.save();c.scale(k,k);
-        drawTop(c);drawHero(c);drawPrayer(c);
+        drawTop(c);
         boolean hasMatches=!today.isEmpty();
-        if(hasMatches)drawMatches(c);
-        drawApps(c);drawShortcuts(c);
+        spread(hasMatches);
+        block(c,dy[0]);drawHero(c);drawPrayer(c);unblock(c);
+        if(hasMatches){block(c,dy[1]);drawMatches(c);unblock(c);}
+        block(c,dy[2]);drawApps(c);unblock(c);
+        block(c,dy[3]);drawShortcuts(c);unblock(c);
         Design.right(c,"◀ ▶ ▲ ▼ للتنقل · OK للفتح",1848,1054,Design.text(0x73F4EFE4,18,Design.regular()));
         Design.left(c,"الشاشة الرئيسية",72,1054,Design.text(0x73F4EFE4,18,Design.regular()));
         c.restore();
+    }
+
+    private void block(Canvas c,float by){c.save();c.translate(0,by);a11y.shift(by);}
+    private void unblock(Canvas c){c.restore();a11y.shift(0);}
+    /** Hero (with the prayer card), matches, apps and shortcuts get equal gaps between the top bar and the hint line. */
+    private void spread(boolean withMatches){
+        final float[] h={229.5f,172f,175f,76f},top={163f,400f,626f,828f};
+        float sum=0;int n=0;
+        for(int i=0;i<4;i++)if(i!=1||withMatches){sum+=h[i];n++;}
+        float gap=(1018f-118f-sum)/n,y=118f+gap;
+        for(int i=0;i<4;i++){
+            if(i==1&&!withMatches){dy[1]=0;continue;}
+            dy[i]=y-top[i];y+=h[i]+gap;
+        }
     }
 
     private void drawTop(Canvas c){
@@ -234,6 +251,8 @@ final class RedesignHomeView extends View {
 
     /** dp of the reference design: 1920 reference px across 1280 dp. */
     private static final float DP=1.5f;
+    private static final int CARD_DARK=0xBF0B0D1A;   // #0B0D1A at 75 %: the skyline behind never competes with the text
+    private final float[] dy=new float[4];   // vertical shift of each block so the rows share the screen evenly
     private final Paint heroFill=new Paint(Paint.ANTI_ALIAS_FLAG),heroStroke=new Paint(Paint.ANTI_ALIAS_FLAG);
     private float heroL,heroT,heroR,heroB;   // the box the gradient was made for
     private final Path heroClip=new Path();
@@ -244,7 +263,7 @@ final class RedesignHomeView extends View {
         // separate paints, so no later change to one can touch what is already recorded for the other
         if(box.left!=heroL||box.top!=heroT||box.right!=heroR||box.bottom!=heroB){
             heroL=box.left;heroT=box.top;heroR=box.right;heroB=box.bottom;
-            heroFill.setShader(new LinearGradient(heroL,heroT,heroR,heroB,0xFF0F4B33,0xFF11172E,Shader.TileMode.CLAMP));
+            heroFill.setShader(new LinearGradient(heroL,heroT,heroR,heroB,0xD9123D5C,0xD9121A3A,Shader.TileMode.CLAMP));   // #123D5C to #121A3A at 85 %
         }
         heroFill.setStyle(Paint.Style.FILL);c.drawRoundRect(box,30,30,heroFill);
         heroStroke.setStyle(Paint.Style.STROKE);heroStroke.setStrokeWidth(1);heroStroke.setColor(Design.STROKE);c.drawRoundRect(box,30,30,heroStroke);
@@ -254,7 +273,7 @@ final class RedesignHomeView extends View {
         float tw=200*DP,th=113*DP;
         float pad=(box.height()-th)/2;
         RectF thumb=new RectF(box.right-pad-tw,box.top+pad,box.right-pad,box.top+pad+th);
-        Design.fill(c,thumb,18,p,0xFF1E7A4B);
+        Design.fill(c,thumb,18,p,0xFF1A1F3A);   // dark tile: no green anywhere
         float x=thumb.left-30;
         if(ch!=null){
             Bitmap logo=ch.icon.isEmpty()?null:ImageCache.get(ch.icon,this::postInvalidate);
@@ -262,7 +281,10 @@ final class RedesignHomeView extends View {
                 float sc=Math.min(tw*0.72f/logo.getWidth(),th*0.62f/logo.getHeight());
                 float lw=logo.getWidth()*sc,lh=logo.getHeight()*sc;
                 bm.set(thumb.centerX()-lw/2,thumb.centerY()-lh/2,thumb.centerX()+lw/2,thumb.centerY()+lh/2);p.setColor(0xFFFFFFFF);c.drawBitmap(logo,null,bm,p);
-            }else Design.initial(c,ch.name,thumb.centerX(),thumb.centerY(),34,p,badge);
+            }else{   // no logo: the channel's short name on the dark tile
+                Paint sn=Design.text(Design.TEXT,34,Design.bold());
+                Design.center(c,Design.fit(ch.name,sn,tw-36),thumb.centerX(),thumb.centerY()+12,sn);
+            }
             Design.liveBadge(c,thumb.right-52,thumb.top+26,"مباشر",15,p,badge);
         }
         if(ch==null){
@@ -302,7 +324,7 @@ final class RedesignHomeView extends View {
 
     private void drawPrayer(Canvas c){
         r.set(72,167,591,396);RectF box=ring(r,focus(1,1));
-        Design.card(c,box,30,1,p,0x14FFFFFF);
+        Design.card(c,box,30,1,p,CARD_DARK);
         PrayerTimes pt=PrayerTimes.get(getContext());
         PrayerSchedule day=pt.today();long now=System.currentTimeMillis();
         PrayerCountdown next=PrayerCountdown.next(day,pt.tomorrow(),now);
@@ -352,7 +374,7 @@ final class RedesignHomeView extends View {
             float right=1847-i*425,left=right-404;
             r.set(left,466,right,592);RectF box=ring(r,focus(2,i));
             boolean done=!m.live()&&!m.upcoming();
-            Design.card(c,box,22,1,p,m.live()?0x1AEF4444:Design.SURFACE);
+            Design.card(c,box,22,1,p,m.live()?0xBF2A0F1A:CARD_DARK);
             crest(c,m.homeLogo,m.home,right-67,516,26);crest(c,m.awayLogo,m.away,left+67,516,26);
             Paint team=Design.text(Design.TEXT,17,Design.regular());
             Design.center(c,Design.fit(m.home,team,120),right-67,566,team);

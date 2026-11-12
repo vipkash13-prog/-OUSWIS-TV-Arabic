@@ -38,7 +38,27 @@ public final class PlayerActivity extends Activity {
     private int attempt,failures,generation;
     private boolean started;
     private final Runnable hideLabel=()->label.setVisibility(View.GONE);
-    private final Runnable noteLater=()->{if(index>=0&&index<list.size())LiveData.noteWatched(this,list.get(index));};
+    private long playingSince;   // elapsedRealtime when this channel's picture first came up; 0 until then
+    /** "Last channel" and "Recent": only a channel that has played full screen for 10 seconds (the small preview never gets here). */
+    private final Runnable noteLater=()->{
+        if(playingSince==0)return;
+        long left=10_000-(android.os.SystemClock.elapsedRealtime()-playingSince);
+        if(left>500){main.postDelayed(this.noteLaterRef(),left);return;}
+        noteWatchedNow();
+    };
+    private Runnable noteLaterRef(){return noteLater;}
+    private void noteWatchedNow(){if(index>=0&&index<list.size()&&list.get(index).id.length()>0)LiveData.noteWatched(this,list.get(index));}
+    /** The picture is up: start counting (once per channel), from whichever signal the decoder gives first. */
+    private void pictureUp(){
+        if(playingSince!=0)return;
+        playingSince=android.os.SystemClock.elapsedRealtime();
+        main.removeCallbacks(noteLater);main.postDelayed(noteLater,10_000);
+    }
+    /** Called as the channel is left (zap, back, stop): it counts if it had been playing for the 10 seconds. */
+    private void leaveChannel(){
+        if(playingSince!=0&&android.os.SystemClock.elapsedRealtime()-playingSince>=10_000)noteWatchedNow();
+        playingSince=0;
+    }
 
     static android.content.Intent intent(android.content.Context c,LiveData.Channel ch,String section){
         return new android.content.Intent(c,PlayerActivity.class).putExtra(EXTRA_ID,ch.id).putExtra(EXTRA_NAME,ch.name)
@@ -103,16 +123,15 @@ public final class PlayerActivity extends Activity {
                 if(state==Player.STATE_READY){status.setVisibility(View.GONE);failures=0;}
                 if(state==Player.STATE_BUFFERING)status.setVisibility(View.VISIBLE);
             }
-            @Override public void onRenderedFirstFrame(){
-                status.setVisibility(View.GONE);
-                main.removeCallbacks(noteLater);main.postDelayed(noteLater,10_000);   // "last channel" only after 10 s
-            }
+            @Override public void onRenderedFirstFrame(){status.setVisibility(View.GONE);pictureUp();}
+            @Override public void onIsPlayingChanged(boolean playing){if(playing)pictureUp();}
             @Override public void onVideoSizeChanged(VideoSize size){fit(size);}
             @Override public void onPlayerError(PlaybackException e){fail();}
         });
         playCurrent();
     }
     @Override protected void onStop(){
+        leaveChannel();
         main.removeCallbacksAndMessages(null);
         if(player!=null){try{player.release();}catch(Exception ignored){}player=null;}
         started=false;
@@ -129,7 +148,7 @@ public final class PlayerActivity extends Activity {
         if(player==null||index<0||index>=list.size())return;
         LiveData.Channel ch=list.get(index);
         final int mine=++generation;
-        main.removeCallbacks(noteLater);
+        main.removeCallbacks(noteLater);playingSince=0;
         String ext=LivePlayer.extension(ch,attempt);
         player.setMediaItem(LivePlayer.item(account,ch,ext));
         player.setVolume(1f);
@@ -152,6 +171,7 @@ public final class PlayerActivity extends Activity {
     }
     private void zap(int by){
         if(list.size()<2)return;
+        leaveChannel();
         index=(index+by+list.size())%list.size();
         attempt=0;failures=0;
         playCurrent();

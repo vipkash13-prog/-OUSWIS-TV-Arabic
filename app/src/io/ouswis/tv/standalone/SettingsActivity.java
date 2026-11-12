@@ -57,7 +57,7 @@ public class SettingsActivity extends Activity {
     private SettingsView view;
     private DreamView preview;   // "Screensaver": the screensaver right here, without changing the system setting
     private FrameLayout settingsPage;
-    private Button channelsButton, matchesButton, updatesButton, channelMapButton;
+    private Button channelsButton, matchesButton, updatesButton, channelMapButton, sectionOrderButton;
     private int featureReturnKey;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
@@ -77,6 +77,13 @@ public class SettingsActivity extends Activity {
         channelsButton = new Button(this);
         matchesButton = new Button(this);
         updatesButton = new Button(this);
+        sectionOrderButton = new Button(this);
+        sectionOrderButton.setId(View.generateViewId());
+        sectionOrderButton.setAllCaps(false);
+        sectionOrderButton.setPadding(0, 0, 0, 0);
+        sectionOrderButton.setTextColor(0xFFFFFFFF);
+        sectionOrderButton.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, 24 * scale);
+        sectionOrderButton.setOnClickListener(v -> startActivity(new Intent(this, SectionOrderActivity.class)));
         channelMapButton = new Button(this);
         channelMapButton.setId(View.generateViewId());
         channelMapButton.setAllCaps(false);
@@ -108,10 +115,13 @@ public class SettingsActivity extends Activity {
         updatesButton.setNextFocusUpId(matchesButton.getId());
         updatesButton.setNextFocusDownId(channelMapButton.getId());
         channelMapButton.setNextFocusUpId(updatesButton.getId());
+        channelMapButton.setNextFocusDownId(sectionOrderButton.getId());
+        sectionOrderButton.setNextFocusUpId(channelMapButton.getId());
         features.addView(channelsButton, new LinearLayout.LayoutParams(-1, Math.round(76 * scale)));
         features.addView(matchesButton, new LinearLayout.LayoutParams(-1, Math.round(76 * scale)));
         features.addView(updatesButton, new LinearLayout.LayoutParams(-1, Math.round(76 * scale)));
         features.addView(channelMapButton, new LinearLayout.LayoutParams(-1, Math.round(76 * scale)));
+        features.addView(sectionOrderButton, new LinearLayout.LayoutParams(-1, Math.round(76 * scale)));
         FrameLayout.LayoutParams position = new FrameLayout.LayoutParams(Math.round(400 * scale), -2, Gravity.LEFT | Gravity.BOTTOM);
         position.leftMargin = Math.round(300 * scale);
         position.bottomMargin = Math.round(44 * scale);
@@ -127,6 +137,7 @@ public class SettingsActivity extends Activity {
         matchesButton.setText(Ui.tr("Matches"));
         updatesButton.setText(Ui.tr("Updates"));
         channelMapButton.setText("ربط القنوات");
+        sectionOrderButton.setText("ترتيب الأقسام");
     }
 
     /**

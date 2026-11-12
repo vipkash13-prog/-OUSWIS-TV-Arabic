@@ -21,7 +21,10 @@ final class A11y {
     private final String[] label = new String[MAX];
     private final boolean[] focused = new boolean[MAX], clickable = new boolean[MAX];
     private int n;
-    private float k = 1;
+    private float k = 1, dy;
+
+    /** Vertical shift of what is drawn next (a block moved with Canvas.translate). */
+    void shift(float by) { dy = by; }
     private final View host;
 
     A11y(View host) {
@@ -32,13 +35,14 @@ final class A11y {
     /** Start of a draw pass; k is the reference-to-pixel scale. */
     void begin(float scale) {
         n = 0;
+        dy = 0;
         k = scale;
     }
 
     /** One drawn element. A blank label records nothing. */
     void add(float l, float t, float r, float b, String text, boolean hasFocus, boolean canClick) {
         if (n >= MAX || text == null || text.isEmpty()) return;
-        rect[n].set(l, t, r, b);
+        rect[n].set(l, t + dy, r, b + dy);
         label[n] = text;
         focused[n] = hasFocus;
         clickable[n] = canClick;

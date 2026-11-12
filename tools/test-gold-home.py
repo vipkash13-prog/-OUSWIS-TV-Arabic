@@ -126,7 +126,7 @@ try:
     while on_row is not None and on_row.get('text')!='إضافة تطبيق' and guard<12:
         key('DPAD_LEFT');on_row=focused(ui());guard+=1
     assert on_row is not None and on_row.get('text')=='إضافة تطبيق','Could not reach the + tile with the remote'
-    before=[n.get('text') for n in mine(ui()) if n.get('clickable')=='true' and bounds(n)[1]>h*0.55 and bounds(n)[3]<h*0.78]
+    before=[n.get('text') for n in mine(ui()) if n.get('clickable')=='true' and bounds(n)[1]>h*0.55 and bounds(n)[3]<h*0.86]
     key('DPAD_CENTER',pause=1.5)
     dialog=wait_for(lambda t:any('اختر تطبيقًا لإضافته' in label(n) for n in t.iter('node')),'The installed-apps list did not open')
     (OUT/'gold-add-app-dialog.png').write_bytes(adb('exec-out','screencap','-p',binary=True))
@@ -136,7 +136,7 @@ try:
     assert after_shelf and len([p for p in after_shelf.group(1).split(',') if p])==3,('The picked app did not join the shelf',stored[-400:])
     launch()
     after=[n.get('text') for n in mine(wait_for(lambda t:len([n for n in mine(t) if n.get('text')=='إضافة تطبيق'])==1,'row'))
-           if n.get('clickable')=='true' and bounds(n)[1]>h*0.55 and bounds(n)[3]<h*0.78]
+           if n.get('clickable')=='true' and bounds(n)[1]>h*0.55 and bounds(n)[3]<h*0.86]
     assert len(after)==len(before)+1,(before,after)
     # shortcuts open their screens with the remote's keys
     for index,name in [(4,'UpdatesActivity'),(1,'MatchesScreenActivity'),(0,'XtreamActivity')]:   # Live TV asks to sign in when nobody has

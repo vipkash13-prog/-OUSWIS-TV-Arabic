@@ -117,7 +117,7 @@ public final class MatchesScreenActivity extends Activity {
         @Override protected void onSizeChanged(int w,int h,int ow,int oh){
             k=w/1920f;
             backdrop=Bitmap.createBitmap(Math.max(1,w/2),Math.max(1,h/2),Bitmap.Config.RGB_565);
-            Canvas c=new Canvas(backdrop);c.scale(0.5f,0.5f);Design.background(c,w,h,new Paint(Paint.ANTI_ALIAS_FLAG),k);
+            Canvas c=new Canvas(backdrop);c.scale(0.5f,0.5f);Wallpaper.draw(getContext(),c,w,h,0.6f);   // the home wallpaper under a 60 % dark layer
         }
         private long riyadhDayStart(int offset){
             java.util.Calendar cal=java.util.Calendar.getInstance(TimeZone.getTimeZone("Asia/Riyadh"));

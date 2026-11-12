@@ -122,6 +122,7 @@ final class LiveData {
             if(known!=null)c.count=known.size();
             list.add(c);
         }
+        list=SectionOrder.arrange(ctx,list);
         synchronized(categories){categories.clear();categories.addAll(list);}
     }
 

@@ -147,7 +147,7 @@ public final class LiveActivity extends Activity {
                 .setNegativeButton("مسح",(d,w)->done.accept("")).show();
     }
 
-    @Override protected void onResume(){super.onResume();foreground=true;if(view!=null)view.dataChanged();}
+    @Override protected void onResume(){super.onResume();foreground=true;if(view!=null){view.dataChanged();if(data!=null)data.loadCategories(()->view.dataChanged());}}   // reload: Settings may have reordered or hidden sections
     @Override protected void onPause(){foreground=false;releasePreview();super.onPause();}
     @Override protected void onDestroy(){releasePreview();if(data!=null)data.shutdown();super.onDestroy();}
 
@@ -181,7 +181,10 @@ public final class LiveActivity extends Activity {
         }
         void previewShown(boolean on){previewOn=on;invalidate();}
         private boolean picked;
+        private java.util.Set<String> hiddenIds=new java.util.HashSet<>();
         void dataChanged(){
+            hiddenIds=SectionOrder.hidden(getContext());
+            if(cat>=sections().size())cat=Math.max(0,sections().size()-1);
             if(!picked&&data!=null&&!data.categories.isEmpty()){
                 picked=true;
                 // open on favourites or recents when there are some, otherwise on the first real section
@@ -196,7 +199,7 @@ public final class LiveActivity extends Activity {
             LiveData.Category fav=new LiveData.Category(LiveData.FAVORITES,"★ المفضلة");fav.count=data.cached(LiveData.FAVORITES).size();
             LiveData.Category recent=new LiveData.Category(LiveData.RECENT,"↺ الأخيرة");recent.count=data.cached(LiveData.RECENT).size();
             out.add(fav);out.add(recent);
-            synchronized(data.categories){out.addAll(data.categories);}
+            synchronized(data.categories){for(LiveData.Category cat:data.categories)if(!hiddenIds.contains(cat.id))out.add(cat);}
             return out;
         }
         private List<LiveData.Channel> shown(){
@@ -233,7 +236,7 @@ public final class LiveActivity extends Activity {
         @Override protected void onSizeChanged(int w,int h,int ow,int oh){
             k=w/1920f;
             backdrop=Bitmap.createBitmap(Math.max(1,w/2),Math.max(1,h/2),Bitmap.Config.RGB_565);
-            Canvas c=new Canvas(backdrop);c.scale(0.5f,0.5f);Design.background(c,w,h,new Paint(Paint.ANTI_ALIAS_FLAG),k);
+            Canvas c=new Canvas(backdrop);c.scale(0.5f,0.5f);Wallpaper.draw(getContext(),c,w,h,0.6f);   // the home wallpaper under a 60 % dark layer
         }
         private String clock(){
             java.text.SimpleDateFormat f=new java.text.SimpleDateFormat("h:mm a",Design.AR);
