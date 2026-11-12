@@ -104,7 +104,7 @@ public final class UpcomingMatches {
         List<Future<List<MatchCarouselView.Match>>> jobs=new ArrayList<>();
         final String sec=section;
         for(final String league:leagues){
-            if(league==null||!league.matches("[a-z0-9.]+"))continue;
+            if(league==null||!league.matches("[a-z0-9._]+"))continue;
             jobs.add(pool.submit(()->fetchLeague(league,sec,from,to,now,todayStart,yesterdayStart,tomorrowStart)));
         }
         Result result=new Result();
