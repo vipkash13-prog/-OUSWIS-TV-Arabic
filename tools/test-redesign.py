@@ -258,6 +258,7 @@ with tempfile.TemporaryDirectory() as temp:
     img.crop((600, 150, 1860, 420)).save(OUT / 'hero-card-crop.png')
     note('HERO card pixels (x=700..1340, y=180): ' + str(pts))
     assert all(r <= 40 and g <= 75 and b <= 105 for r, g, b in pts), 'The last-channel card is lighter than #123D5C: ' + str(pts)
+    assert all(g <= 45 and b <= 75 for r, g, b in pts[:4]), 'The text side of the card must be the dark end (#121A3A): ' + str(pts)
     note('PASS: the English guide title "Juventus vs OL Lyonnes - UEFA Women\'s Champions League" shows as ' + arabic[0][-60:] + '.')
     assert 'آخر قناة' in focused_label(), 'The last-channel card must hold the first focus: ' + focused_label()
     time.sleep(2)

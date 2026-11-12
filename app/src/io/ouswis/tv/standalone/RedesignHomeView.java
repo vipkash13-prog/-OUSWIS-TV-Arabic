@@ -58,6 +58,14 @@ final class RedesignHomeView extends View {
     private final android.graphics.Rect cropRect=new android.graphics.Rect();
     private final Paint wallPaint=new Paint(Paint.FILTER_BITMAP_FLAG);
     private float k=1;
+    private LiveData.Channel lastCh;
+    private long lastAt;
+    /** The last-watched channel, read at most once a second (it was parsed from its JSON on every frame). */
+    private LiveData.Channel lastChannel(){
+        long now=android.os.SystemClock.uptimeMillis();
+        if(lastAt==0||now-lastAt>1000){lastAt=now;lastCh=LiveData.lastWatched(getContext());}
+        return lastCh;
+    }
     private final java.util.HashMap<String,Paint> texts=new java.util.HashMap<>();
     /** A text paint made once per (colour, size, weight): drawing never makes one. Callers must not change what they get. */
     private Paint tx(int color,float size,android.graphics.Typeface face){
@@ -152,7 +160,7 @@ final class RedesignHomeView extends View {
     // MARK: lifecycle
 
     void resume(){
-        resumed=true;
+        resumed=true;lastAt=0;
         account=XtreamAccount.read(getContext());
         if(account!=null&&live==null)live=new LiveData(getContext(),account);
         PrayerTimes.get(getContext()).addListener(prayerChanged);
@@ -167,7 +175,7 @@ final class RedesignHomeView extends View {
         HomeData.get(getContext()).refreshIfStale();
         PrayerTimes.get(getContext()).refreshIfStale();
         long now=System.currentTimeMillis();
-        LiveData.Channel last=LiveData.lastWatched(getContext());
+        LiveData.Channel last=lastChannel();
         if(live!=null&&last!=null)live.loadGuide(last.id,this::postInvalidate);
         if(now-matchesAt>(anyLive()?60_000L:15*60_000L)){
             matchesAt=now;
@@ -372,11 +380,11 @@ final class RedesignHomeView extends View {
         // separate paints, so no later change to one can touch what is already recorded for the other
         if(box.left!=heroL||box.top!=heroT||box.right!=heroR||box.bottom!=heroB){
             heroL=box.left;heroT=box.top;heroR=box.right;heroB=box.bottom;
-            heroFill.setShader(new LinearGradient(heroR,heroT,heroL,heroB,0xF2123D5C,0xF2121A3A,Shader.TileMode.CLAMP));   // #123D5C to #121A3A at 95 %: the city behind never shows through
+            heroFill.setShader(new LinearGradient(heroR,heroT,heroR-(heroR-heroL)*0.5f,heroB,0xF2123D5C,0xF2121A3A,Shader.TileMode.CLAMP));   // #123D5C (at the thumbnail side) to #121A3A at 95 %, reached by the middle of the card, so the text sits on the dark end: the city behind never shows through
         }
         heroFill.setStyle(Paint.Style.FILL);c.drawRoundRect(box,30,30,heroFill);
         heroStroke.setStyle(Paint.Style.STROKE);heroStroke.setStrokeWidth(1);heroStroke.setColor(Design.STROKE);c.drawRoundRect(box,30,30,heroStroke);
-        LiveData.Channel ch=LiveData.lastWatched(getContext());
+        LiveData.Channel ch=lastChannel();
         c.save();c.clipRect(box.left+2,box.top+2,box.right-2,box.bottom-2);
         // 200x113 dp thumbnail carrying the channel's logo (stream_icon), with the "live" badge
         float tw=200*DP,th=113*DP;
