@@ -245,11 +245,11 @@ public final class MatchesScreenActivity extends Activity {
             MatchCarouselView.Match m=list.get(sel);
             Design.right(c,Design.fit(m.competition,small,300),561,288,small);
             if(m.live())Design.liveBadge(c,160,283,"مباشر "+minuteOf(m),17,p,badge);
-            crest(c,m.homeLogo,m.home,460,378,52);crest(c,m.awayLogo,m.away,168,378,52);
+            crest(c,m.homeLogo,m.home,470,378,40);crest(c,m.awayLogo,m.away,158,378,40);
             boolean started=!m.upcoming();
-            big.setTextSize(started?86:50);
+            big.setTextSize(started?72:44);
             Design.center(c,started?m.awayScore+" - "+m.homeScore:timeOf(m.kickoffMillis),332,408,big);big.setTextSize(50);
-            team.setTextSize(27);Design.center(c,Design.fit(m.home,team,190),460,468,team);Design.center(c,Design.fit(m.away,team,190),168,468,team);team.setTextSize(19);
+            team.setTextSize(27);Design.center(c,Design.fit(m.home,team,190),470,468,team);Design.center(c,Design.fit(m.away,team,190),158,468,team);team.setTextSize(19);
             r.set(102,486,561,487);Design.fill(c,r,0,p,0x1AFFFFFF);
             List<String> events=new ArrayList<>();
             for(String s:m.goalsHome)events.add("⚽ "+s+" — "+m.home);
