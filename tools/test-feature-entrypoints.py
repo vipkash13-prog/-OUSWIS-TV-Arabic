@@ -175,7 +175,7 @@ key('CENTER')
 wait_fixtures()
 screenshot('matches-details-legacy.png')
 from PIL import Image
-pixel=Image.open(OUT / 'matches-details.png').convert('RGB')
+pixel=Image.open(OUT / 'matches-details-legacy.png').convert('RGB')
 rgb=pixel.getpixel((int(pixel.width*0.20),int(pixel.height*0.28)))
 assert max(rgb)<70 and max(rgb)-min(rgb)<25, 'Expected glossy black matches background: '+str(rgb)
 note('PASS: matches window uses a glossy black background.')
