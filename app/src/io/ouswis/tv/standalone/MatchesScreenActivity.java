@@ -371,7 +371,7 @@ public final class MatchesScreenActivity extends Activity {
             MatchCarouselView.Match m=list.get(Math.min(sel,list.size()-1));
             LiveData.Channel ch=channelFor(m);
             if(area==1){
-                if(ch!=null)watch(ch);else{area=2;panelFocus=0;invalidate();}
+                if(ch!=null)watch(ch);else openSports(m);
                 return;
             }
             int favoriteSlot=ch!=null?1:0;
@@ -393,6 +393,10 @@ public final class MatchesScreenActivity extends Activity {
                 Toast.makeText(getContext(),message,Toast.LENGTH_SHORT).show();
                 invalidate();
             }
+        }
+        /** No confirmed channel: the live screen opens on the sports section, on its first beIN or SSC channel; a channel played there is kept for this match. */
+        private void openSports(MatchCarouselView.Match m){
+            getContext().startActivity(new Intent(getContext(),LiveActivity.class).putExtra(LiveActivity.EXTRA_MATCH_KEY,m.key));
         }
         private void watch(LiveData.Channel ch){
             getContext().startActivity(PlayerActivity.intent(getContext(),ch,""));

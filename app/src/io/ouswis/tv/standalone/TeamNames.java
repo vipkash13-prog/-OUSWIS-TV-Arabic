@@ -49,7 +49,7 @@ final class TeamNames {
             "Guinea|غينيا","South Africa|جنوب أفريقيا","DR Congo|الكونغو الديمقراطية","Congo DR|الكونغو الديمقراطية","Congo|الكونغو","Gabon|الغابون",
             "Angola|أنغولا","Zambia|زامبيا","Zimbabwe|زيمبابوي","Kenya|كينيا","Uganda|أوغندا","Tanzania|تنزانيا","Ethiopia|إثيوبيا",
             "Cape Verde|الرأس الأخضر","Cabo Verde|الرأس الأخضر","Benin|بنين","Togo|توغو","Mozambique|موزمبيق","Namibia|ناميبيا","Madagascar|مدغشقر",
-            "Comoros|جزر القمر","Djibouti|جيبوتي","Somalia|الصومال","Equatorial Guinea|غينيا الاستوائية","Niger|النيجر","Sierra Leone|سيراليون");
+            "Comoros|جزر القمر","Eritrea|إريتريا","Guinea-Bissau|غينيا بيساو","Guinea Bissau|غينيا بيساو","Suriname|سورينام","Eswatini|إسواتيني","Djibouti|جيبوتي","Somalia|الصومال","Equatorial Guinea|غينيا الاستوائية","Niger|النيجر","Sierra Leone|سيراليون");
         // Americas
         add("Brazil|البرازيل","Argentina|الأرجنتين","Uruguay|أوروغواي","Colombia|كولومبيا","Chile|تشيلي","Peru|بيرو","Ecuador|الإكوادور",
             "Paraguay|باراغواي","Bolivia|بوليفيا","Venezuela|فنزويلا","United States|الولايات المتحدة","USA|الولايات المتحدة","Mexico|المكسيك",

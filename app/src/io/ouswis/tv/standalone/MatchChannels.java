@@ -50,6 +50,20 @@ final class MatchChannels {
         clearAnswers();
         fire();
     }
+    /** The channel the viewer played from the sports list for this very match (saved by {@link #pickMatch}). */
+    static LiveData.Channel matchPick(Context c,String matchKey){
+        try{return LiveData.Channel.from(new JSONObject(store(c).getString("matchPicks","{}")).optJSONObject(matchKey));}catch(Exception e){return null;}
+    }
+    static void pickMatch(Context c,String matchKey,LiveData.Channel ch){
+        if(matchKey==null||matchKey.isEmpty()||ch==null)return;
+        try{
+            JSONObject picks=new JSONObject(store(c).getString("matchPicks","{}"));
+            if(picks.length()>60)picks=new JSONObject();   // old matches don't matter
+            picks.put(matchKey,ch.json());
+            store(c).edit().putString("matchPicks",picks.toString()).apply();
+        }catch(Exception ignored){}
+        clearAnswers();fire();
+    }
     /** The league text a competition falls under in the settings table, else the competition itself. */
     static String leagueKey(String competition){
         for(String[] l:LEAGUES)if(competition.contains(l[1]))return l[1];
@@ -86,7 +100,8 @@ final class MatchChannels {
     private static final java.util.Map<String,LiveData.Channel> guideChannels=new java.util.concurrent.ConcurrentHashMap<>();
     private static volatile long guideAt;
     private static volatile boolean scanning;
-    private static final int GUIDE_CAP=90,GUIDE_PROGRAMMES=12;
+    static final long KICK_WINDOW=30*60_000L;
+    private static final int GUIDE_CAP=170,GUIDE_PROGRAMMES=12;
     private static final java.util.Map<String,Object> confirmed=new java.util.concurrent.ConcurrentHashMap<>();   // match key → channel | NONE
 
     /**
@@ -102,7 +117,7 @@ final class MatchChannels {
         worker.execute(()->{
             try{
                 java.util.List<LiveData.Channel> list=sportChannels(app,a);
-                java.util.concurrent.ExecutorService pool=java.util.concurrent.Executors.newFixedThreadPool(4);
+                java.util.concurrent.ExecutorService pool=java.util.concurrent.Executors.newFixedThreadPool(6);
                 java.util.List<java.util.concurrent.Future<?>> jobs=new ArrayList<>();
                 for(LiveData.Channel ch:list)jobs.add(pool.submit(()->{
                     try{guides.put(ch.id,LiveData.fetchGuide(a,ch.id,GUIDE_PROGRAMMES));guideChannels.put(ch.id,ch);}catch(Exception ignored){}
@@ -129,13 +144,37 @@ final class MatchChannels {
             if(!only.isEmpty()&&!(","+only+",").contains(","+n.substring(prefix.length(),n.length()-5)+","))continue;
             try{
                 JSONArray items=new JSONObject(new String(Files.readAllBytes(f.toPath()),StandardCharsets.UTF_8)).getJSONArray("items");
-                for(int i=0;i<items.length()&&out.size()<GUIDE_CAP;i++){
+                for(int i=0;i<items.length();i++){
                     LiveData.Channel ch=LiveData.Channel.from(items.optJSONObject(i));
                     if(ch!=null)out.add(ch);
                 }
             }catch(Exception ignored){}
         }
+        // sports channels by name first, so the cap never leaves out beIN or SSC
+        java.util.Collections.sort(out,(x,y)->Integer.compare(sportRank(x.name),sportRank(y.name)));
+        return out.size()>GUIDE_CAP?new ArrayList<>(out.subList(0,GUIDE_CAP)):out;
+    }
+
+    /** True once a guide scan has finished (even one that found nothing). */
+    static boolean guideReady(){return guideAt!=0&&!scanning;}
+    /** The ids of the sports sections {@link #prepare} chose (empty when it hasn't run). */
+    static java.util.Set<String> sportCategoryIds(Context c){
+        java.util.Set<String> out=new java.util.HashSet<>();
+        for(String id:store(c).getString("sportCats","").split(","))if(!id.isEmpty())out.add(id);
         return out;
+    }
+    /** 0 for beIN / SSC / Arab sports channels, 1 for other "sport" names, 2 for the rest. */
+    static int sportRank(String name){
+        String n=name==null?"":name.toLowerCase(java.util.Locale.ROOT);
+        if(n.contains("bein")||n.contains("be in")||n.contains("ssc")||n.contains("بي ان")||n.contains("بين")||n.contains("الكاس"))return 0;
+        if(n.contains("sport")||n.contains("سبورت")||n.contains("رياض")||n.contains("match")||n.contains("dazn")||n.contains("arena")||n.contains("ad sports")||n.contains("abu dhabi"))return 1;
+        return 2;
+    }
+    /** The first beIN or SSC channel's index in a list (else the first sports-looking one, else 0). */
+    static int firstSports(List<LiveData.Channel> list){
+        int best=-1,bestRank=3;
+        for(int i=0;i<list.size();i++){int r=sportRank(list.get(i).name);if(r<bestRank){bestRank=r;best=i;if(r==0)break;}}
+        return Math.max(0,best);
     }
 
     /** The sports channel whose programme (current, or coming up near the kickoff) names both teams, or null. Uses only what the last scan read. */
@@ -146,9 +185,9 @@ final class MatchChannels {
         for(java.util.Map.Entry<String,java.util.List<LiveData.Program>> e:guides.entrySet()){
             for(LiveData.Program p:e.getValue()){
                 if(p.end<now)continue;
-                if(kick>0&&(p.start>kick+3*3600_000L||p.end<kick-3600_000L))continue;   // a rerun on another day isn't this match
+                if(kick>0&&Math.abs(p.start-kick)>KICK_WINDOW)continue;   // the programme starts within 30 minutes of the kickoff
                 if(Titles.isRerun(p.title))continue;
-                if(!Titles.mentions(p.title,m.homeEn,m.home)||!Titles.mentions(p.title,m.awayEn,m.away))continue;
+                if(!Titles.sameMatch(p.title,m.homeEn,m.home,m.awayEn,m.away))continue;
                 LiveData.Channel ch=guideChannels.get(e.getKey());
                 if(ch==null)continue;
                 int score=number(canonical(ch.name));
@@ -176,6 +215,8 @@ final class MatchChannels {
         scanGuides(c,a);
         if(m==null)return null;
         if(!m.epgChannelId.isEmpty())return guideChannels.get(m.epgChannelId);
+        LiveData.Channel manual=matchPick(c,m.key);
+        if(manual!=null)return manual;
         Object got=confirmed.get(m.key);
         if(got!=null)return got==NONE?null:(LiveData.Channel)got;
         LiveData.Channel ch=fromGuide(m);
@@ -213,8 +254,8 @@ final class MatchChannels {
                 if(parts==null)continue;
                 boolean dup=false;
                 for(MatchCarouselView.Match x:api){
-                    if(Math.abs(x.kickoffMillis-p.start)>3*3600_000L)continue;
-                    if(Titles.mentions(p.title,x.homeEn,x.home)&&Titles.mentions(p.title,x.awayEn,x.away)){dup=true;break;}
+                    if(Math.abs(x.kickoffMillis-p.start)>2*3600_000L)continue;
+                    if(Titles.sameMatch(p.title,x.homeEn,x.home,x.awayEn,x.away)){dup=true;break;}
                 }
                 if(dup)continue;
                 String id=Titles.key(Titles.teamArabic(parts[0]))+"|"+Titles.key(Titles.teamArabic(parts[1]))+"|"+(p.start/(3600_000L));

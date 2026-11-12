@@ -66,6 +66,16 @@ final class RedesignHomeView extends View {
     private XtreamAccount account;
     private boolean resumed;
     private long matchesAt;
+    private final long startedAt=System.currentTimeMillis();
+    private boolean feedDone;       // the feed answered at least once
+    private int feedAnswered;       // how many competitions answered: 0 means it could not be reached, not that there are no matches
+    /** True only when it is certain there are no matches today: the feed answered and the guides were read. Until then the row shows empty cards. */
+    private boolean confirmedEmpty(){
+        if(!today.isEmpty())return false;
+        long waited=System.currentTimeMillis()-startedAt;
+        boolean guidesIn=account==null||MatchChannels.guideReady();
+        return feedDone&&feedAnswered>0&&(guidesIn||waited>30_000L);
+    }
     private final Runnable tick=new Runnable(){@Override public void run(){
         if(!resumed)return;
         invalidate();
@@ -122,9 +132,11 @@ final class RedesignHomeView extends View {
             matchesAt=now;
             io.execute(()->{
                 List<MatchCarouselView.Match> found=new ArrayList<>();
+                int answered=0;
                 try{
-                    for(String section:new String[]{"live","upcoming","today"})found.addAll(UpcomingMatches.load(null,section).matches);
+                    for(String section:new String[]{"live","upcoming","today"}){UpcomingMatches.Result res=UpcomingMatches.load(null,section);found.addAll(res.matches);answered+=res.answered;}
                 }catch(Throwable ignored){}
+                final int answeredNow=answered;
                 final List<MatchCarouselView.Match> shown=new ArrayList<>();
                 long start=dayStart(),end=start+24L*3600_000;
                 java.util.Set<String> seen=new java.util.HashSet<>();
@@ -135,6 +147,7 @@ final class RedesignHomeView extends View {
                     return ra!=rb?Integer.compare(ra,rb):Long.compare(a.kickoffMillis,b.kickoffMillis);
                 });
                 main.post(()->{
+                    feedDone=true;feedAnswered=Math.max(feedAnswered,answeredNow);
                     // a failed load keeps what was there rather than hiding the section
                     if(!found.isEmpty()||apiToday.isEmpty()){apiToday.clear();apiToday.addAll(shown);}
                     rebuildToday();clampColumns();invalidate();
@@ -197,7 +210,7 @@ final class RedesignHomeView extends View {
         a11y.begin(k);
         c.save();c.scale(k,k);
         drawTop(c);
-        boolean hasMatches=!today.isEmpty();
+        boolean hasMatches=!today.isEmpty()||!confirmedEmpty();   // while loading the row shows empty cards of the same size
         spread(hasMatches);
         // #0B0D1A at 55 % from the matches row down, with a short ramp above it, so the skyline never shows behind the cards
         float layerTop=(hasMatches?400+dy[1]+10:626+dy[2]-20);
@@ -412,6 +425,18 @@ final class RedesignHomeView extends View {
         a11y.add(1500,420,1842,456,"مباريات اليوم",false,false);
         a11y.add(70,420,200,456,"عرض الكل",linkFocus,true);
         int n=Math.min(4,today.size());
+        if(today.isEmpty()){   // placeholders: same size and place as the cards, nothing to focus
+            for(int i=0;i<4;i++){
+                float right=1847-i*425,left=right-404;
+                r.set(left,466,right,592);
+                Design.card(c,r,22,1,p,CARD_DARK);
+                p.setStyle(Paint.Style.FILL);p.setShader(null);p.setColor(0x14FFFFFF);
+                c.drawCircle(right-67,516,26,p);c.drawCircle(left+67,516,26,p);
+                bm.set((left+right)/2-60,486,(left+right)/2+60,508);Design.fill(c,bm,11,p,0x1AFFFFFF);
+                bm.set((left+right)/2-80,528,(left+right)/2+80,556);Design.fill(c,bm,14,p,0x14FFFFFF);
+            }
+            return;
+        }
         for(int i=0;i<n;i++){
             MatchCarouselView.Match m=today.get(i);
             float right=1847-i*425,left=right-404;
@@ -566,7 +591,8 @@ final class RedesignHomeView extends View {
                 if(cl>=n){start(new Intent(ctx,MatchesScreenActivity.class));break;}
                 MatchCarouselView.Match m=today.get(cl);
                 LiveData.Channel ch=channelFor(m);
-                if(m.live()&&ch!=null)start(PlayerActivity.intent(ctx,ch,""));
+                if(ch==null)start(new Intent(ctx,LiveActivity.class).putExtra(LiveActivity.EXTRA_MATCH_KEY,m.key));   // not confirmed: pick it from the sports list
+                else if(m.live())start(PlayerActivity.intent(ctx,ch,""));
                 else start(new Intent(ctx,MatchesScreenActivity.class));
                 break;}
             case 3:{

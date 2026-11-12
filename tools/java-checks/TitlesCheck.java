@@ -33,6 +33,18 @@ public final class TitlesCheck {
         is(false,Titles.mentions(t,"Manchester City","مانشستر سيتي"),"City not in title");
         is(true,Titles.mentions("الهلال × النصر · دوري روشن","Al Nassr","النصر"),"Arabic title");
         is(false,Titles.mentions("Arsenal vs Chelsea","Roma","روما"),"Roma not in title");
+        // Round C: the match the viewer reported (beIN SPORTS 2 HD's guide says "غانا × الصومال" and the card said "اختر القناة")
+        is(true,Titles.sameMatch("غانا × الصومال — كأس الأمم الأفريقية","Ghana","غانا","Somalia","الصومال"),"Ghana x Somalia, Arabic title");
+        is(true,Titles.sameMatch("Ghana vs Somalia - Africa Cup of Nations Qualifying","Ghana","غانا","Somalia","الصومال"),"Ghana vs Somalia, English title");
+        is(true,Titles.sameMatch("GHANA  v  SOMALIA (Live)","Ghana","غانا","Somalia","الصومال"),"case and symbols");
+        is(true,Titles.sameMatch("الصومال × غانا","Ghana","غانا","Somalia","الصومال"),"swapped order");
+        is(true,Titles.sameMatch("غانا - الصومال","Ghana","غانا","Somalia","الصومال"),"dash between teams");
+        is(true,Titles.sameMatch("غانا الصومال","Ghana","غانا","Somalia","الصومال"),"no separator");
+        is(true,Titles.sameMatch("Ghana U23 FC vs Somalia FC","Ghana","غانا","Somalia","الصومال"),"FC and U23 ignored");
+        is(true,Titles.sameMatch("غانا × الصومال","Ghana","غانا","Somalia","صومال"),"ال ignored");
+        is(false,Titles.sameMatch("غانا × نيجيريا","Ghana","غانا","Somalia","الصومال"),"other opponent");
+        is(false,Titles.sameMatch("Arsenal vs Chelsea","Ghana","غانا","Somalia","الصومال"),"other match");
+        is(true,Titles.sameTeam("Man City","Manchester City","مانشستر سيتي"),"Man City");
         if(bad>0){System.out.println(bad+" failed");System.exit(1);}
         System.out.println("TitlesCheck: all passed");
     }

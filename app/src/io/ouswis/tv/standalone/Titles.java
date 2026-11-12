@@ -168,6 +168,7 @@ final class Titles {
             if(ar==null&&stripped.matches("(?i)^(?:OL|AS|SS|US|CD|RC|FK|SK|NK|AEK)\\s+.+"))ar=lookup(stripped.replaceFirst("(?i)^\\S+\\s+",""));
         }
         if(ar!=null)return ar;
+        missing(name);
         return name.matches(".*[A-Za-z].*")?FSI+name+PDI:name;   // an unknown team stays as it is, isolated so it can't reorder the line
     }
     private static String lookup(String name){
@@ -196,5 +197,68 @@ final class Titles {
             if(Math.min(t.length(),longest.length())>=4&&(t.startsWith(longest)||longest.startsWith(t)))return true;
         }
         return false;
+    }
+
+    // MARK: matching a guide title against a match (Arabic or English, before or after translation)
+
+    private static final Pattern DROP=Pattern.compile("(?i)^(?:fc|cf|afc|sc|ac|fk|sk|nk|women|womens|ladies|w|u\\d{2}|under\\d{2}|\\d+|نادي)$");
+    /** A team name made comparable: case, accents, symbols, FC/U23-like words, the Arabic "ال" and letter variants all ignored. */
+    static String norm(String s){
+        if(s==null)return "";
+        String n=java.text.Normalizer.normalize(s,java.text.Normalizer.Form.NFD).replaceAll("\\p{M}+","")
+                .replace("\u2068","").replace("\u2069","").replace("ـ","");
+        n=n.toLowerCase(Locale.ROOT).replace('أ','ا').replace('إ','ا').replace('آ','ا').replace('ٱ','ا').replace('ى','ي').replace('ة','ه');
+        StringBuilder out=new StringBuilder();
+        for(String t:n.split("[^a-z0-9\u0600-\u06FF]+")){
+            if(t.isEmpty()||DROP.matcher(t).matches())continue;
+            if(t.length()>3&&t.startsWith("ال"))t=t.substring(2);
+            out.append(t);
+        }
+        return out.toString();
+    }
+    /** Does a team as written in a title ("Ghana", "غانا", "OL Lyonnes") name this team (English and Arabic names known)? */
+    static boolean sameTeam(String written,String english,String arabic){
+        String w=norm(written);
+        if(w.isEmpty())return false;
+        String[] mine={norm(english),norm(arabic),norm(TeamNames.arabic(english==null?"":english))};
+        String[] theirs={w,norm(TeamNames.arabic(written.trim())),norm(lookup(written.trim())==null?"":lookup(written.trim()))};
+        for(String a:theirs)for(String b:mine){
+            if(a.isEmpty()||b.isEmpty())continue;
+            if(a.equals(b))return true;
+            int shortest=Math.min(a.length(),b.length());
+            if(shortest>=4&&(a.contains(b)||b.contains(a)))return true;
+        }
+        return mentions(written,english,arabic);
+    }
+    /** The two team parts of a guide title: "A × B", "A vs B", or "A - B - League". Null when it doesn't look like a match. */
+    static String[] teamsOf(String title){
+        String[] p=parseMatch(title);
+        if(p!=null)return new String[]{p[0],p[1]};
+        if(title==null)return null;
+        String[] dash=title.trim().split("\\s+[-–—]\\s+");
+        if(dash.length>=2&&dash[0].length()>=2&&dash[1].length()>=2)return new String[]{dash[0],dash[1]};
+        String[] cross=title.trim().split("\\s*[×]\\s*",2);
+        if(cross.length==2&&cross[0].length()>=2&&cross[1].length()>=2)return new String[]{cross[0],cross[1].split("\\s+[-–—|·:]\\s+")[0]};
+        return null;
+    }
+    /** True when the title names both teams (either order), by their Arabic or English names. */
+    static boolean sameMatch(String title,String homeEn,String homeAr,String awayEn,String awayAr){
+        if(title==null||title.isEmpty())return false;
+        String[] t=teamsOf(title);
+        if(t!=null){
+            if(sameTeam(t[0],homeEn,homeAr)&&sameTeam(t[1],awayEn,awayAr))return true;
+            if(sameTeam(t[0],awayEn,awayAr)&&sameTeam(t[1],homeEn,homeAr))return true;
+        }
+        return mentions(title,homeEn,homeAr)&&mentions(title,awayEn,awayAr);
+    }
+
+    // MARK: names that aren't in the tables
+
+    private static final java.util.Set<String> MISSING=java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<String,Boolean>());
+    /** Called with each name that stays in English; the app logs it once so it can be added to the tables. */
+    static volatile java.util.function.Consumer<String> missingSink;
+    static void missing(String name){
+        if(name==null||name.trim().length()<2||!name.matches(".*[A-Za-z].*"))return;
+        if(MISSING.add(name.trim())){java.util.function.Consumer<String> s=missingSink;if(s!=null)try{s.accept(name.trim());}catch(Throwable ignored){}}
     }
 }

@@ -116,7 +116,21 @@ with tempfile.TemporaryDirectory() as temp:
         def do_GET(self):
             url = urlparse(self.path); q = parse_qs(url.query)
             HITS[url.path.rsplit('/', 1)[-1]] = HITS.get(url.path.rsplit('/', 1)[-1], 0) + 1
-            if url.path == '/player_api.php':
+            if url.path.startswith('/apis/site/v2/sports/soccer/'):
+                slug = url.path.split('/')[6]
+                utc = time.gmtime()
+                events = []
+                if slug == 'caf.nations_qual' and q.get('dates', [''])[0] == time.strftime('%Y%m', utc):
+                    def ev(eid, home, away, minutes_ago):
+                        kick = time.strftime('%Y-%m-%dT%H:%MZ', time.gmtime(time.time() - minutes_ago * 60))
+                        team = lambda n, ha: {'homeAway': ha, 'score': '0', 'team': {'id': n[:3], 'displayName': n, 'logo': ''}}
+                        return {'id': eid, 'date': kick, 'status': {'displayClock': "%d'" % minutes_ago, 'type': {'state': 'in', 'name': 'STATUS_FIRST_HALF', 'shortDetail': "%d'" % minutes_ago}},
+                                'competitions': [{'competitors': [team(home, 'home'), team(away, 'away')], 'broadcasts': []}]}
+                    # the match the user reported: it is in beIN SPORTS 2 HD's guide as "غانا × الصومال"; the second one is in no guide
+                    events = [ev('9001', 'Ghana', 'Somalia', 10), ev('9002', 'Suriname', 'Eritrea', 50)]
+                body = {'leagues': [{'name': 'Africa Cup of Nations Qualifying', 'logos': []}], 'events': events}
+                payload = json.dumps(body).encode(); kind = 'application/json'
+            elif url.path == '/player_api.php':
                 action = q.get('action', [''])[0]
                 if action == 'get_live_categories':
                     body = [{'category_id': i, 'category_name': n} for i, n in CATS]
@@ -128,6 +142,8 @@ with tempfile.TemporaryDirectory() as temp:
                     titles = ['الهلال × النصر · دوري روشن', 'الاستوديو التحليلي', 'أهداف الجولة', 'نشرة الرياضة']
                     if q.get('stream_id', [''])[0] == '101':   # a TV guide in English: the app shows Arabic
                         titles = ["Juventus vs OL Lyonnes - UEFA Women's Champions League", 'Arsenal vs Chelsea - English Premier League 2026/2027 - MD4', 'Game of Thrones', 'Week 10']
+                    if q.get('stream_id', [''])[0] == '111':   # beIN Sports 2: the Arabic title, 6 minutes after the kickoff the feed reports
+                        titles = ['غانا × الصومال — كأس الأمم الأفريقية', 'تحليل المباريات', 'أهداف الجولة', 'نشرة الرياضة']
                     body = {'epg_listings': [{'title': base64.b64encode(t.encode()).decode(), 'start_timestamp': str(now - 1800 + i * 3600), 'stop_timestamp': str(now + 1800 + i * 3600)} for i, t in enumerate(titles)]}
                 else:
                     body = {'user_info': {'status': 'Active', 'exp_date': str(int(time.time()) + 86400 * 120)}}
@@ -155,13 +171,15 @@ with tempfile.TemporaryDirectory() as temp:
            '<string name="lastChannelName">SSC 1 HD</string></map>') % port
     subprocess.run([ADB, 'shell', 'cat > %s/XtreamActivity.xml' % folder], input=xml.encode(), check=True)
     last = json.dumps({'id': '101', 'name': 'SSC 1 HD', 'icon': '', 'num': '101', 'ext': 'ts'}).replace('"', '&quot;')
-    live = '<?xml version="1.0" encoding="utf-8"?><map><string name="last">%s</string></map>' % last
+    live = '<?xml version="1.0" encoding="utf-8"?><map><string name="last">%s</string><string name="espnBase">http://127.0.0.1:%d</string></map>' % (last, port)
     subprocess.run([ADB, 'shell', 'cat > %s/ouswis-live.xml' % folder], input=live.encode(), check=True)
     adb('shell', 'chown', '-R', uid + ':' + uid, folder)
     adb('logcat', '-c')
 
     # 1. home, and the account sealed at rest
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.HomeActivity')
+    shot('redesign-home-loading.png')
+    assert any(l == 'مباريات اليوم' for l in labels()), 'The matches row must not vanish while the data loads: ' + str(labels()[:20])
     hero = wait_label('آخر قناة شاهدتها: SSC 1 HD', 'the last-channel card with the saved channel')
     arabic = wait_label('يوفنتوس × ليون — دوري أبطال أوروبا للسيدات', 'the guide title of the last channel in Arabic')
     assert not any('Lyonnes' in l or 'Juventus' in l for l in labels()), 'The English match title must not show: ' + str(labels()[:12])
@@ -291,7 +309,7 @@ with tempfile.TemporaryDirectory() as temp:
     guide_card = wait_label('الهلال ضد النصر', 'the match found only in the guide')
     assert any(('SSC 1 HD' in l or 'beIN Sports 1 HD' in l or 'AD Sports 1' in l) for l in guide_card), 'The guide match must carry the channel it was found on: ' + str(guide_card)
     for l in cards:
-        if any(t in l for t in ('الهلال', 'يوفنتوس', 'آرسنال')): continue   # found in the mock guide: confirmed
+        if any(t in l for t in ('الهلال', 'يوفنتوس', 'آرسنال', 'غانا')): continue   # found in the mock guide: confirmed
         assert 'beIN' not in l and 'SSC' not in l and 'AD Sports' not in l and 'beIN SPORTS' not in l, 'No channel may be named without a confirmation: ' + l
         if 'انتهت' not in l: assert 'اختر القناة' in l, 'An unconfirmed match must ask to pick the channel: ' + l
     labs = labels(); i_all = [i for i, l in enumerate(labs) if l.startswith('الكل')][0]
@@ -300,7 +318,36 @@ with tempfile.TemporaryDirectory() as temp:
     assert any('دوري روشن' in l for l in league_chips), 'Filters: الكل, then the day\'s leagues (دوري روشن comes from the guide): ' + str(labs[:30])
     shot('redesign-matches-chips.png')
     note('PASS: matches screen: a match found only in the guide shows with its channel; no unconfirmed match names a channel (it says اختر القناة); the league chips come from the day\'s matches between الكل and المفضلة.')
-    note('PASS: matches screen loaded real fixtures (or an honest empty day) and took keys without a crash.')
+    note('PASS: matches screen loaded the (mock) fixtures and took keys without a crash.')
+
+    # 6b. the reported case: Ghana v Somalia is in beIN Sports 2's guide as "غانا × الصومال" and must carry that channel
+    ghana = wait_label('غانا ضد الصومال', 'the Ghana v Somalia match (mock feed: Somalia at Ghana)', tries=60)
+    assert any('beIN Sports 2' in l for l in ghana) and not any('اختر القناة' in l for l in ghana), 'Ghana v Somalia must show beIN Sports 2 from its guide: ' + str(ghana)
+    shot('redesign-matches-ghana.png')
+    note('PASS: "غانا × الصومال" in beIN Sports 2\'s guide linked to the feed\'s "Somalia at Ghana": the card reads ' + ghana[0][-70:] + '.')
+    eri = wait_label('سورينام ضد إريتريا', 'the Suriname v Eritrea match (in no guide)')
+    assert any('اختر القناة' in l for l in eri) and not any('beIN' in l or 'SSC' in l for l in eri), 'An unconfirmed match must ask for a channel: ' + str(eri)
+    # OK on the unconfirmed match opens the sports section of the live screen on its first beIN/SSC channel
+    tap('سورينام ضد إريتريا')
+    try: front('LiveActivity', tries=6)
+    except AssertionError: tap('سورينام ضد إريتريا'); front('LiveActivity')
+    wait_label('SSC 2 HD', 'the sports section of the live screen')
+    fl = focused_label()
+    assert 'SSC 1 HD' in fl, 'The focus must be on the first beIN/SSC channel: ' + fl
+    shot('redesign-matches-sports-list.png')
+    note('PASS: OK on a match without a confirmed channel opened the live screen on the sports section; focus: ' + fl[:60] + '.')
+    keys('DPAD_DOWN', pause=1); keys('DPAD_CENTER', pause=2); front('PlayerActivity'); time.sleep(3)
+    saved = adb('shell', 'cat', folder + '/ouswis-live.xml')
+    assert 'matchPicks' in saved and 'caf.nations_qual:9002' in saved, 'A channel played from there must be saved for the match: ' + saved[:600]
+    keys('BACK', pause=1.5); keys('BACK', pause=1.5)
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.MatchesScreenActivity')
+    again = wait_label('سورينام ضد إريتريا', 'the match again')
+    for _ in range(20):
+        again = [l for l in labels() if 'سورينام ضد إريتريا' in l]
+        if any('SSC' in l or 'beIN' in l for l in again): break
+        time.sleep(1)
+    assert any('SSC 2 HD' in l for l in again), 'The channel played for the match must be its channel now: ' + str(again)
+    note('PASS: the channel played from the sports list was saved for that match and the card names it: ' + again[0][-60:] + '.')
     (OUT / 'redesign-logcat.txt').write_text(adb('logcat', '-d', '-t', '800', check=False))
 
     # 7. sections: order and hiding (Settings)

@@ -47,7 +47,7 @@ public final class UpcomingMatches {
         {"Spanish Copa del Rey","كأس ملك إسبانيا"},{"Italian Serie A","الدوري الإيطالي"},
         {"Italian Coppa Italia","كأس إيطاليا"},{"German Bundesliga","الدوري الألماني"},
         {"German DFB-Pokal","كأس ألمانيا"},{"French Ligue 1","الدوري الفرنسي"},
-        {"French Coupe de France","كأس فرنسا"},{"Portuguese Primeira Liga","الدوري البرتغالي"},
+        {"French Coupe de France","كأس فرنسا"},{"Coupe de France","كأس فرنسا"},{"Portuguese Primeira Liga","الدوري البرتغالي"},
         {"Dutch Eredivisie","الدوري الهولندي"},{"Turkish Super Lig","الدوري التركي"},
         {"Africa Cup of Nations","كأس الأمم الأفريقية"},{"Africa Cup of Nations Qualifying","تصفيات كأس الأمم الأفريقية"},
         {"CAF Champions League","دوري أبطال أفريقيا"},{"CAF Confederation Cup","كأس الكونفدرالية الأفريقية"},
@@ -81,7 +81,12 @@ public final class UpcomingMatches {
             {"AC Milan","ميلان"},{"Napoli","نابولي"},{"Roma","روما"},{"Benfica","بنفيكا"},{"Porto","بورتو"},{"Al Sadd","السد"},{"Al Ain","العين"}};
         for(String[] x:t)AR.put(x[0],x[1]);
     }
-    static String arabic(String name){String v=AR.get(name);return v!=null?v:TeamNames.arabic(name);}
+    static String arabic(String name){
+        String v=AR.get(name);if(v!=null)return v;
+        v=TeamNames.arabic(name);
+        if(v.equals(name))Titles.missing(name);   // stays English: logged once so it can be added to the table
+        return v;
+    }
 
     public static List<MatchCarouselView.Match> fetch(String[] selected) { return fetch(selected, "upcoming"); }
     public static List<MatchCarouselView.Match> fetch(String[] selected, String section) { return load(selected, section).matches; }
@@ -147,11 +152,19 @@ public final class UpcomingMatches {
         return months;
     }
 
+    /** The feed's address; only the emulator test points it at a local mock (a plain http://127.0.0.1 address saved in the live prefs). */
+    private static String espnBase(){
+        try{
+            String b=Prefs.context().getSharedPreferences("ouswis-live",android.content.Context.MODE_PRIVATE).getString("espnBase","");
+            if(b.startsWith("http://127.0.0.1"))return b;
+        }catch(Throwable ignored){}
+        return "https://site.api.espn.com";
+    }
     private static JSONObject readFeed(String league,String month) throws Exception {
         String key=league+":"+month;
         CachedFeed cached=FEEDS.get(key);
         if(cached!=null&&System.currentTimeMillis()-cached.at<60_000)return new JSONObject(cached.json);
-        URL url=new URL("https://site.api.espn.com/apis/site/v2/sports/soccer/"+league+"/scoreboard?dates="+month+"&limit=1000");
+        URL url=new URL(espnBase()+"/apis/site/v2/sports/soccer/"+league+"/scoreboard?dates="+month+"&limit=1000");
         HttpURLConnection c=(HttpURLConnection)url.openConnection();
         c.setConnectTimeout(8000);c.setReadTimeout(12000);
         c.setRequestProperty("Accept","application/json");

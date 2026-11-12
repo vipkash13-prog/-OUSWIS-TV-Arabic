@@ -45,6 +45,10 @@ public final class LiveActivity extends Activity {
     private TextView previewLabel;
     private final Handler main=new Handler(Looper.getMainLooper());
     private boolean foreground;
+    /** Set when a match without a confirmed channel opened this screen: the sports section, on its first beIN or SSC channel. */
+    static final String EXTRA_MATCH_KEY="matchKey";
+    private String matchKey="";
+    private boolean pendingFocus;
     private int previewGeneration;
 
     @Override protected void onCreate(Bundle b){
@@ -56,6 +60,8 @@ public final class LiveActivity extends Activity {
             // No login yet: the existing screen asks for it, then comes back here through the home screen.
             startActivity(new Intent(this,XtreamActivity.class));finish();return;
         }
+        String mk=getIntent()==null?null:getIntent().getStringExtra(EXTRA_MATCH_KEY);
+        matchKey=mk==null?"":mk;pendingFocus=!matchKey.isEmpty();
         data=new LiveData(this,account);
         FrameLayout root=new FrameLayout(this);
         view=new LiveView(this);
@@ -137,6 +143,7 @@ public final class LiveActivity extends Activity {
 
     void play(LiveData.Channel c,String section){
         releasePreview();     // the full-screen player is the only one now
+        if(!matchKey.isEmpty()){MatchChannels.pickMatch(this,matchKey,c);android.widget.Toast.makeText(this,"حُفظت "+c.name+" لهذه المباراة",android.widget.Toast.LENGTH_SHORT).show();}
         startActivity(PlayerActivity.intent(this,c,section));
     }
     void askSearch(String current,java.util.function.Consumer<String> done){
@@ -189,6 +196,7 @@ public final class LiveActivity extends Activity {
                 picked=true;
                 // open on favourites or recents when there are some, otherwise on the first real section
                 cat=!data.cached(LiveData.FAVORITES).isEmpty()?0:!data.cached(LiveData.RECENT).isEmpty()?1:2;
+                if(pendingFocus){int s=sportsSection();if(s>=0)cat=s;else pendingFocus=false;column=1;}
                 sel=0;top=0;
             }
             invalidate();ensureLoaded();
@@ -202,6 +210,14 @@ public final class LiveActivity extends Activity {
             synchronized(data.categories){for(LiveData.Category cat:data.categories)if(!hiddenIds.contains(cat.id))out.add(cat);}
             return out;
         }
+        /** The index (in {@link #sections}) of the sports section: one chosen as sports when the sports files were prepared, else one named like it; -1 if none. */
+        private int sportsSection(){
+            List<LiveData.Category> s=sections();
+            java.util.Set<String> ids=MatchChannels.sportCategoryIds(getContext());
+            for(int i=2;i<s.size();i++)if(ids.contains(s.get(i).id))return i;
+            for(int i=2;i<s.size();i++)if(MatchChannels.sportRank(s.get(i).name)<2)return i;
+            return -1;
+        }
         private List<LiveData.Channel> shown(){
             List<LiveData.Category> s=sections();
             if(cat<0||cat>=s.size())return new ArrayList<>();
@@ -214,7 +230,9 @@ public final class LiveActivity extends Activity {
         }
         private void ensureLoaded(){
             List<LiveData.Category> s=sections();
-            if(cat>=0&&cat<s.size())data.loadChannels(s.get(cat).id,()->{invalidate();wantGuide();schedulePreview();});
+            if(cat>=0&&cat<s.size())data.loadChannels(s.get(cat).id,()->{
+                if(pendingFocus&&!shown().isEmpty()){pendingFocus=false;sel=MatchChannels.firstSports(shown());top=Math.max(0,sel-2);}   // the first beIN or SSC channel
+                invalidate();wantGuide();schedulePreview();});
         }
         /** Programme lines under visible rows and the guide card of the selected channel. */
         private void wantGuide(){
