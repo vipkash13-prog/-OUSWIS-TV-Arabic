@@ -329,15 +329,16 @@ with tempfile.TemporaryDirectory() as temp:
     assert any('اختر القناة' in l for l in eri) and not any('beIN' in l or 'SSC' in l for l in eri), 'An unconfirmed match must ask for a channel: ' + str(eri)
     # OK on the unconfirmed match opens the sports section of the live screen on its first beIN/SSC channel
     def focus_card(part):
-        """Walk the 2-column grid with the remote (a fresh screen starts on the chips): row by row until the card holds the focus."""
-        adb('shell', 'am', 'start', '-W', '-n', PKG + '/.MatchesScreenActivity'); time.sleep(2)
-        keys('DPAD_DOWN')
-        for _ in range(8):
-            if part in focused_label(): return
-            keys('DPAD_LEFT')
-            if part in focused_label(): return
-            keys('DPAD_RIGHT', 'DPAD_DOWN')
-        raise AssertionError('Could not focus ' + part + ' | focused: ' + focused_label())
+        """Walk the 2-column grid with the remote: the card's place is its place in the screen's own card list (row = index // 2; the second column is LEFT)."""
+        adb('shell', 'am', 'start', '-W', '-n', PKG + '/.MatchesScreenActivity'); time.sleep(3)
+        cards = [l for l in labels() if ' ضد ' in l and not l.startswith('تفاصيل')]
+        cards = [l for n, l in enumerate(cards) if l not in cards[:n]]
+        at = [n for n, l in enumerate(cards) if part in l]
+        assert at, 'Card not listed: ' + part + ' | ' + str(cards)
+        keys('DPAD_DOWN', pause=1)
+        for _ in range(at[0] // 2): keys('DPAD_DOWN', pause=1)
+        if at[0] % 2: keys('DPAD_LEFT', pause=1)
+        assert part in focused_label(), 'Wrong card focused: ' + focused_label() + ' | wanted index ' + str(at[0]) + ' of ' + str(cards)
     focus_card('سورينام ضد إريتريا')
     keys('DPAD_CENTER', pause=2); front('LiveActivity')
     wait_label('SSC 2 HD', 'the sports section of the live screen')
