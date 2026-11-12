@@ -51,7 +51,7 @@ def wait_label(part, what, tries=30):
         time.sleep(1)
     shot('redesign-failure.png')
     (OUT / 'redesign-logcat.txt').write_text(adb('logcat', '-d', '-t', '800', check=False))
-    raise AssertionError('Never saw: ' + what)
+    raise AssertionError('Never saw: ' + what + ' | labels: ' + str(labels()[:25]) + ' | front: ' + adb('shell', 'dumpsys', 'activity', 'activities', check=False).split('topResumedActivity')[-1][:200])
 
 def tap(part, exact=False):
     """Tap the first node whose text matches (dialog lists are plain views, so uiautomator can click them)."""
