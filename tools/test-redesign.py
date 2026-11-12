@@ -62,6 +62,12 @@ def tap(part, exact=False):
             adb('shell', 'input', 'tap', str((x1 + x2) // 2), str((y1 + y2) // 2)); time.sleep(2); return
     shot('redesign-failure.png'); raise AssertionError('Nothing to tap: ' + part)
 
+def to_home():
+    """Back out to the home screen; if Back leaves for another task, open it by its own name (it resumes, which is what matters)."""
+    try: front('HomeActivity', tries=6)
+    except AssertionError:
+        adb('shell', 'am', 'start', '-W', '-n', PKG + '/.HomeActivity'); front('HomeActivity')
+
 def focused_label():
     for n in tree().iter('node'):
         if n.get('package') == PKG and n.get('focused') == 'true' and (n.get('text', '') + n.get('content-desc', '')).strip():
@@ -224,7 +230,7 @@ with tempfile.TemporaryDirectory() as temp:
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.PlayerActivity', '-e', 'id', '110', '-e', 'name', 'beIN Sports 1 HD', '-e', 'ext', 'ts', '-e', 'num', '110')
     time.sleep(14)    # channel A, longer than 10 s
     keys('CHANNEL_UP', pause=14)    # channel B, the next one in its section, longer than 10 s
-    keys('BACK', pause=2); front('HomeActivity')
+    keys('BACK', pause=2); to_home()
     got = wait_label('آخر قناة شاهدتها', 'the last-channel card after coming back')
     assert any('beIN Sports 2' in l for l in got), 'Home must read the last channel again on return: ' + str(got)
     recent = adb('shell', 'cat', folder + '/ouswis-live.xml')
@@ -232,7 +238,7 @@ with tempfile.TemporaryDirectory() as temp:
     note('PASS: watched A (beIN 1) then B (beIN 2), 14 s each: coming back, the home card shows B and Recent lists B before A.')
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.LiveActivity'); wait_label('قسم', 'the live screen')
     keys('DPAD_DOWN', pause=14)    # the preview plays another channel for 14 s
-    keys('BACK', pause=2); front('HomeActivity')
+    keys('BACK', pause=2); to_home()
     assert any('beIN Sports 2' in l for l in wait_label('آخر قناة شاهدتها', 'the card after a long preview')), 'The small preview must not change the last channel'
     note('PASS: 14 s on the small preview in the live screen left the last channel unchanged.')
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.LiveActivity'); wait_label('قسم', 'the live screen again')
