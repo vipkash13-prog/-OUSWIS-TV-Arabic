@@ -61,7 +61,7 @@ with zipfile.ZipFile(OLD) as old,zipfile.ZipFile(NEW) as new:
     # The owner replaced the wallpaper (Nov 12: ouswis_bg_1080p.webp, with a 4K copy) and asked for the old flag/gold wallpaper
     # and the gold frame to go; every other asset must stay byte-identical.
     ADDED={'assets/fonts/Tajawal-OFL.txt','assets/backgrounds/ouswis_bg_1080p.webp','assets/backgrounds/ouswis_bg_4k.webp'}
-    REMOVED={'assets/themes/gold-sunset.png'}
+    REMOVED={'assets/themes/gold-sunset.png','assets/themes/gold-frame.png'}
     assert (names-REMOVED)|ADDED=={n for n in new.namelist() if n.startswith('assets/')},sorted(names^{n for n in new.namelist() if n.startswith('assets/')})
     for n in names-REMOVED:assert old.read(n)==new.read(n),'Asset changed: '+n
     assert not any(n.startswith('lib/') and n.endswith('.so') for n in new.namelist()),'Recheck native ABI coverage'
