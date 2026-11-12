@@ -262,7 +262,7 @@ with tempfile.TemporaryDirectory() as temp:
     # 5. the league -> channel table (Settings): pick by hand, then back to the default
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.ChannelMapActivity')
     wait_label('دوري روشن السعودي', 'the league table')
-    assert any('الافتراضي: SSC' in l for l in labels()), 'Defaults must show the SSC family for Roshn'
+    assert any('دوري روشن السعودي' in l and 'غير محددة' in l for l in labels()), 'With no pick the table must say so, not name a default: ' + str(labels()[:14])
     shot('redesign-channel-map.png')
     keys('DPAD_CENTER', pause=2)
     wait_label('اختر القسم', 'the section list')
@@ -273,9 +273,9 @@ with tempfile.TemporaryDirectory() as temp:
     assert 'name="picks"' in adb('shell', 'cat', folder + '/ouswis-live.xml')
     note('PASS: a channel picked by hand for a league is saved and shown in the table.')
     tap('دوري روشن السعودي'); wait_label('اختر القسم', 'the section list again')
-    tap('القناة الافتراضية')
-    wait_label('الافتراضي: SSC', 'the table back on its default')
-    note('PASS: choosing the default put the league back on the SSC family.')
+    tap('بدون اختيار يدوي')
+    wait_label('غير محددة', 'the table back to no pick')
+    note('PASS: the league table names no default channel; a hand pick shows, and removing it leaves the league without one.')
     keys('BACK', pause=1)
 
     # 6. matches (real ESPN data from the emulator's network)
@@ -286,6 +286,19 @@ with tempfile.TemporaryDirectory() as temp:
         time.sleep(1)
     img = shot('redesign-matches.png'); keys('DPAD_DOWN'); keys('DPAD_LEFT'); shot('redesign-matches-focus.png')
     no_crash('Matches')
+    cards = [l for l in labels() if ' ضد ' in l]
+    # the guide of the sports channels names one match (الهلال × النصر): it is a match on the screen, with its channel
+    guide_card = wait_label('الهلال ضد النصر', 'the match found only in the guide')
+    assert any(('SSC 1 HD' in l or 'beIN Sports 1 HD' in l) for l in guide_card), 'The guide match must carry the channel it was found on: ' + str(guide_card)
+    for l in cards:
+        if 'الهلال' in l: continue
+        assert 'beIN' not in l and 'SSC' not in l and 'AD Sports' not in l, 'No channel may be named without a confirmation: ' + l
+        if 'انتهت' not in l: assert 'اختر القناة' in l, 'An unconfirmed match must ask to pick the channel: ' + l
+    labs = labels(); i_all = labs.index('الكل'); i_fav = [i for i, l in enumerate(labs) if '★ المفضلة' in l][0]
+    league_chips = labs[i_all + 1:i_fav]
+    assert i_all < i_fav and any('دوري روشن' in l for l in league_chips), 'Filters: الكل, then the day\'s leagues, then المفضلة: ' + str(labs[:30])
+    shot('redesign-matches-chips.png')
+    note('PASS: matches screen: a match found only in the guide shows with its channel; no unconfirmed match names a channel (it says اختر القناة); the league chips come from the day\'s matches between الكل and المفضلة.')
     note('PASS: matches screen loaded real fixtures (or an honest empty day) and took keys without a crash.')
     (OUT / 'redesign-logcat.txt').write_text(adb('logcat', '-d', '-t', '800', check=False))
 

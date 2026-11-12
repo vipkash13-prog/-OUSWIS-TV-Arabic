@@ -60,7 +60,7 @@ final class RedesignHomeView extends View {
     private float k=1;
     private int row=1;
     private final int[] col=new int[5];
-    private final List<MatchCarouselView.Match> today=new ArrayList<>();
+    private final List<MatchCarouselView.Match> today=new ArrayList<>(),apiToday=new ArrayList<>();   // today: the feed's matches plus the guide's
     private List<HomeApps.Item> apps=new ArrayList<>();
     private LiveData live;
     private XtreamAccount account;
@@ -73,6 +73,19 @@ final class RedesignHomeView extends View {
         main.postDelayed(this,30_000);
     }};
     private final Runnable prayerChanged=this::postInvalidate;
+    private final Runnable guideChanged=()->{rebuildToday();clampColumns();postInvalidate();};
+    /** The feed's matches of today plus those found in the sports channels' guides, live first, then by kickoff. */
+    private void rebuildToday(){
+        long start=dayStart(),end=start+24L*3600_000;
+        List<MatchCarouselView.Match> list=new ArrayList<>();
+        for(MatchCarouselView.Match m:MatchChannels.withGuide(apiToday))if(m.live()||(m.kickoffMillis>=start&&m.kickoffMillis<end))list.add(m);
+        java.util.Collections.sort(list,(a,b)->{
+            int ra=a.live()?0:a.upcoming()?1:2,rb=b.live()?0:b.upcoming()?1:2;
+            return ra!=rb?Integer.compare(ra,rb):Long.compare(a.kickoffMillis,b.kickoffMillis);
+        });
+        today.clear();today.addAll(list);
+    }
+    private String scoreText(MatchCarouselView.Match m){return m.awayScore.isEmpty()&&m.homeScore.isEmpty()?"—":m.awayScore+" - "+m.homeScore;}
 
     RedesignHomeView(Context c,Host host){
         super(c);this.host=host;
@@ -82,8 +95,8 @@ final class RedesignHomeView extends View {
         if(account!=null)live=new LiveData(c,account);
     }
 
-    @Override protected void onAttachedToWindow(){super.onAttachedToWindow();MatchChannels.listen(prayerChanged);}
-    @Override protected void onDetachedFromWindow(){MatchChannels.unlisten(prayerChanged);super.onDetachedFromWindow();}
+    @Override protected void onAttachedToWindow(){super.onAttachedToWindow();MatchChannels.listen(prayerChanged);MatchChannels.listen(guideChanged);}
+    @Override protected void onDetachedFromWindow(){MatchChannels.unlisten(prayerChanged);MatchChannels.unlisten(guideChanged);super.onDetachedFromWindow();}
 
     // MARK: lifecycle
 
@@ -123,11 +136,11 @@ final class RedesignHomeView extends View {
                 });
                 main.post(()->{
                     // a failed load keeps what was there rather than hiding the section
-                    if(!found.isEmpty()||today.isEmpty()){today.clear();today.addAll(shown);}
-                    clampColumns();invalidate();
+                    if(!found.isEmpty()||apiToday.isEmpty()){apiToday.clear();apiToday.addAll(shown);}
+                    rebuildToday();clampColumns();invalidate();
                 });
             });
-            if(account!=null)MatchChannels.prepare(getContext(),account,this::postInvalidate);
+            if(account!=null)MatchChannels.prepare(getContext(),account,()->{MatchChannels.scanGuides(getContext(),account);postInvalidate();});
         }
     }
     private boolean anyLive(){for(MatchCarouselView.Match m:today)if(m.live())return true;return false;}
@@ -262,7 +275,7 @@ final class RedesignHomeView extends View {
     private final Paint heroFill=new Paint(Paint.ANTI_ALIAS_FLAG),heroStroke=new Paint(Paint.ANTI_ALIAS_FLAG);
     private float heroL,heroT,heroR,heroB;   // the box the gradient was made for
     private final Path heroClip=new Path();
-    private final Paint layer=new Paint();
+    private final Paint layer=new Paint(),goldText15=Design.text(Design.GOLD,15,Design.regular());
 
     /** The last-channel card: 153 dp tall, always, and everything inside it is clipped to it, so it can't cover the row below. */
     private void drawHero(Canvas c){
@@ -270,7 +283,7 @@ final class RedesignHomeView extends View {
         // separate paints, so no later change to one can touch what is already recorded for the other
         if(box.left!=heroL||box.top!=heroT||box.right!=heroR||box.bottom!=heroB){
             heroL=box.left;heroT=box.top;heroR=box.right;heroB=box.bottom;
-            heroFill.setShader(new LinearGradient(heroL,heroT,heroR,heroB,0xF2123D5C,0xF2121A3A,Shader.TileMode.CLAMP));   // #123D5C to #121A3A at 95 %: the city behind never shows through
+            heroFill.setShader(new LinearGradient(heroR,heroT,heroL,heroB,0xF2123D5C,0xF2121A3A,Shader.TileMode.CLAMP));   // #123D5C to #121A3A at 95 %: the city behind never shows through
         }
         heroFill.setStyle(Paint.Style.FILL);c.drawRoundRect(box,30,30,heroFill);
         heroStroke.setStyle(Paint.Style.STROKE);heroStroke.setStrokeWidth(1);heroStroke.setColor(Design.STROKE);c.drawRoundRect(box,30,30,heroStroke);
@@ -412,17 +425,18 @@ final class RedesignHomeView extends View {
             float cx=(left+right)/2;
             if(m.live()){
                 Design.liveBadge(c,cx,490,"'"+minute(m),15,p,badge);
-                Design.center(c,m.awayScore+" - "+m.homeScore,cx,543,Design.text(Design.TEXT,42,Design.bold()));
+                Design.center(c,scoreText(m),cx,543,Design.text(Design.TEXT,42,Design.bold()));
             }else if(done){
                 Design.center(c,"انتهت",cx,492,Design.text(Design.MUTED,15,Design.regular()));
-                Design.center(c,m.awayScore+" - "+m.homeScore,cx,543,Design.text(0x99F4EFE4,42,Design.bold()));
+                Design.center(c,scoreText(m),cx,543,Design.text(0x99F4EFE4,42,Design.bold()));
             }else{
                 Design.center(c,"اليوم",cx,492,Design.text(Design.MUTED,15,Design.regular()));
                 Design.center(c,fmt("h:mm a",m.kickoffMillis),cx,543,Design.text(Design.TEXT,38,Design.bold()));
             }
             LiveData.Channel ch=channelFor(m);
-            if(ch!=null&&!done)Design.center(c,(m.live()?"▶ ":"")+ch.name,cx,575,Design.text(Design.GOLD,15,Design.regular()));
-            a11y.add(box,m.home+" ضد "+m.away+" · "+(m.live()?"مباشر "+m.awayScore+" - "+m.homeScore:done?"انتهت "+m.awayScore+" - "+m.homeScore:fmt("h:mm a",m.kickoffMillis))+(ch!=null&&!done?" · "+ch.name:""),focus(2,i),true);
+            if(ch!=null&&!done)Design.center(c,(m.live()?"▶ ":"")+Design.fit(ch.name,goldText15,360),cx,575,goldText15);
+            else if(!done)Design.center(c,"اختر القناة",cx,575,Design.text(Design.MUTED,15,Design.regular()));
+            a11y.add(box,m.home+" ضد "+m.away+" · "+(m.live()?"مباشر "+m.awayScore+" - "+m.homeScore:done?"انتهت "+m.awayScore+" - "+m.homeScore:fmt("h:mm a",m.kickoffMillis))+(ch!=null&&!done?" · "+ch.name:!done?" · اختر القناة":""),focus(2,i),true);
             if(focus(2,i))Design.focusRing(c,box,22,1,p);
         }
     }

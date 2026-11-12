@@ -14,7 +14,9 @@ final class Wallpaper {
     private Wallpaper(){}
 
     /** Draws the wallpaper over (0,0,w,h) and then a black layer of the given opacity (0..1). Call from a size change, not a draw pass. */
-    static void draw(Context c,Canvas canvas,int w,int h,float dim){
+    static void draw(Context c,Canvas canvas,int w,int h,float dim){draw(c,canvas,w,h,dim,0x000000);}
+    /** The same with the dark layer in the given colour (RGB), e.g. #0B0D1A. */
+    static void draw(Context c,Canvas canvas,int w,int h,float dim,int rgb){
         Bitmap bmp=null;
         try(InputStream in=c.getAssets().open("backgrounds/ouswis_bg_1080p.webp")){bmp=BitmapFactory.decodeStream(in);}catch(Exception ignored){}
         if(bmp==null){canvas.drawColor(Design.BG);return;}
@@ -22,7 +24,7 @@ final class Wallpaper {
         float sw=w/s,sh=h/s;
         Rect src=new Rect((int)((bmp.getWidth()-sw)/2),(int)((bmp.getHeight()-sh)/2),(int)((bmp.getWidth()+sw)/2),(int)((bmp.getHeight()+sh)/2));
         canvas.drawBitmap(bmp,src,new RectF(0,0,w,h),new Paint(Paint.FILTER_BITMAP_FLAG));
-        canvas.drawColor((int)(dim*255)<<24);
+        canvas.drawColor(((int)(dim*255)<<24)|(rgb&0xFFFFFF));
         bmp.recycle();
     }
 }

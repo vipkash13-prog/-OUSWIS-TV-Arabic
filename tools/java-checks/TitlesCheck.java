@@ -15,6 +15,16 @@ public final class TitlesCheck {
         eq("بايرن ميونخ × دورتموند — الدوري الألماني",Titles.arabic("Bayern Munich vs Borussia Dortmund - Bundesliga"));
         eq("ليفربول × "+iso+"Zzyzx United"+end+" — دوري أبطال أوروبا",Titles.arabic("Liverpool vs Zzyzx United - UEFA Champions League - MD3"));
         eq("Game of Thrones",Titles.arabic("Game of Thrones"));
+        eq("غانا × الصومال — كأس الأمم الأفريقية",Titles.arabic("غانا × الصومال — كأس الأمم الأفريقية"));
+        eq("غانا","غانا".equals(Titles.parseMatch("غانا × الصومال — كأس الأمم الأفريقية")[0])?"غانا":"x");
+        eq("كأس الأمم الأفريقية",Titles.parseMatch("غانا × الصومال — كأس الأمم الأفريقية")[2]);
+        eq("دوري الأمم",Titles.shortLeague("دوري الأمم الأوروبية"));
+        eq("تصفيات أفريقيا",Titles.shortLeague("تصفيات كأس الأمم الأفريقية"));
+        eq("تصفيات كأس العالم",Titles.filterLabel("تصفيات كأس العالم - آسيا"));
+        eq("دوري روشن",Titles.parseMatch("الهلال × النصر · دوري روشن")[2]);
+        eq("النصر",Titles.parseMatch("الهلال × النصر · دوري روشن")[1]);
+        is(true,Titles.isRerun("Ghana vs Somalia - Replay"),"replay");
+        is(false,Titles.isRerun("Ghana vs Somalia"),"live");
         eq("نشرة الأخبار",Titles.arabic("نشرة الأخبار"));
         eq("",Titles.arabic(null));
         String t="Juventus vs OL Lyonnes - UEFA Women's Champions League";

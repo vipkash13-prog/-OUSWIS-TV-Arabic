@@ -24,7 +24,7 @@ final class ChannelPicker {
             synchronized(data.categories){cats.addAll(data.categories);}
             final List<LiveData.Category> shown=cats;
             String[] names=new String[shown.size()+1];
-            names[0]="↩ القناة الافتراضية";
+            names[0]="↩ بدون اختيار يدوي";
             for(int i=0;i<shown.size();i++)names[i+1]=shown.get(i).name;
             if(a.isFinishing())return;
             new AlertDialog.Builder(a).setTitle(title+" — اختر القسم").setItems(names,(d,which)->{

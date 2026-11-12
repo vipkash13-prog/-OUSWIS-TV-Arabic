@@ -55,7 +55,7 @@ public final class MatchesScreenActivity extends Activity {
         root.addView(view,new FrameLayout.LayoutParams(-1,-1));
         setContentView(root);
         view.requestFocus();
-        if(account!=null)MatchChannels.prepare(this,account,()->view.postInvalidate());
+        if(account!=null)MatchChannels.prepare(this,account,()->{MatchChannels.scanGuides(this,account);view.postInvalidate();});
     }
     @Override protected void onResume(){super.onResume();foreground=true;load();}
     @Override protected void onPause(){foreground=false;main.removeCallbacks(refresh);super.onPause();}
@@ -99,12 +99,14 @@ public final class MatchesScreenActivity extends Activity {
         private final RectF r=new RectF(),g=new RectF(),bm=new RectF();
         private Bitmap backdrop;
         private float k;
-        private int day=1,league=0;              // day: 0 yesterday, 1 today, 2 tomorrow
+        private int day=1;                        // day: 0 yesterday, 1 today, 2 tomorrow
+        private String league="";                 // "" all, FAV the favourites, else the label of a league that is in the day's matches
+        private static final String FAV="★ المفضلة";
+        private int chipScroll;                   // first league chip drawn (the row can be longer than the screen)
         private int area=1,chipFocus=1,sel,scroll,panelFocus; // area: 0 filter chips, 1 grid, 2 detail panel
         private boolean offline;
         private final String[] days={"أمس","اليوم","غداً"};
-        private final String[] leagues={"الكل","دوري روشن","أبطال آسيا","أبطال أوروبا","الدوري الإسباني","★ المفضلة"};
-        private final String[] fragments={"","روشن","أبطال آسيا","أبطال أوروبا","الإسباني",""};
+        private final List<String> chips=new ArrayList<>();   // "الكل", then the leagues of the chosen day, then the favourites
 
         private final A11y a11y=new A11y(this);
         private final Runnable lookupDone=this::postInvalidate;
@@ -117,24 +119,45 @@ public final class MatchesScreenActivity extends Activity {
         @Override protected void onSizeChanged(int w,int h,int ow,int oh){
             k=w/1920f;
             backdrop=Bitmap.createBitmap(Math.max(1,w/2),Math.max(1,h/2),Bitmap.Config.RGB_565);
-            Canvas c=new Canvas(backdrop);c.scale(0.5f,0.5f);Wallpaper.draw(getContext(),c,w,h,0.6f);   // the home wallpaper under a 60 % dark layer
+            Canvas c=new Canvas(backdrop);c.scale(0.5f,0.5f);Wallpaper.draw(getContext(),c,w,h,0.6f,0x0B0D1A);   // the home wallpaper under #0B0D1A at 60 %
         }
         private long riyadhDayStart(int offset){
             java.util.Calendar cal=java.util.Calendar.getInstance(TimeZone.getTimeZone("Asia/Riyadh"));
             cal.set(java.util.Calendar.HOUR_OF_DAY,0);cal.set(java.util.Calendar.MINUTE,0);cal.set(java.util.Calendar.SECOND,0);cal.set(java.util.Calendar.MILLISECOND,0);
             return cal.getTimeInMillis()+offset*24L*3600_000;
         }
-        private List<MatchCarouselView.Match> visible(){
-            long from=riyadhDayStart(day-1),to=from+24L*3600_000,todayStart=riyadhDayStart(0);
-            Set<String> favorites=saved();
+        /** The matches of the chosen day from the feed and from the guide, before the league filter. */
+        private List<MatchCarouselView.Match> ofDay(){
+            long from=riyadhDayStart(day-1),to=from+24L*3600_000;
             List<MatchCarouselView.Match> out=new ArrayList<>();
-            for(MatchCarouselView.Match m:all){
+            for(MatchCarouselView.Match m:MatchChannels.withGuide(all)){
                 boolean inDay;
                 if(day==1)inDay=m.live()||(m.kickoffMillis>=from&&m.kickoffMillis<to);
                 else inDay=m.kickoffMillis>=from&&m.kickoffMillis<to&&!m.live();
-                if(!inDay)continue;
-                if(league==5){if(!favorites.contains(m.key))continue;}
-                else if(league>0&&!m.competition.contains(fragments[league]))continue;
+                if(inDay)out.add(m);
+            }
+            return out;
+        }
+        /** The filter chips: only leagues that have a match on the chosen day, in Arabic, between "الكل" and the favourites. */
+        private void buildChips(){
+            java.util.LinkedHashMap<String,Integer> count=new java.util.LinkedHashMap<>();
+            for(MatchCarouselView.Match m:ofDay()){
+                String label=Titles.filterLabel(m.competition);
+                if(label.isEmpty())continue;
+                Integer n=count.get(label);count.put(label,n==null?1:n+1);
+            }
+            List<String> names=new ArrayList<>(count.keySet());
+            java.util.Collections.sort(names,(a,b)->count.get(b).equals(count.get(a))?a.compareTo(b):Integer.compare(count.get(b),count.get(a)));
+            chips.clear();chips.add("الكل");chips.addAll(names);chips.add(FAV);
+            if(!league.isEmpty()&&!chips.contains(league))league="";   // that league has no match on this day
+        }
+        private List<MatchCarouselView.Match> visible(){
+            buildChips();
+            Set<String> favorites=saved();
+            List<MatchCarouselView.Match> out=new ArrayList<>();
+            for(MatchCarouselView.Match m:ofDay()){
+                if(FAV.equals(league)){if(!favorites.contains(m.key))continue;}
+                else if(!league.isEmpty()&&!Titles.filterLabel(m.competition).equals(league))continue;
                 out.add(m);
             }
             // live first, then what is coming by time, then what finished (dimmed)
@@ -187,7 +210,20 @@ public final class MatchesScreenActivity extends Activity {
             int index=0;
             for(int i=0;i<3;i++,index++){x=chipRight(c,x,days[i],i==day,area==0&&chipFocus==index);}
             x-=10;r.set(x-1,164,x,212);Design.fill(c,r,0,p,0x1FFFFFFF);x-=20;
-            for(int i=0;i<leagues.length;i++,index++){x=chipRight(c,x,leagues[i],i==league,area==0&&chipFocus==index);}
+            chipFocus=Math.min(chipFocus,3+chips.size()-1);
+            // the league chips can be more than the row holds: the row scrolls so the focused one is always drawn
+            int focusedLeague=area==0&&chipFocus>=3?chipFocus-3:-1;
+            chipScroll=Math.max(0,Math.min(chipScroll,chips.size()-1));
+            if(focusedLeague>=0){
+                if(focusedLeague<chipScroll)chipScroll=focusedLeague;
+                while(chipScroll<focusedLeague&&chipsWidth(chipScroll,focusedLeague)>x-96)chipScroll++;
+            }
+            for(int i=chipScroll;i<chips.size();i++){
+                String label=chips.get(i);
+                if(i>chipScroll&&x-(chip.measureText(label)+44)<96)break;
+                boolean on=i==0?league.isEmpty():label.equals(league);
+                x=chipRight(c,x,label,on,focusedLeague==i);
+            }
             // cards
             int cols=2,cardW=604,cardH=150,gapY=18;
             int rowsVisible=4;
@@ -205,7 +241,7 @@ public final class MatchesScreenActivity extends Activity {
                 boolean focused=area==1&&i==sel;
                 RectF card=r;
                 if(focused){Design.grown(r,g);card=g;}
-                Design.card(c,card,22,1,p,m.live()?0x1AEF4444:Design.SURFACE);
+                Design.card(c,card,22,1,p,m.live()?0xFF2A1220:0xFF151A2E);   // opaque: the wallpaper never shows through a result
                 int alpha=done?153:255;
                 crest(c,m.homeLogo,m.home,right-81,top+62,32);crest(c,m.awayLogo,m.away,left+81,top+62,32);
                 team.setAlpha(alpha);Design.center(c,Design.fit(m.home,team,150),right-81,top+120,team);
@@ -213,18 +249,19 @@ public final class MatchesScreenActivity extends Activity {
                 float cx=(left+right)/2;
                 if(m.live()){
                     Design.liveBadge(c,cx,top+32,"'"+minuteOf(m),17,p,badge);
-                    big.setTextSize(50);Design.center(c,m.awayScore+" - "+m.homeScore,cx,top+98,big);
+                    big.setTextSize(50);Design.center(c,scoreText(m),cx,top+98,big);
                 }else if(done){
                     Design.center(c,"انتهت",cx,top+34,small);
-                    big.setAlpha(alpha);Design.center(c,m.awayScore+" - "+m.homeScore,cx,top+98,big);big.setAlpha(255);
+                    big.setAlpha(alpha);Design.center(c,scoreText(m),cx,top+98,big);big.setAlpha(255);
                 }else{
-                    Design.center(c,m.competition.length()>16?m.competition.substring(0,16):m.competition,cx,top+34,small);
+                    Design.center(c,Design.fit(Titles.shortLeague(m.competition),small,cardW-270),cx,top+34,small);
                     big.setTextSize(46);Design.center(c,timeOf(m.kickoffMillis),cx,top+98,big);
                 }
                 LiveData.Channel ch=channelFor(m);
                 if(done){goldText.setAlpha(alpha);Design.center(c,"ملخص",cx,top+130,goldText);goldText.setAlpha(255);}
-                else if(ch!=null)Design.center(c,(m.live()?"▶ ":"")+ch.name,cx,top+130,goldText);
-                a11y.add(card,m.home+" ضد "+m.away+" · "+m.competition+" · "+(m.live()?"مباشر "+m.awayScore+" - "+m.homeScore:done?"انتهت "+m.awayScore+" - "+m.homeScore:timeOf(m.kickoffMillis))+(ch!=null&&!done?" · "+ch.name:""),focused,true);
+                else if(ch!=null)Design.center(c,(m.live()?"▶ ":"")+Design.fit(ch.name,goldText,cardW-270),cx,top+130,goldText);
+                else{small.setAlpha(200);Design.center(c,"اختر القناة",cx,top+130,small);small.setAlpha(255);}
+                a11y.add(card,m.home+" ضد "+m.away+" · "+m.competition+" · "+(m.live()?"مباشر "+scoreText(m):done?"انتهت "+m.awayScore+" - "+m.homeScore:timeOf(m.kickoffMillis))+(ch!=null&&!done?" · "+ch.name:!done?" · اختر القناة":""),focused,true);
                 if(focused)Design.focusRing(c,card,22,1,p);
             }
             panel(c,list);
@@ -236,6 +273,12 @@ public final class MatchesScreenActivity extends Activity {
             String s=m.status==null?"":m.status;String digits=s.replaceAll("[^0-9+]","");
             return digits.isEmpty()?"مباشر":digits+"'";
         }
+        private float chipsWidth(int from,int to){
+            float w=0;
+            for(int i=from;i<=to&&i<chips.size();i++)w+=Math.max(chip.measureText(chips.get(i)),chipOn.measureText(chips.get(i)))+44+14;
+            return w;
+        }
+        private String scoreText(MatchCarouselView.Match m){return m.awayScore.isEmpty()&&m.homeScore.isEmpty()?"—":m.awayScore+" - "+m.homeScore;}
         private float chipRight(Canvas c,float right,String label,boolean on,boolean focused){
             Paint t=on?chipOn:chip;
             float width=t.measureText(label)+44;
@@ -248,7 +291,7 @@ public final class MatchesScreenActivity extends Activity {
             return right-width-14;
         }
         private void panel(Canvas c,List<MatchCarouselView.Match> list){
-            r.set(72,243,591,881);Design.card(c,r,28,1,p,0x14FFFFFF);
+            r.set(72,243,591,881);Design.card(c,r,28,1,p,0xFF141829);
             if(sel<0||sel>=list.size())return;
             MatchCarouselView.Match m=list.get(sel);
             a11y.add(72,243,591,490,"تفاصيل المباراة: "+m.home+" ضد "+m.away+" · "+m.competition,false,false);
@@ -257,7 +300,7 @@ public final class MatchesScreenActivity extends Activity {
             crest(c,m.homeLogo,m.home,470,378,40);crest(c,m.awayLogo,m.away,158,378,40);
             boolean started=!m.upcoming();
             big.setTextSize(started?72:44);
-            Design.center(c,started?m.awayScore+" - "+m.homeScore:timeOf(m.kickoffMillis),332,408,big);big.setTextSize(50);
+            Design.center(c,started?scoreText(m):timeOf(m.kickoffMillis),332,408,big);big.setTextSize(50);
             team.setTextSize(27);Design.center(c,Design.fit(m.home,team,190),470,468,team);Design.center(c,Design.fit(m.away,team,190),158,468,team);team.setTextSize(19);
             r.set(102,486,561,487);Design.fill(c,r,0,p,0x1AFFFFFF);
             List<String> events=new ArrayList<>();
@@ -293,7 +336,7 @@ public final class MatchesScreenActivity extends Activity {
 
         @Override public boolean onKeyDown(int key,KeyEvent e){
             List<MatchCarouselView.Match> list=visible();
-            int chipsTotal=3+leagues.length;
+            int chipsTotal=3+chips.size();
             switch(key){
                 case KeyEvent.KEYCODE_DPAD_UP:
                     if(area==1){if(sel>=2)sel-=2;else{area=0;}}
@@ -321,7 +364,7 @@ public final class MatchesScreenActivity extends Activity {
         }
         private void activate(List<MatchCarouselView.Match> list){
             if(area==0){
-                if(chipFocus<3)day=chipFocus;else league=chipFocus-3;
+                if(chipFocus<3)day=chipFocus;else{int i=chipFocus-3;league=i==0||i>=chips.size()?"":chips.get(i);}
                 sel=0;scroll=0;invalidate();return;
             }
             if(list.isEmpty())return;

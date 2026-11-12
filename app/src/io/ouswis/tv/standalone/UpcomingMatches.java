@@ -30,7 +30,8 @@ public final class UpcomingMatches {
     private UpcomingMatches(){}
     public static final String[] LEAGUES={
         "ksa.1", "ksa.kings.cup", "afc.champions", "afc.cup", "afc.asian.cup", "fifa.worldq.afc", "fifa.world",
-        "uefa.champions", "uefa.wchampions", "uefa.europa", "uefa.europa.conf", "uefa.nations",
+        "uefa.champions", "uefa.wchampions", "caf.champions", "caf.confed", "caf.nations_qual", "fifa.worldq.caf", "fifa.worldq.uefa",
+        "fifa.worldq.conmebol", "fifa.worldq.concacaf", "fifa.friendly", "uefa.europa", "uefa.europa.conf", "uefa.nations",
         "eng.1", "eng.fa", "eng.league_cup", "esp.1", "esp.copa_del_rey", "ita.1", "ita.coppa_italia",
         "ger.1", "ger.dfb_pokal", "fra.1", "fra.coupe_de_france", "por.1", "ned.1", "tur.1", "caf.nations"
     };
@@ -48,10 +49,16 @@ public final class UpcomingMatches {
         {"German DFB-Pokal","كأس ألمانيا"},{"French Ligue 1","الدوري الفرنسي"},
         {"French Coupe de France","كأس فرنسا"},{"Portuguese Primeira Liga","الدوري البرتغالي"},
         {"Dutch Eredivisie","الدوري الهولندي"},{"Turkish Super Lig","الدوري التركي"},
-        {"Africa Cup of Nations","كأس الأمم الأفريقية"}};
+        {"Africa Cup of Nations","كأس الأمم الأفريقية"},{"Africa Cup of Nations Qualifying","تصفيات كأس الأمم الأفريقية"},
+        {"CAF Champions League","دوري أبطال أفريقيا"},{"CAF Confederation Cup","كأس الكونفدرالية الأفريقية"},
+        {"International Friendly","المباراة الودية الدولية"}};
     static String arabicCompetition(String name){
         for(String[] c:COMPETITIONS)if(c[0].equalsIgnoreCase(name))return c[1];
-        if(name.startsWith("FIFA World Cup"))return "تصفيات كأس العالم"+(name.contains("AFC")?" - آسيا":"");
+        if(name.startsWith("FIFA World Cup")){
+            String region=name.contains("AFC")?" - آسيا":name.contains("CAF")?" - أفريقيا":name.contains("UEFA")?" - أوروبا":name.contains("CONMEBOL")?" - أمريكا الجنوبية"
+                    :name.toLowerCase(java.util.Locale.ROOT).contains("concacaf")?" - الكونكاكاف":"";
+            return "تصفيات كأس العالم"+region;
+        }
         return name;
     }
     /** What a load found: the matches, and how many competitions answered or didn't. */
@@ -221,6 +228,11 @@ public final class UpcomingMatches {
                 if(!include)continue;
                 MatchCarouselView.Match m=new MatchCarouselView.Match(competition,arabic(home),arabic(away),fmt.format(date),kickoff);
                 m.homeEn=home;m.awayEn=away;
+                JSONArray casts=comp.optJSONArray("broadcasts");
+                for(int k=0;casts!=null&&k<casts.length();k++){
+                    JSONObject b=casts.optJSONObject(k);JSONArray names=b==null?null:b.optJSONArray("names");
+                    for(int q=0;names!=null&&q<names.length();q++)if(!names.optString(q).isEmpty())m.broadcasts.add(names.optString(q));
+                }
                 m.key=league+":"+e.optString("id");
                 m.state=state;m.leagueLogo=leagueLogo;m.homeLogo=homeLogo;m.awayLogo=awayLogo;
                 if(!"pre".equals(state)){m.homeScore=hs;m.awayScore=as;}

@@ -36,7 +36,8 @@ public final class MatchCarouselView extends View {
     public static final class Match {
         public final String competition, home, away, kickoff;
         public final long kickoffMillis;
-        public String homeEn="", awayEn="", key="", state="", status="", leagueLogo="", homeLogo="", awayLogo="", homeScore="", awayScore="";
+        public String epgChannelId="", homeEn="", awayEn="", key="", state="", status="", leagueLogo="", homeLogo="", awayLogo="", homeScore="", awayScore="";
+        public final List<String> broadcasts=new ArrayList<>();   // what the feed says carries it (may be empty)
         public final List<String> goalsHome=new ArrayList<>(), goalsAway=new ArrayList<>();
         public Match(String competition, String home, String away, String kickoff) {
             this(competition,home,away,kickoff,0L);

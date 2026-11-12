@@ -16,14 +16,14 @@ import java.util.regex.Pattern;
 final class Titles {
     private Titles(){}
     private static final String FSI="⁨",PDI="⁩";
-    private static final Pattern VS=Pattern.compile("^(.{2,60}?)\\s+(?:vs\\.?|v|x|×)\\s+(.{2,60}?)(?:\\s+[-–—|:]\\s+(.*))?$",Pattern.CASE_INSENSITIVE);
+    private static final Pattern VS=Pattern.compile("^(.{2,60}?)\\s+(?:vs\\.?|v|x|×|ضد)\\s+(.{2,60}?)(?:\\s+[-–—|:·]\\s+(.*))?$",Pattern.CASE_INSENSITIVE);
     private static final Pattern EXTRA=Pattern.compile("(?i)^(?:\\d{4}(?:\\s*[/-]\\s*\\d{2,4})?|md\\s*\\d+|matchday\\s*\\d+|week\\s*\\d+|round\\s*\\d+|rd\\s*\\d+|"
             +"gw\\s*\\d+|game\\s*\\d+|leg\\s*\\d|live|direct|en direct|hd|fhd|\\d+(?:st|nd|rd|th)?\\s*(?:leg|round)|المرحلة\\s*\\d+|الجولة\\s*\\d+)$");
     private static final Pattern WORDS=Pattern.compile("(?i)\\b(?:fc|cf|afc|sc|ac|women|womens|women's|w|ladies|feminin|féminin|feminine|féminine)\\b");
     private static final java.util.List<String[]> LEAGUE_LIST=new java.util.ArrayList<>();
     private static final Map<String,String> memo=new java.util.concurrent.ConcurrentHashMap<>();
 
-    private static String key(String s){
+    static String key(String s){
         String n=java.text.Normalizer.normalize(s==null?"":s,java.text.Normalizer.Form.NFD).replaceAll("\\p{M}+","");
         return n.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9؀-ۿ]+","");
     }
@@ -66,6 +66,50 @@ final class Titles {
         league("المباراة الودية","International Friendly","Friendly","Club Friendly");
     }
 
+    /** A match title split into {home as written, away as written, the league part in Arabic or as written}; null for any other title. */
+    static String[] parseMatch(String title){
+        if(title==null)return null;
+        Matcher m=VS.matcher(title.trim());
+        if(!m.matches())return null;
+        String rest=m.group(3)==null?"":m.group(3),comp="";
+        for(String part:rest.split("\\s+[-–—|·]\\s+|\\s*\\|\\s*")){
+            String p=part.trim();
+            if(p.isEmpty()||EXTRA.matcher(p).matches())continue;
+            String ar=leagueOf(p);
+            comp=ar!=null?ar:cleanExtra(p);
+            if(!comp.isEmpty())break;
+        }
+        return new String[]{m.group(1).trim(),m.group(2).trim(),comp};
+    }
+    /** A team's Arabic name from the tables; as written (isolated) when it isn't there. */
+    static String teamArabic(String raw){return team(raw);}
+    /** True for a programme that is a repeat or a summary, not the match itself. */
+    static boolean isRerun(String title){
+        return title!=null&&Pattern.compile("(?i)\\b(replay|rerun|re-run|highlights|re-live|repeat)\\b|إعادة|ملخص|\\(r\\)").matcher(title).find();
+    }
+
+    /** The chip text of a competition in the matches filter ("تصفيات كأس العالم - آسيا" → "تصفيات كأس العالم"). */
+    static String filterLabel(String competition){
+        String c=competition==null?"":competition.trim();
+        if(c.startsWith("تصفيات كأس العالم"))return "تصفيات كأس العالم";
+        if(c.startsWith("تصفيات كأس الأمم الأفريقية"))return "تصفيات أمم أفريقيا";
+        if(c.equals("الدوري الإنجليزي الممتاز"))return "الدوري الإنجليزي";
+        return c;
+    }
+    /** A short league name for a match card, so it is never cut ("دوري الأمم الأوروبية" → "دوري الأمم"). */
+    static String shortLeague(String competition){
+        String c=competition==null?"":competition.trim();
+        if(c.startsWith("تصفيات كأس العالم")){int i=c.indexOf(" - ");return "تصفيات العالم"+(i>0?" - "+c.substring(i+3):"");}
+        String[][] t={{"تصفيات كأس الأمم الأفريقية","تصفيات أفريقيا"},{"دوري الأمم الأوروبية","دوري الأمم"},{"دوري أبطال أوروبا للسيدات","أبطال أوروبا للسيدات"},
+            {"دوري أبطال أوروبا","أبطال أوروبا"},{"دوري أبطال آسيا للنخبة","أبطال آسيا للنخبة"},{"دوري أبطال آسيا","أبطال آسيا"},{"دوري أبطال أفريقيا","أبطال أفريقيا"},
+            {"دوري المؤتمر الأوروبي","دوري المؤتمر"},{"الدوري الإنجليزي الممتاز","الإنجليزي"},{"الدوري الإسباني","الإسباني"},{"الدوري الإيطالي","الإيطالي"},
+            {"الدوري الألماني","الألماني"},{"الدوري الفرنسي","الفرنسي"},{"دوري روشن السعودي","دوري روشن"},{"كأس الاتحاد الإنجليزي","كأس الاتحاد"},
+            {"كأس الرابطة الإنجليزية","كأس الرابطة"},{"كأس ملك إسبانيا","كأس إسبانيا"},{"كأس الأمم الأفريقية","كأس أفريقيا"},{"المباراة الودية الدولية","ودية دولية"},
+            {"كأس الكونفدرالية الأفريقية","كونفدرالية أفريقيا"}};
+        for(String[] x:t)if(c.startsWith(x[0]))return x[1]+c.substring(x[0].length());
+        return c;
+    }
+
     /** True for "A vs B" style titles. */
     static boolean isMatch(String title){return title!=null&&VS.matcher(title.trim()).matches();}
 
@@ -89,7 +133,7 @@ final class Titles {
         String rest=m.group(3)==null?"":m.group(3);
         StringBuilder compName=new StringBuilder();
         // what follows the teams: the league and extras, split on dashes and bars; extras are dropped
-        for(String part:rest.split("\\s+[-–—|]\\s+|\\s*\\|\\s*")){
+        for(String part:rest.split("\\s+[-–—|·]\\s+|\\s*\\|\\s*")){
             String p=part.trim();
             if(p.isEmpty()||EXTRA.matcher(p).matches())continue;
             String ar=leagueOf(p);

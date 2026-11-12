@@ -50,7 +50,7 @@ public final class ChannelMapActivity extends Activity {
         ChannelPicker.pick(this,account,league[0],ch->{
             MatchChannels.pick(this,league[1],ch);
             adapter.notifyDataSetChanged();
-            Toast.makeText(this,ch==null?"عادت القناة الافتراضية":"سيُفتح "+ch.name+" لمباريات "+league[0],Toast.LENGTH_LONG).show();
+            Toast.makeText(this,ch==null?"أُلغي اختيارك لهذا الدوري":"سيُفتح "+ch.name+" لمباريات "+league[0],Toast.LENGTH_LONG).show();
         });
     }
 
@@ -62,8 +62,7 @@ public final class ChannelMapActivity extends Activity {
             TextView t=old instanceof TextView?(TextView)old:new TextView(ChannelMapActivity.this);
             String[] league=MatchChannels.LEAGUES[i];
             LiveData.Channel by_hand=MatchChannels.picked(ChannelMapActivity.this,league[1]);
-            String family=MatchChannels.family(ChannelMapActivity.this,league[1]);
-            String target=by_hand!=null?by_hand.name:family.isEmpty()?"—":"الافتراضي: "+family.toUpperCase(java.util.Locale.ROOT);
+            String target=by_hand!=null?by_hand.name:"غير محددة — تُعرف من دليل البرامج";
             t.setText(league[0]+"   ←   "+target);
             t.setTextColor(by_hand!=null?Design.GOLD:Design.TEXT);t.setTextSize(24);t.setTypeface(Design.regular());
             t.setGravity(Gravity.CENTER_VERTICAL|Gravity.RIGHT);t.setPadding(36,0,36,0);

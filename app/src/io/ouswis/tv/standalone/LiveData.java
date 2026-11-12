@@ -239,15 +239,15 @@ final class LiveData {
         }
         io.execute(()->{
             List<Program> out=new ArrayList<>();
-            try{out=fetchGuide(account,id);}catch(Exception e){AppLog.w("live guide failed");}
+            try{out=fetchGuide(account,id,4);}catch(Exception e){AppLog.w("live guide failed");}
             synchronized(epg){epg.put(id,out);epgAt.put(id,System.currentTimeMillis());epgBusy.remove(id);}
             main.post(changed);
         });
     }
     /** The next four programmes of a channel as the provider lists them (titles are Base64 there). Blocks: call off the UI thread. */
-    static List<Program> fetchGuide(XtreamAccount account,String id) throws Exception {
+    static List<Program> fetchGuide(XtreamAccount account,String id,int limit) throws Exception {
         List<Program> out=new ArrayList<>();
-        JSONObject o=new JSONObject(XtreamAccount.get(account.api("get_short_epg","stream_id="+XtreamAccount.enc(id)+"&limit=4")));
+        JSONObject o=new JSONObject(XtreamAccount.get(account.api("get_short_epg","stream_id="+XtreamAccount.enc(id)+"&limit="+limit)));
         JSONArray rows=o.optJSONArray("epg_listings");
         for(int i=0;rows!=null&&i<rows.length();i++){
             JSONObject r=rows.optJSONObject(i);if(r==null)continue;
