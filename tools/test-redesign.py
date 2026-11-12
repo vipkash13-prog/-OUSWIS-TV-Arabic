@@ -180,7 +180,6 @@ with tempfile.TemporaryDirectory() as temp:
     time.sleep(5); img = shot('redesign-live-preview.png')
     assert colourful(img, (0.06, 0.18, 0.44, 0.52)) > 0.2, 'The muted preview did not show a picture'
     note('PASS: live browser listed the categories (with counts) and channels, and the muted Media3 preview shows a picture after the focus rests.')
-    keys('DPAD_CENTER', pause=0.2)
     adb('shell', 'input', 'keyevent', '--longpress', 'KEYCODE_DPAD_CENTER'); time.sleep(1.5)
     assert any('★' in l and 'SSC 2 HD' in l for l in labels()), 'Long press OK must favourite the channel'
     note('PASS: a long press on OK added the channel to the favourites.')
