@@ -201,12 +201,12 @@ final class RedesignHomeView extends View {
         String time=clockText();
         clock.setTextAlign(Paint.Align.CENTER);
         float tw=clock.measureText(time);
-        Design.center(c,time,1050,112,clock);
-        Design.right(c,fmt("a"),1050-tw/2-10,112,ampm);
+        Design.center(c,time,1050,104,clock);
+        Design.right(c,fmt("a"),1050-tw/2-10,104,ampm);
         SaudiDates dates=new SaudiDates();dates.update(System.currentTimeMillis(),new Locale("ar"));
         SimpleDateFormat g2=new SimpleDateFormat("d MMMM yyyy",Design.AR);g2.setTimeZone(TimeZone.getTimeZone("Asia/Riyadh"));
         // the date sits under the clock's own descent with a 6dp (9 reference px) gap: the two lines never touch
-        float dateBase=112+clock.descent()+9-dateLine.ascent();
+        float dateBase=104+9+dateLine.getTextSize()*0.8f;   // the digits have no descender: their baseline is their bottom
         Design.center(c,g2.format(new Date())+" · "+dates.hijri,1015,dateBase,dateLine);
         a11y.add(760,30,1340,dateBase+dateLine.descent(),"الساعة "+time+" "+fmt("a")+" · "+g2.format(new Date())+" · "+dates.hijri,false,false);
         // chips: weather, connection, settings
@@ -234,16 +234,20 @@ final class RedesignHomeView extends View {
 
     /** dp of the reference design: 1920 reference px across 1280 dp. */
     private static final float DP=1.5f;
-    private final Paint heroPaint=new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint heroFill=new Paint(Paint.ANTI_ALIAS_FLAG),heroStroke=new Paint(Paint.ANTI_ALIAS_FLAG);
+    private float heroL,heroT,heroR,heroB;   // the box the gradient was made for
     private final Path heroClip=new Path();
 
     /** The last-channel card: 153 dp tall, always, and everything inside it is clipped to it, so it can't cover the row below. */
     private void drawHero(Canvas c){
         r.set(611,163,1850,163+153*DP);RectF box=ring(r,focus(1,0));
-        heroPaint.setStyle(Paint.Style.FILL);
-        heroPaint.setShader(new LinearGradient(box.left,box.top,box.right,box.bottom,0xFF0F4B33,0xFF11172E,Shader.TileMode.CLAMP));
-        c.drawRoundRect(box,30,30,heroPaint);heroPaint.setShader(null);
-        heroPaint.setStyle(Paint.Style.STROKE);heroPaint.setStrokeWidth(1);heroPaint.setColor(Design.STROKE);c.drawRoundRect(box,30,30,heroPaint);
+        // separate paints, so no later change to one can touch what is already recorded for the other
+        if(box.left!=heroL||box.top!=heroT||box.right!=heroR||box.bottom!=heroB){
+            heroL=box.left;heroT=box.top;heroR=box.right;heroB=box.bottom;
+            heroFill.setShader(new LinearGradient(heroL,heroT,heroR,heroB,0xFF0F4B33,0xFF11172E,Shader.TileMode.CLAMP));
+        }
+        heroFill.setStyle(Paint.Style.FILL);c.drawRoundRect(box,30,30,heroFill);
+        heroStroke.setStyle(Paint.Style.STROKE);heroStroke.setStrokeWidth(1);heroStroke.setColor(Design.STROKE);c.drawRoundRect(box,30,30,heroStroke);
         LiveData.Channel ch=LiveData.lastWatched(getContext());
         c.save();c.clipRect(box.left+2,box.top+2,box.right-2,box.bottom-2);
         // 200x113 dp thumbnail carrying the channel's logo (stream_icon), with the "live" badge
