@@ -66,9 +66,17 @@ public final class PlayerActivity extends Activity {
         LiveData.Channel first=new LiveData.Channel(id==null?"":id,str(EXTRA_NAME),str(EXTRA_ICON),str(EXTRA_NUM),str(EXTRA_EXT).isEmpty()?"m3u8":str(EXTRA_EXT));
         list.add(first);index=0;
         data=new LiveData(this,account);
-        String section=str(EXTRA_SECTION);
-        if(!section.isEmpty()){
-            final String sid=section;
+        final String given=str(EXTRA_SECTION);
+        if(given.isEmpty()){
+            // Opened from a match: find the section the channel belongs to, so CH+/CH- have a list to move through.
+            new Thread(()->{
+                final String found=MatchChannels.sectionOf(this,account,first.id);
+                if(!found.isEmpty())main.post(()->{if(!isFinishing())loadSection(found,first);});
+            }).start();
+        }else loadSection(given,first);
+    }
+    private void loadSection(final String sid,final LiveData.Channel first){
+        {
             data.loadChannels(sid,()->{
                 List<LiveData.Channel> all=data.cached(sid);
                 if(all==null)return;

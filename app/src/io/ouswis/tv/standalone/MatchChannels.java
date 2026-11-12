@@ -148,6 +148,22 @@ final class MatchChannels {
         return best;
     }
 
+    /** The downloaded section that holds this channel ("" when none does). Reads one file at a time; call off the UI thread. */
+    static String sectionOf(Context c,XtreamAccount a,String channelId){
+        String prefix="live-cat-"+Integer.toHexString((a.server+"|"+a.user).hashCode())+"-";
+        File[] files=c.getFilesDir().listFiles();
+        if(files==null||channelId==null)return "";
+        for(File f:files){
+            String n=f.getName();
+            if(!n.startsWith(prefix)||!n.endsWith(".json"))continue;
+            try{
+                JSONArray items=new JSONObject(new String(Files.readAllBytes(f.toPath()),StandardCharsets.UTF_8)).getJSONArray("items");
+                for(int i=0;i<items.length();i++)if(channelId.equals(items.optJSONObject(i).optString("id")))return n.substring(prefix.length(),n.length()-5);
+            }catch(Exception ignored){}
+        }
+        return "";
+    }
+
     private static boolean hasFiles(Context c,XtreamAccount a){
         String key=Integer.toHexString((a.server+"|"+a.user).hashCode());
         File[] files=c.getFilesDir().listFiles();

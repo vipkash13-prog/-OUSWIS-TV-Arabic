@@ -142,7 +142,7 @@ final class RedesignHomeView extends View {
     }
     private void clampColumns(){
         col[2]=Math.min(col[2],Math.min(today.size(),4));          // cards 0..n-1, "view all" = n
-        col[3]=Math.min(col[3],Math.min(apps.size(),7));
+        col[3]=Math.min(col[3],apps.size());          // apps 0..n-1, "+" = n; the row scrolls, so no cap
     }
 
     // MARK: drawing
@@ -376,10 +376,17 @@ final class RedesignHomeView extends View {
     private void drawApps(Canvas c){
         Design.right(c,"تطبيقاتي",1842,646,section);
         a11y.add(1600,620,1842,656,"تطبيقاتي",false,false);
-        int n=Math.min(7,apps.size());
-        for(int i=0;i<n;i++){
+        int n=apps.size();
+        // the row scrolls sideways: keep the focused tile inside the window of APP_SLOTS tiles
+        if(col[3]<appFirst)appFirst=col[3];
+        if(col[3]>=appFirst+APP_SLOTS)appFirst=col[3]-APP_SLOTS+1;
+        appFirst=Math.max(0,Math.min(appFirst,Math.max(0,n+1-APP_SLOTS)));
+        Paint more=Design.text(Design.GOLD,44,Design.bold());
+        if(appFirst>0)Design.center(c,"›",1888,732,more);
+        if(appFirst+APP_SLOTS<n+1)Design.center(c,"‹",32,732,more);
+        for(int i=appFirst;i<n&&i<appFirst+APP_SLOTS;i++){
             HomeApps.Item it=apps.get(i);
-            float right=1848-i*198;
+            float right=1848-(i-appFirst)*198;
             r.set(right-178,662,right,770);RectF box=ring(r,focus(3,i));
             if(it.logo!=null){
                 Design.card(c,box,22,1,p,0xFF121528);
@@ -396,7 +403,8 @@ final class RedesignHomeView extends View {
             Design.center(c,Design.fit(it.label,Design.text(Design.MUTED,18,Design.regular()),170),right-89,796,Design.text(focus(3,i)?Design.TEXT:Design.MUTED,18,Design.regular()));
         }
         // the dashed "+ add" tile closes the row
-        float right=1848-n*198;
+        if(n<appFirst+APP_SLOTS){
+        float right=1848-(n-appFirst)*198;
         r.set(right-178,662,right,770);RectF box=ring(r,focus(3,n));
         p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(2);p.setColor(0x4DFFFFFF);
         p.setPathEffect(new android.graphics.DashPathEffect(new float[]{10,8},0));
@@ -405,6 +413,7 @@ final class RedesignHomeView extends View {
         a11y.add(box,"إضافة تطبيق",focus(3,n),true);
         if(focus(3,n))Design.focusRing(c,box,22,1,p);
         Design.center(c,"إضافة",right-89,796,Design.text(Design.MUTED,18,Design.regular()));
+        }
     }
 
     private static final String[] SHORTCUT_LABELS={"البث المباشر","المباريات","كل التطبيقات","الأخيرة","التحديثات","الإعدادات"};
@@ -425,12 +434,14 @@ final class RedesignHomeView extends View {
 
     // MARK: keys
 
+    private static final int APP_SLOTS=8;
+    private int appFirst;   // index of the first tile showing in the apps row
     private int rowSize(int rw){
         switch(rw){
             case 0:return 2;
             case 1:return 2;
             case 2:return Math.min(today.size(),4)+1;
-            case 3:return Math.min(7,apps.size())+1;
+            case 3:return apps.size()+1;
             default:return 6;
         }
     }
@@ -477,7 +488,7 @@ final class RedesignHomeView extends View {
                 else start(new Intent(ctx,MatchesScreenActivity.class));
                 break;}
             case 3:{
-                int n=Math.min(7,apps.size());
+                int n=apps.size();
                 if(cl<n&&ctx instanceof android.app.Activity)HomeApps.open((android.app.Activity)ctx,apps.get(cl),this,0,0,0,0);
                 else addApp();
                 break;}
@@ -499,11 +510,11 @@ final class RedesignHomeView extends View {
             final List<String> have=HomeApps.shelfPackages(ctx);
             final List<String[]> free=new ArrayList<>();
             try{for(String[] a:HomeApps.shelfCandidates(ctx))if(!have.contains(a[0]))free.add(a);}catch(Throwable ignored){}
-            final int room=Math.min(7,HomeApps.maxShelf(ctx))-apps.size();
+            final int room=HomeApps.maxShelf(ctx)-apps.size();
             main.post(()->{
                 if(!resumed)return;
                 if(room<=0){
-                    new AlertDialog.Builder(ctx).setTitle("صف التطبيقات ممتلئ").setMessage("يتّسع الصف لـ "+Math.min(7,HomeApps.maxShelf(ctx))+" تطبيقات. أزل تطبيقًا من الإعدادات ثم أضف غيره.").setPositiveButton("حسناً",null).show();
+                    new AlertDialog.Builder(ctx).setTitle("صف التطبيقات ممتلئ").setMessage("هذا التلفاز قليل الذاكرة ويتّسع الصف فيه لـ "+HomeApps.maxShelf(ctx)+" تطبيقات. أزل تطبيقًا من الإعدادات ثم أضف غيره.").setPositiveButton("حسناً",null).show();
                     return;
                 }
                 if(free.isEmpty()){
