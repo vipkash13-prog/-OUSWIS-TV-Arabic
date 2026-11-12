@@ -100,6 +100,72 @@ def crashed():
 def no_crash(where):
     bad, log = crashed(); assert not bad, where + ' crashed:\n' + log[-2500:]
 
+def gfx():
+    out = adb('shell', 'dumpsys', 'gfxinfo', PKG, check=False)
+    pick = lambda pat: (re.search(pat, out) or [None, '?'])[1]
+    return {'frames': pick(r'Total frames rendered: (\d+)'), 'janky': pick(r'Janky frames: (\d+ \([\d.]+%\))'), 'p50': pick(r'50th percentile: (\d+ms)'),
+            'p90': pick(r'90th percentile: (\d+ms)'), 'p99': pick(r'99th percentile: (\d+ms)'), 'slow_ui': pick(r'Number Slow UI thread: (\d+)'),
+            'slow_draw': pick(r'Number Slow issue draw commands: (\d+)'), 'raw': out}
+
+def measure(tag):
+    """Performance of the home screen: cold open time, time until the first match card shows, then 40 s of remote use under gfxinfo."""
+    totals = []
+    for _ in range(3):
+        adb('shell', 'am', 'force-stop', PKG); time.sleep(2)
+        t0 = time.time()
+        out = adb('shell', 'am', 'start', '-W', '-n', PKG + '/.HomeActivity')
+        totals.append(int((re.search(r'TotalTime: (\d+)', out) or [0, 0])[1]))
+    first = None; ghana = None
+    while time.time() - t0 < 90 and not ghana:
+        ls = labels()
+        if first is None and any(' ضد ' in l for l in ls): first = round(time.time() - t0, 1)
+        if any('غانا ضد الصومال' in l and 'beIN Sports 2' in l for l in ls): ghana = round(time.time() - t0, 1)
+    time.sleep(15)
+    adb('shell', 'dumpsys', 'gfxinfo', PKG, 'reset', check=False)
+    cycle = ['DOWN', 'DOWN', 'LEFT', 'RIGHT', 'LEFT', 'UP', 'RIGHT', 'UP']
+    t1 = time.time(); i = 0
+    while time.time() - t1 < 40: keys(cycle[i % len(cycle)], pause=1.0); i += 1
+    g = gfx(); (OUT / ('perf-%s-gfxinfo.txt' % tag)).write_text(g.pop('raw'))
+    line = '%s | cold open ms (3 runs): %s | first match card after %ss | channel on the Ghana card after %ss | remote use 40 s: frames %s, janky %s, p50 %s p90 %s p99 %s, slow UI %s, slow draw %s' % (
+        tag, totals, first, ghana, g['frames'], g['janky'], g['p50'], g['p90'], g['p99'], g['slow_ui'], g['slow_draw'])
+    note('PERF ' + line); (OUT / ('perf-%s.txt' % tag)).write_text(line + '\n')
+    adb('shell', 'am', 'force-stop', PKG); time.sleep(2)
+
+def stability(seconds=300):
+    """The home screen left open: nothing may blink, jump, lose its cards or its focus."""
+    adb('shell', 'am', 'force-stop', PKG); time.sleep(2); adb('logcat', '-c')
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.HomeActivity')
+    wait_label('غانا ضد الصومال', 'the home matches', tries=60)
+    for _ in range(40):
+        if any('غانا ضد الصومال' in l and 'beIN Sports 2' in l for l in labels()): break
+        time.sleep(1)
+    cards = lambda: sorted(l for l in labels() if ' ضد ' in l and not l.startswith('تفاصيل'))
+    base = cards(); focus0 = focused_label(); assert len(base) >= 3, base
+    adb('shell', 'dumpsys', 'gfxinfo', PKG, 'reset', check=False)
+    prev = shot('stability-0.png'); worst = 0.0; end = time.time() + seconds; n = 0; problems = []
+    while time.time() < end:
+        time.sleep(10); n += 1
+        now = cards()
+        if now != base: problems.append('cards changed at sample %d: %s vs %s' % (n, now, base))
+        if focused_label() != focus0: problems.append('focus moved at sample %d: %s' % (n, focused_label()))
+        img = shot('stability-last.png')
+        # compare the body of the screen (below the top bar, above the hint line): only the progress bar may move
+        box = (0, 250, 1920, 1000); a = prev.crop(box).convert('L'); b = img.crop(box).convert('L')
+        from PIL import ImageChops
+        diff = ImageChops.difference(a, b).point(lambda v: 255 if v > 40 else 0)
+        frac = sum(1 for v in diff.getdata() if v) / float(diff.width * diff.height)
+        worst = max(worst, frac)
+        if frac > 0.02: problems.append('screen changed %.1f%% at sample %d' % (frac * 100, n)); shot('stability-change-%d.png' % n)
+        prev = img
+    g = gfx(); (OUT / 'stability-gfxinfo.txt').write_text(g.pop('raw'))
+    log = adb('logcat', '-d', '-s', 'FreeMyTV', check=False)
+    stats = re.findall(r'home-stats: (.*)', log)
+    msg = 'STABILITY %d s on the home screen: %d samples, worst screen change %.2f%%, frames drawn %s (janky %s), problems %s, app counters: %s' % (seconds, n, worst * 100, g['frames'], g['janky'], problems or 'none', stats[-1] if stats else 'n/a (older build)')
+    note(msg); (OUT / 'stability.txt').write_text(msg + '\n')
+    assert not problems, msg
+    if stats:
+        assert 'skeletonAfterData=0' in stats[-1] and 'focusResets=0' in stats[-1], 'The app reports a relapse: ' + stats[-1]
+
 subprocess.run([ADB, 'root'], capture_output=True, timeout=60); subprocess.run([ADB, 'wait-for-device'], timeout=60); time.sleep(3)
 with tempfile.TemporaryDirectory() as temp:
     clip = Path(temp) / 'clip.ts'
@@ -197,6 +263,9 @@ with tempfile.TemporaryDirectory() as temp:
     for need in ('البث المباشر', 'المباريات', 'كل التطبيقات', 'الأخيرة', 'التحديثات', 'الإعدادات', 'إضافة تطبيق'):
         assert any(l == need for l in labs), 'Missing control: ' + need
     note('PASS: new home: last-channel card holds the first focus; six shortcuts and the + tile are reachable controls.')
+
+    measure(os.environ.get('PERF_TAG', 'run'))
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.HomeActivity'); wait_label('آخر قناة شاهدتها: SSC 1 HD', 'the home again after the measurement')
 
     # 2. OK on the last-channel card plays it with Media3, full screen
     keys('DPAD_CENTER', pause=1.5); front('PlayerActivity')
@@ -386,4 +455,5 @@ with tempfile.TemporaryDirectory() as temp:
     note('PASS: reset restored the default order and showed the hidden section again.')
     shot('redesign-live-after-reset.png')
     no_crash('Sections')
+    if os.environ.get('STABILITY_SECONDS', '300') != '0': stability(int(os.environ.get('STABILITY_SECONDS', '300')))
     server.shutdown()

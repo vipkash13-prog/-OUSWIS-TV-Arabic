@@ -1,7 +1,7 @@
 name: Redesign preview
 on:
   push:
-    branches: ['feature/redesign-live-matches']
+    branches: ['feature/redesign-live-matches','perf-baseline']
     paths: ['app/**', 'build.sh', 'tools/test-redesign.py', '.github/workflows/redesign-preview.yml']
   workflow_dispatch:
 permissions:
@@ -40,7 +40,7 @@ jobs:
           script: |
             adb install -r FreeMyTV.apk
             adb shell appops set io.ouswis.tv.standalone SYSTEM_ALERT_WINDOW allow || true
-            python3 tools/test-redesign.py redesign-evidence
+            PERF_TAG=before python3 tools/test-redesign.py redesign-evidence
       - name: Publish the preview with its screenshots
         if: always()
         env:
