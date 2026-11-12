@@ -99,10 +99,11 @@ else:
     raise AssertionError('The new Matches screen drew neither match cards nor an empty-day message')
 note('PASS: the new Matches screen opened from Settings and showed ' + (str(len(cards)) + ' match cards' if cards else 'an honest empty day') + '.')
 texts = ' | '.join(label(n) for n in nodes())
-for chip in ('أمس', 'اليوم', 'غداً', 'الكل', 'دوري روشن', 'أبطال آسيا', 'أبطال أوروبا', 'الدوري الإسباني', 'المفضلة'):
+# the league chips now come from the day's matches (dynamic), so only the fixed ones are required here
+for chip in ('أمس', 'اليوم', 'غداً', 'الكل'):
     assert chip in texts, chip
 screenshot('matches-screen.png')
-note('PASS: all day and league filters are present and readable.')
+note('PASS: the day filters and the "all" chip are present and readable (league chips follow the day\'s matches).')
 # remote: UP from the first card reaches the day chips (focus on "اليوم"), RIGHT goes to "أمس", LEFT x2 to "غداً"
 key('UP')
 def focused_text():
