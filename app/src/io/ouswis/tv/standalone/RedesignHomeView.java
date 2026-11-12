@@ -293,8 +293,8 @@ final class RedesignHomeView extends View {
             List<String> others=new ArrayList<>();
             for(int i=0;i<5;i++)if(i!=next.index)others.add(Design.prayer(i)+" "+Design.clock(day.time(i),"h:mm"));
             Paint line=Design.text(Design.MUTED,21,Design.regular());
-            Design.right(c,others.get(0)+" · "+others.get(2),385,328,line);
-            Design.right(c,others.get(1)+" · "+others.get(3),385,362,line);
+            Design.right(c,others.get(0)+" · "+others.get(1),385,328,line);
+            Design.right(c,others.get(2)+" · "+others.get(3),385,362,line);
         }
         if(focus(1,1))Design.focusRing(c,box,30,1,p);
     }

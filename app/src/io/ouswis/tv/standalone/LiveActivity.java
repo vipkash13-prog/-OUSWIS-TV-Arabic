@@ -85,6 +85,8 @@ public final class LiveActivity extends Activity {
         previewLabel.setBackgroundColor(0x99000000);previewLabel.setPadding(24,0,24,0);
         String ext="m3u8".equalsIgnoreCase(c.ext)?"m3u8":"ts";
         String url=a.server+"/live/"+XtreamAccount.enc(a.user)+"/"+XtreamAccount.enc(a.pass)+"/"+XtreamAccount.enc(c.id)+"."+ext;
+        // A VideoView that is GONE has no surface and never prepares: show it (black) at once, the label comes with the picture.
+        preview.setVisibility(View.VISIBLE);
         preview.setOnPreparedListener(mp->{
             if(generation!=previewGeneration)return;
             mp.setVolume(0f,0f);      // sound only after OK
