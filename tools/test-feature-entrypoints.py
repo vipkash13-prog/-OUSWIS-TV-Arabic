@@ -106,7 +106,7 @@ note('PASS: all day and league filters are present and readable.')
 # remote: UP from the first card reaches the day chips (focus on "اليوم"), RIGHT goes to "أمس", LEFT x2 to "غداً"
 key('UP')
 def focused_text():
-    f = [label(n) for n in nodes() if n.get('focused') == 'true']
+    f = [label(n) for n in nodes() if n.get('focused') == 'true' and label(n).strip()]
     return f[0] if f else ''
 for _ in range(3):
     if 'اليوم' in focused_text():

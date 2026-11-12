@@ -55,7 +55,7 @@ def wait_label(part, what, tries=30):
 
 def focused_label():
     for n in tree().iter('node'):
-        if n.get('package') == PKG and n.get('focused') == 'true':
+        if n.get('package') == PKG and n.get('focused') == 'true' and (n.get('text', '') + n.get('content-desc', '')).strip():
             return (n.get('text', '') + ' ' + n.get('content-desc', '')).strip()
     return ''
 
