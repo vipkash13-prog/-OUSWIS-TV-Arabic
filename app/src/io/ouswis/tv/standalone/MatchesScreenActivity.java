@@ -96,7 +96,7 @@ public final class MatchesScreenActivity extends Activity {
                 big=Design.text(Design.TEXT,50,Design.bold()),team=Design.text(Design.TEXT,19,Design.regular()),
                 small=Design.text(Design.MUTED,16,Design.regular()),goldText=Design.text(Design.GOLD,16,Design.regular()),
                 badge=Design.text(0xFFFFFFFF,16,Design.bold()),line=Design.text(Design.MUTED,21,Design.regular());
-        private final RectF r=new RectF(),g=new RectF();
+        private final RectF r=new RectF(),g=new RectF(),bm=new RectF();
         private Bitmap backdrop;
         private float k;
         private int day=1,league=0;              // day: 0 yesterday, 1 today, 2 tomorrow
@@ -141,7 +141,7 @@ public final class MatchesScreenActivity extends Activity {
             return out;
         }
         private String timeOf(long at){
-            SimpleDateFormat f=new SimpleDateFormat("h:mm a",Locale.forLanguageTag("ar-SA-u-nu-latn"));
+            SimpleDateFormat f=new SimpleDateFormat("h:mm a",Design.AR);
             f.setTimeZone(TimeZone.getTimeZone("Asia/Riyadh"));return f.format(new Date(at));
         }
         private LiveData.Channel channelFor(MatchCarouselView.Match m){
@@ -152,10 +152,9 @@ public final class MatchesScreenActivity extends Activity {
         private void crest(Canvas c,String url,String name,float cx,float cy,float radius){
             Bitmap b=ImageCache.get(url,()->invalidate());
             if(b!=null){
-                g.set(cx-radius,cy-radius,cx+radius,cy+radius);
-                p.setStyle(Paint.Style.FILL);p.setColor(0x14FFFFFF);c.drawCircle(cx,cy,radius,p);
+                p.setStyle(Paint.Style.FILL);p.setShader(null);p.setColor(0x14FFFFFF);c.drawCircle(cx,cy,radius,p);
                 float s=Math.min(radius*1.5f/b.getWidth(),radius*1.5f/b.getHeight());
-                float w=b.getWidth()*s,h=b.getHeight()*s;g.set(cx-w/2,cy-h/2,cx+w/2,cy+h/2);c.drawBitmap(b,null,g,p);
+                float w=b.getWidth()*s,h=b.getHeight()*s;bm.set(cx-w/2,cy-h/2,cx+w/2,cy+h/2);p.setColor(0xFFFFFFFF);c.drawBitmap(b,null,bm,p);
             }else Design.initial(c,name,cx,cy,radius,p,badge);
         }
 
@@ -167,7 +166,7 @@ public final class MatchesScreenActivity extends Activity {
             if(sel>=list.size())sel=Math.max(0,list.size()-1);
             // header
             Design.right(c,"⚽ المباريات",1848,76,title);
-            SimpleDateFormat dayFormat=new SimpleDateFormat("EEEE d MMMM",new Locale("ar"));dayFormat.setTimeZone(TimeZone.getTimeZone("Asia/Riyadh"));
+            SimpleDateFormat dayFormat=new SimpleDateFormat("EEEE d MMMM",Design.AR);dayFormat.setTimeZone(TimeZone.getTimeZone("Asia/Riyadh"));
             Design.right(c,dayFormat.format(new Date())+(updatedAt>0?" · آخر تحديث "+timeOf(updatedAt):offline?" · تعذّر التحديث":" · جارٍ التحميل…"),1848,113,sub);
             int liveCount=0;for(MatchCarouselView.Match m:all)if(m.live())liveCount++;
             float chipX=72;

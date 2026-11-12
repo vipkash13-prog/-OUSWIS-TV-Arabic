@@ -99,7 +99,7 @@ final class LiveData {
         if(info!=null){
             status=info.optString("status");
             long exp=info.optLong("exp_date",0);
-            expiry=exp>0?new java.text.SimpleDateFormat("d MMMM yyyy",new java.util.Locale("ar")).format(new java.util.Date(exp*1000)):"";
+            expiry=exp>0?new java.text.SimpleDateFormat("d MMMM yyyy",Design.AR).format(new java.util.Date(exp*1000)):"";
         }
     }
     private void refreshCategories(Runnable changed){

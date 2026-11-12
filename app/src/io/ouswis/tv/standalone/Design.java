@@ -29,7 +29,7 @@ final class Design {
         p.setStyle(Paint.Style.FILL);
         p.setShader(new RadialGradient(width/2f,0,Math.max(width,height)*0.62f,new int[]{GLOW_A,GLOW_B,BG},new float[]{0,0.5f,1},Shader.TileMode.CLAMP));
         p.setAlpha(255);
-        c.drawRect(0,0,width,height*0.6f,p);
+        c.drawRect(0,0,width,height,p);
         p.setShader(null);
     }
 
@@ -72,7 +72,7 @@ final class Design {
     }
     /** Gold gradient, for the logo, the main buttons and the progress bars. */
     static void gold(Canvas c,RectF r,float radius,Paint p){
-        p.setStyle(Paint.Style.FILL);
+        p.setStyle(Paint.Style.FILL);p.setColor(0xFFFFFFFF);   // a shader is multiplied by the paint's alpha
         p.setShader(new LinearGradient(r.left,r.top,r.right,r.bottom,GOLD,GOLD2,Shader.TileMode.CLAMP));
         c.drawRoundRect(r,radius,radius,p);p.setShader(null);
     }
@@ -88,7 +88,7 @@ final class Design {
     }
     /** scale 1.05 about the centre, written into out. */
     static RectF grown(RectF r,RectF out){
-        float dx=r.width()*0.025f,dy=r.height()*0.025f;
+        float dx=r.width()*0.018f,dy=r.height()*0.018f;
         out.set(r.left-dx,r.top-dy,r.right+dx,r.bottom+dy);return out;
     }
     static void liveBadge(Canvas c,float cx,float cy,String label,float size,Paint fillPaint,Paint textPaint){
@@ -110,5 +110,24 @@ final class Design {
         t.setTextSize(radius*0.95f);t.setColor(0xFFFFFFFF);
         center(c,ch,cx,cy+radius*0.33f,t);
     }
-    static String arabicDigits(String s){return s;}
+    static final java.util.Locale AR=java.util.Locale.forLanguageTag("ar-u-nu-latn");
+    private static final String[] PRAYERS={"الفجر","الظهر","العصر","المغرب","العشاء"};
+    static String prayer(int i){return PRAYERS[Math.max(0,Math.min(4,i))];}
+    /** Open-Meteo / WMO weather code in Arabic. */
+    static String weather(int code,boolean day){
+        if(code<0)return "";
+        if(code==0)return day?"صافٍ":"صافية";
+        if(code==1)return "غالباً صافٍ";
+        if(code==2)return "غائم جزئياً";
+        if(code==3)return "غائم";
+        if(code==45||code==48)return "ضباب";
+        if(code>=51&&code<=57)return "رذاذ";
+        if(code>=71&&code<=77||code==85||code==86)return "ثلج";
+        if(code>=95)return "عواصف رعدية";
+        return "مطر";
+    }
+    static String clock(long at,String pattern){
+        java.text.SimpleDateFormat f=new java.text.SimpleDateFormat(pattern,AR);
+        f.setTimeZone(java.util.TimeZone.getTimeZone("Asia/Riyadh"));return f.format(new java.util.Date(at));
+    }
 }

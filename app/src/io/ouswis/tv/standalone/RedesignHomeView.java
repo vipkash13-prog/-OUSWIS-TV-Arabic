@@ -48,7 +48,7 @@ final class RedesignHomeView extends View {
             bold=Design.text(Design.TEXT,27,Design.bold()),goldText=Design.text(Design.GOLD,18,Design.regular()),
             badge=Design.text(0xFFFFFFFF,16,Design.bold()),muted=Design.text(Design.MUTED,19,Design.regular()),
             dark=Design.text(0xFF1A1408,22,Design.bold());
-    private final RectF r=new RectF(),g=new RectF(),arc=new RectF(),clip=new RectF();
+    private final RectF r=new RectF(),g=new RectF(),bm=new RectF(),arc=new RectF();
     private final Path path=new Path();
     private Bitmap backdrop,wallpaper;
     private float k=1;
@@ -160,7 +160,7 @@ final class RedesignHomeView extends View {
     }
     private String clockText(){return fmt("h:mm");}
     private String fmt(String pattern){
-        SimpleDateFormat f=new SimpleDateFormat(pattern,Locale.forLanguageTag("ar-SA-u-nu-latn"));
+        SimpleDateFormat f=new SimpleDateFormat(pattern,Design.AR);
         f.setTimeZone(TimeZone.getTimeZone("Asia/Riyadh"));return f.format(new Date());
     }
     private boolean online(){
@@ -197,7 +197,7 @@ final class RedesignHomeView extends View {
         Design.center(c,time,1050,112,clock);
         Design.right(c,fmt("a"),1050-tw/2-10,112,ampm);
         SaudiDates dates=new SaudiDates();dates.update(System.currentTimeMillis(),new Locale("ar"));
-        SimpleDateFormat g2=new SimpleDateFormat("d MMMM yyyy",new Locale("ar"));g2.setTimeZone(TimeZone.getTimeZone("Asia/Riyadh"));
+        SimpleDateFormat g2=new SimpleDateFormat("d MMMM yyyy",Design.AR);g2.setTimeZone(TimeZone.getTimeZone("Asia/Riyadh"));
         Design.center(c,g2.format(new Date())+" · "+dates.hijri,1015,148,Design.text(Design.MUTED,21,Design.regular()));
         // chips: weather, connection, settings
         HomeData.Weather wx=HomeData.get(getContext()).weather;
@@ -215,13 +215,14 @@ final class RedesignHomeView extends View {
         if(focus(0,1))Design.focusRing(c,box,28,1,p);
     }
     private String shortCondition(HomeData.Weather wx){
-        String s=HomeData.condition(wx.code,wx.isDay);
+        String s=Design.weather(wx.code,wx.isDay);
         return s.length()>8?s.substring(0,8):s;
     }
 
     private void drawHero(Canvas c){
         r.set(611,163,1850,397);RectF box=ring(r,focus(1,0));
         p.setStyle(Paint.Style.FILL);
+        p.setColor(0xFFFFFFFF);
         p.setShader(new LinearGradient(box.left,box.top,box.right,box.bottom,0xFF0F4B33,0xFF11172E,Shader.TileMode.CLAMP));
         c.drawRoundRect(box,30,30,p);p.setShader(null);
         p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(1);p.setColor(Design.STROKE);c.drawRoundRect(box,30,30,p);
@@ -234,7 +235,7 @@ final class RedesignHomeView extends View {
             if(logo!=null){
                 float s=Math.min(180f/logo.getWidth(),90f/logo.getHeight());
                 float lw=logo.getWidth()*s,lh=logo.getHeight()*s;
-                g.set(r.centerX()-lw/2,r.centerY()-lh/2,r.centerX()+lw/2,r.centerY()+lh/2);c.drawBitmap(logo,null,g,p);
+                bm.set(r.centerX()-lw/2,r.centerY()-lh/2,r.centerX()+lw/2,r.centerY()+lh/2);c.drawBitmap(logo,null,bm,p);
             }else Design.initial(c,ch.name,r.centerX(),r.centerY(),36,p,badge);
             Design.liveBadge(c,r.right-52,r.top+26,"مباشر",15,p,badge);
         }
@@ -260,7 +261,7 @@ final class RedesignHomeView extends View {
         if(focus(1,0))Design.focusRing(c,box,30,1,p);
     }
     private String fmt(String pattern,long at){
-        SimpleDateFormat f=new SimpleDateFormat(pattern,Locale.forLanguageTag("ar-SA-u-nu-latn"));
+        SimpleDateFormat f=new SimpleDateFormat(pattern,Design.AR);
         f.setTimeZone(TimeZone.getTimeZone("Asia/Riyadh"));return f.format(new Date(at));
     }
 
@@ -271,7 +272,7 @@ final class RedesignHomeView extends View {
         PrayerSchedule day=pt.today();long now=System.currentTimeMillis();
         PrayerCountdown next=PrayerCountdown.next(day,pt.tomorrow(),now);
         if(next==null||day==null){
-            Design.center(c,pt.status(),box.centerX(),box.centerY(),Design.text(Design.MUTED,26,Design.regular()));
+            Design.center(c,pt.failed?"تعذّر تحميل مواقيت الصلاة":"جارٍ تحميل المواقيت…",box.centerX(),box.centerY(),Design.text(Design.MUTED,26,Design.regular()));
         }else{
             long remaining=Math.max(0,next.at-now);
             long minutes=(remaining+59_999)/60_000;
@@ -286,11 +287,11 @@ final class RedesignHomeView extends View {
             Design.center(c,"متبقي",cx,cy+36,Design.text(Design.MUTED,15,Design.regular()));
             Design.right(c,"الصلاة القادمة",385,226,Design.text(Design.MUTED,21,Design.regular()));
             Paint nameP=Design.text(Design.TEXT,52,Design.bold());
-            String name=PrayerTimes.name(next.index);
+            String name=Design.prayer(next.index);
             Design.right(c,name,385,284,nameP);
-            Design.right(c,PrayerTimes.time(next.schedule,next.index),385-nameP.measureText(name)-14,284,Design.text(Design.GOLD,28,Design.bold()));
+            Design.right(c,Design.clock(next.at,"h:mm a"),385-nameP.measureText(name)-14,284,Design.text(Design.GOLD,28,Design.bold()));
             List<String> others=new ArrayList<>();
-            for(int i=0;i<5;i++)if(i!=next.index)others.add(PrayerTimes.name(i)+" "+PrayerTimes.time(day,i));
+            for(int i=0;i<5;i++)if(i!=next.index)others.add(Design.prayer(i)+" "+Design.clock(day.time(i),"h:mm"));
             Paint line=Design.text(Design.MUTED,21,Design.regular());
             Design.right(c,others.get(0)+" · "+others.get(2),385,328,line);
             Design.right(c,others.get(1)+" · "+others.get(3),385,362,line);
@@ -341,7 +342,7 @@ final class RedesignHomeView extends View {
         if(b!=null){
             p.setStyle(Paint.Style.FILL);p.setShader(null);p.setColor(0x14FFFFFF);c.drawCircle(cx,cy,radius,p);
             float s=Math.min(radius*1.5f/b.getWidth(),radius*1.5f/b.getHeight());
-            float w=b.getWidth()*s,h=b.getHeight()*s;g.set(cx-w/2,cy-h/2,cx+w/2,cy+h/2);c.drawBitmap(b,null,g,p);
+            float w=b.getWidth()*s,h=b.getHeight()*s;bm.set(cx-w/2,cy-h/2,cx+w/2,cy+h/2);p.setColor(0xFFFFFFFF);c.drawBitmap(b,null,bm,p);
         }else Design.initial(c,name,cx,cy,radius,p,badge);
     }
 
@@ -356,11 +357,11 @@ final class RedesignHomeView extends View {
                 Design.card(c,box,22,1,p,0xFF121528);
                 float s=Math.min(box.width()*0.7f/it.logo.getWidth(),box.height()*0.55f/it.logo.getHeight());
                 float lw=it.logo.getWidth()*s,lh=it.logo.getHeight()*s;
-                g.set(box.centerX()-lw/2,box.centerY()-lh/2,box.centerX()+lw/2,box.centerY()+lh/2);
-                RectF keep=new RectF(g);c.drawBitmap(it.logo,null,keep,p);
+                bm.set(box.centerX()-lw/2,box.centerY()-lh/2,box.centerX()+lw/2,box.centerY()+lh/2);
+                p.setColor(0xFFFFFFFF);c.drawBitmap(it.logo,null,bm,p);
             }else if(it.tile!=null){
                 path.reset();path.addRoundRect(box,22,22,Path.Direction.CW);
-                c.save();c.clipPath(path);c.drawBitmap(it.tile,null,box,p);c.restore();
+                p.setColor(0xFFFFFFFF);c.save();c.clipPath(path);c.drawBitmap(it.tile,null,box,p);c.restore();
             }else Design.card(c,box,22,1,p,Design.SURFACE);
             if(focus(3,i))Design.focusRing(c,box,22,1,p);
             Design.center(c,Design.fit(it.label,Design.text(Design.MUTED,18,Design.regular()),170),right-89,796,Design.text(focus(3,i)?Design.TEXT:Design.MUTED,18,Design.regular()));
@@ -467,7 +468,7 @@ final class RedesignHomeView extends View {
     private void weatherDetails(){
         HomeData.Weather wx=HomeData.get(getContext()).weather;
         if(Double.isNaN(wx.temp))return;
-        String text=HomeData.condition(wx.code,wx.isDay)+"\n"
+        String text=Design.weather(wx.code,wx.isDay)+"\n"
                 +"الصغرى "+Math.round(wx.min)+"° · العظمى "+Math.round(wx.max)+"°\n"
                 +(Double.isNaN(wx.humidity)?"":"الرطوبة "+Math.round(wx.humidity)+"%\n")
                 +(Double.isNaN(wx.wind)?"":"الرياح "+Math.round(wx.wind)+" كم/س\n")
@@ -478,7 +479,7 @@ final class RedesignHomeView extends View {
         PrayerSchedule day=PrayerTimes.get(getContext()).today();
         if(day==null)return;
         StringBuilder sb=new StringBuilder();
-        for(int i=0;i<5;i++)sb.append(PrayerTimes.name(i)).append("  ").append(PrayerTimes.time(day,i)).append("\n");
+        for(int i=0;i<5;i++)sb.append(Design.prayer(i)).append("  ").append(Design.clock(day.time(i),"h:mm a")).append("\n");
         new AlertDialog.Builder(getContext()).setTitle("مواقيت الصلاة · جدة · أم القرى").setMessage(sb.toString().trim()).setPositiveButton("حسناً",null).show();
     }
 }

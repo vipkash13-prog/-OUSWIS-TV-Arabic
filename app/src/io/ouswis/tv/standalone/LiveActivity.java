@@ -135,7 +135,7 @@ public final class LiveActivity extends Activity {
     private final class LiveView extends View {
         private final Paint p=new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint title,sub,muted,name,small,num,chip,badgeText;
-        private final RectF r=new RectF(),g=new RectF(),preRect=new RectF();
+        private final RectF r=new RectF(),g=new RectF(),bm=new RectF();
         private Bitmap backdrop;
         private float k;
         private int cat,sel,top,catTop,headerFocus=-1;   // headerFocus: -1 none, 0 search, 1 refresh
@@ -156,7 +156,16 @@ public final class LiveActivity extends Activity {
             chip=Design.text(Design.TEXT,19,Design.regular());badgeText=Design.text(0xFFFFFFFF,15,Design.bold());
         }
         void previewShown(boolean on){previewOn=on;invalidate();}
-        void dataChanged(){invalidate();ensureLoaded();}
+        private boolean picked;
+        void dataChanged(){
+            if(!picked&&data!=null&&!data.categories.isEmpty()){
+                picked=true;
+                // open on favourites or recents when there are some, otherwise on the first real section
+                cat=!data.cached(LiveData.FAVORITES).isEmpty()?0:!data.cached(LiveData.RECENT).isEmpty()?1:2;
+                sel=0;top=0;
+            }
+            invalidate();ensureLoaded();
+        }
 
         private List<LiveData.Category> sections(){
             List<LiveData.Category> out=new ArrayList<>();
@@ -203,11 +212,11 @@ public final class LiveActivity extends Activity {
             Canvas c=new Canvas(backdrop);c.scale(0.5f,0.5f);Design.background(c,w,h,new Paint(Paint.ANTI_ALIAS_FLAG),k);
         }
         private String clock(){
-            java.text.SimpleDateFormat f=new java.text.SimpleDateFormat("h:mm a",java.util.Locale.forLanguageTag("ar-SA-u-nu-latn"));
+            java.text.SimpleDateFormat f=new java.text.SimpleDateFormat("h:mm a",Design.AR);
             f.setTimeZone(java.util.TimeZone.getTimeZone("Asia/Riyadh"));return f.format(new java.util.Date());
         }
         private String hm(long at){
-            java.text.SimpleDateFormat f=new java.text.SimpleDateFormat("h:mm a",java.util.Locale.forLanguageTag("ar-SA-u-nu-latn"));
+            java.text.SimpleDateFormat f=new java.text.SimpleDateFormat("h:mm a",Design.AR);
             f.setTimeZone(java.util.TimeZone.getTimeZone("Asia/Riyadh"));return f.format(new java.util.Date(at));
         }
 
@@ -222,7 +231,7 @@ public final class LiveActivity extends Activity {
             title.setTextSize(40);Design.right(c,"▣ البث المباشر",1848,76,title);
             String total=data.failed?"تعذّر تحميل الأقسام":"Xtream"+(data.expiry.isEmpty()?"":" · ينتهي "+data.expiry);
             Design.right(c,total,1848,113,sub);
-            String[] chips={"⌕ بحث","↻ تحديث القائمة",clock()};
+            String[] chips={"بحث","↻ تحديث القائمة",clock()};
             float[][] cr={{392,490},{202,380},{72,190}};
             for(int i=0;i<3;i++){
                 r.set(cr[i][0],64,cr[i][1],112);
@@ -268,7 +277,7 @@ public final class LiveActivity extends Activity {
                 if(logo!=null){
                     float s=Math.min(60f/logo.getWidth(),40f/logo.getHeight());
                     float lw=logo.getWidth()*s,lh=logo.getHeight()*s;
-                    g.set(1403-lw/2,y+40-lh/2,1403+lw/2,y+40+lh/2);c.drawBitmap(logo,null,g,p);
+                    bm.set(1403-lw/2,y+40-lh/2,1403+lw/2,y+40+lh/2);p.setColor(0xFFFFFFFF);c.drawBitmap(logo,null,bm,p);
                 }else{
                     String t=ch.name.length()>6?ch.name.substring(0,6):ch.name;
                     badgeText.setTextSize(15);badgeText.setColor(Design.GOLD);Design.center(c,t.trim(),1403,y+46,badgeText);
@@ -289,6 +298,7 @@ public final class LiveActivity extends Activity {
             r.set(72,163,880,582);
             g.set(r);
             p.setStyle(Paint.Style.FILL);
+            p.setColor(0xFFFFFFFF);
             p.setShader(new LinearGradient(r.left,r.top,r.right,r.bottom,0xFF14231D,0xFF0A1410,Shader.TileMode.CLAMP));
             c.drawRoundRect(r,26,26,p);p.setShader(null);
             if(!previewOn){
@@ -298,7 +308,7 @@ public final class LiveActivity extends Activity {
                     if(logo!=null){
                         float s=Math.min(220f/logo.getWidth(),130f/logo.getHeight());
                         float lw=logo.getWidth()*s,lh=logo.getHeight()*s;
-                        g.set(476-lw/2,330-lh/2,476+lw/2,330+lh/2);c.drawBitmap(logo,null,g,p);
+                        bm.set(476-lw/2,330-lh/2,476+lw/2,330+lh/2);p.setColor(0xFFFFFFFF);c.drawBitmap(logo,null,bm,p);
                     }
                     Design.center(c,ch.name,476,450,name);
                     Design.center(c,"اضغط OK لملء الشاشة",476,490,muted);
