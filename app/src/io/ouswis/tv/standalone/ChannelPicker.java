@@ -30,12 +30,15 @@ final class ChannelPicker {
             new AlertDialog.Builder(a).setTitle(title+" — اختر القسم").setItems(names,(d,which)->{
                 if(which==0){data.shutdown();done.accept(null);return;}
                 final LiveData.Category cat=shown.get(which-1);
+                final boolean[] shownList={false};
                 data.loadChannels(cat.id,()->{
+                    if(shownList[0])return;
                     List<LiveData.Channel> list=data.cached(cat.id);
                     if(list==null||list.isEmpty()){
                         new AlertDialog.Builder(a).setTitle(cat.name).setMessage("لا توجد قنوات في هذا القسم").setPositiveButton("رجوع",(x,y)->sections[0].run()).show();
                         return;
                     }
+                    shownList[0]=true;
                     final List<LiveData.Channel> items=new ArrayList<>(list.subList(0,Math.min(list.size(),400)));
                     String[] labels=new String[items.size()];
                     for(int i=0;i<labels.length;i++)labels[i]=(items.get(i).num.isEmpty()?"":items.get(i).num+" · ")+items.get(i).name;
@@ -44,6 +47,7 @@ final class ChannelPicker {
                 });
             }).setNegativeButton("إلغاء",(d,w)->data.shutdown()).setOnCancelListener(d->data.shutdown()).show();
         };
-        data.loadCategories(()->{if(!a.isFinishing())sections[0].run();});
+        final boolean[] listed={false};   // the loader calls back for the cache and again for the network: show the list once
+        data.loadCategories(()->{if(!a.isFinishing()&&!listed[0]){listed[0]=true;sections[0].run();}});
     }
 }
