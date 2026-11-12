@@ -50,7 +50,8 @@ def wait_label(part, what, tries=30):
         if found: return found
         time.sleep(1)
     shot('redesign-failure.png')
-    (OUT / 'redesign-logcat.txt').write_text(adb('logcat', '-d', '-t', '800', check=False))
+    full = adb('logcat', '-d', '-t', '30000', check=False).splitlines()
+    (OUT / 'redesign-logcat.txt').write_text('\n'.join(l for l in full if any(k in l for k in ('ouswis', 'FATAL', 'AndroidRuntime', 'ActivityTaskManager', 'WindowManager: Changing focus')) and 'uiautomator' not in l)[-60000:])
     raise AssertionError('Never saw: ' + what + ' | labels: ' + str(labels()[:25]) + ' | front: ' + adb('shell', 'dumpsys', 'activity', 'activities', check=False).split('topResumedActivity')[-1][:200])
 
 def tap(part, exact=False):
