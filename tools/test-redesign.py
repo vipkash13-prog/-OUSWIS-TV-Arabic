@@ -335,7 +335,8 @@ with tempfile.TemporaryDirectory() as temp:
         cards = [l for n, l in enumerate(cards) if l not in cards[:n]]
         at = [n for n, l in enumerate(cards) if part in l]
         assert at, 'Card not listed: ' + part + ' | ' + str(cards)
-        keys('DPAD_DOWN', pause=1)
+        for _ in range(6): keys('DPAD_UP', pause=0.5)   # the screen may keep an earlier focus: go back to the chips first
+        keys('DPAD_DOWN', 'DPAD_RIGHT', pause=1)   # first row, first column
         for _ in range(at[0] // 2): keys('DPAD_DOWN', pause=1)
         if at[0] % 2: keys('DPAD_LEFT', pause=1)
         assert part in focused_label(), 'Wrong card focused: ' + focused_label() + ' | wanted index ' + str(at[0]) + ' of ' + str(cards)
