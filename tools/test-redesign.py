@@ -287,21 +287,21 @@ with tempfile.TemporaryDirectory() as temp:
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.SectionOrderActivity')
     wait_label('FR|TF1 HD', 'the sections list in Settings')
     tap('FR|TF1 HD'); tap('إلى أول القائمة')
-    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.LiveActivity'); wait_label('قسم ', 'the live sections after reordering')
-    firsts = [l for l in labels() if 'قسم ' in l]
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.LiveActivity'); wait_label('قسم FR|TF1 HD', 'the live sections after reordering')
+    firsts = [l for l in labels() if l.strip().startswith('قسم ')]
     assert firsts and 'FR|TF1 HD' in firsts[0] or any('FR|TF1 HD' in l for l in firsts[:2]), 'A saved order must win: ' + str(firsts[:4])
     note('PASS: moving a section to the top in Settings changed the live screen order.')
     keys('BACK', pause=1.5)
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.SectionOrderActivity'); wait_label('أخبار', 'the sections list')
     tap('أخبار'); tap('إخفاء القسم')
-    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.LiveActivity'); wait_label('قسم ', 'the live screen after hiding')
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.LiveActivity'); wait_label('قسم FR|TF1 HD', 'the live screen after hiding')
     assert not any('قسم أخبار' in l for l in labels()), 'A hidden section must leave the live screen'
     note('PASS: a hidden section no longer shows on the live screen.')
     keys('BACK', pause=1.5)
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.SectionOrderActivity'); wait_label('الترتيب الافتراضي', 'the reset row')
     tap('الترتيب الافتراضي')
-    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.LiveActivity'); wait_label('قسم ', 'the live screen after the reset')
-    firsts = [l for l in labels() if 'قسم ' in l]
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.LiveActivity'); wait_label('قسم رياضة', 'the live screen after the reset')
+    firsts = [l for l in labels() if l.strip().startswith('قسم ')]
     assert firsts and 'FR|TF1 HD' not in firsts[0], 'After the reset the foreign section must not lead: ' + str(firsts[:4])
     note('PASS: reset restored the default order and showed the hidden section again.')
     shot('redesign-live-after-reset.png')
