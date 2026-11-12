@@ -294,9 +294,10 @@ with tempfile.TemporaryDirectory() as temp:
         if any(t in l for t in ('الهلال', 'يوفنتوس', 'آرسنال')): continue   # found in the mock guide: confirmed
         assert 'beIN' not in l and 'SSC' not in l and 'AD Sports' not in l and 'beIN SPORTS' not in l, 'No channel may be named without a confirmation: ' + l
         if 'انتهت' not in l: assert 'اختر القناة' in l, 'An unconfirmed match must ask to pick the channel: ' + l
-    labs = labels(); i_all = [i for i, l in enumerate(labs) if l.startswith('الكل')][0]; i_fav = [i for i, l in enumerate(labs) if '★ المفضلة' in l][0]
-    league_chips = labs[i_all + 1:i_fav]
-    assert i_all < i_fav and any('دوري روشن' in l for l in league_chips), 'Filters: الكل, then the day\'s leagues, then المفضلة: ' + str(labs[:30])
+    labs = labels(); i_all = [i for i, l in enumerate(labs) if l.startswith('الكل')][0]
+    favs = [i for i, l in enumerate(labs) if '★ المفضلة' in l]   # the row scrolls: with many leagues the favourites chip is past the edge
+    league_chips = labs[i_all + 1:favs[0] if favs else i_all + 12]
+    assert any('دوري روشن' in l for l in league_chips), 'Filters: الكل, then the day\'s leagues (دوري روشن comes from the guide): ' + str(labs[:30])
     shot('redesign-matches-chips.png')
     note('PASS: matches screen: a match found only in the guide shows with its channel; no unconfirmed match names a channel (it says اختر القناة); the league chips come from the day\'s matches between الكل and المفضلة.')
     note('PASS: matches screen loaded real fixtures (or an honest empty day) and took keys without a crash.')
