@@ -110,6 +110,15 @@ def gfx():
             'p90': pick(r'90th percentile: (\d+ms)'), 'p99': pick(r'99th percentile: (\d+ms)'), 'slow_ui': pick(r'Number Slow UI thread: (\d+)'),
             'slow_draw': pick(r'Number Slow issue draw commands: (\d+)'), 'raw': out}
 
+def perf_draw():
+    lines = re.findall(r'perf-draw: frames=(\d+) sumUs=(\d+) maxUs=(\d+) over16ms=(\d+) over32ms=(\d+)', adb('logcat', '-d', '-s', 'FreeMyTV', check=False))
+    return [int(v) for v in lines[-1]] if lines else None
+
+def draw_delta(a, b):
+    if not a or not b: return 'n/a'
+    f = b[0] - a[0]
+    return 'frames %d, avg draw %.1f ms, slowest %.1f ms, over 16 ms: %d, over 32 ms: %d' % (f, (b[1] - a[1]) / 1000.0 / max(1, f), b[2] / 1000.0, b[3] - a[3], b[4] - a[4])
+
 def measure(tag):
     """Performance of the home screen: cold open time, time until the first match card shows, then 40 s of remote use under gfxinfo."""
     totals = []
@@ -124,13 +133,15 @@ def measure(tag):
         if first is None and any(' ضد ' in l for l in ls): first = round(time.time() - t0, 1)
         if any('غانا ضد الصومال' in l and 'beIN Sports 2' in l for l in ls): ghana = round(time.time() - t0, 1)
     time.sleep(15)
+    p0 = perf_draw()
     [adb('shell', 'dumpsys', 'gfxinfo', n, 'reset', check=False) for n in (PKG + ':home', PKG)]
     cycle = ['DOWN', 'DOWN', 'LEFT', 'RIGHT', 'LEFT', 'UP', 'RIGHT', 'UP']
     t1 = time.time(); i = 0
     while time.time() - t1 < 40: keys(cycle[i % len(cycle)], pause=1.0); i += 1
+    time.sleep(6); p1 = perf_draw()
     g = gfx(); (OUT / ('perf-%s-gfxinfo.txt' % tag)).write_text(g.pop('raw'))
-    line = '%s | cold open ms (3 runs): %s | first match card after %ss | channel on the Ghana card after %ss | remote use 40 s: frames %s, janky %s, p50 %s p90 %s p99 %s, slow UI %s, slow draw %s' % (
-        tag, totals, first, ghana, g['frames'], g['janky'], g['p50'], g['p90'], g['p99'], g['slow_ui'], g['slow_draw'])
+    line = '%s | cold open ms (3 runs): %s | first match card after %ss | channel on the Ghana card after %ss | remote use 40 s (UI-thread draw): %s | gfxinfo frames %s, janky %s, slow UI %s' % (
+        tag, totals, first, ghana, draw_delta(p0, p1), g['frames'], g['janky'], g['slow_ui'])
     note('PERF ' + line); (OUT / ('perf-%s.txt' % tag)).write_text(line + '\n')
     adb('shell', 'am', 'force-stop', PKG); time.sleep(2)
 
@@ -144,7 +155,7 @@ def stability(seconds=300):
         time.sleep(1)
     cards = lambda: sorted(l for l in labels() if ' ضد ' in l and not l.startswith('تفاصيل'))
     base = cards(); focus0 = focused_label(); assert len(base) >= 3, base
-    [adb('shell', 'dumpsys', 'gfxinfo', n, 'reset', check=False) for n in (PKG + ':home', PKG)]
+    q0 = perf_draw()
     prev = shot('stability-0.png'); worst = 0.0; end = time.time() + seconds; n = 0; problems = []
     while time.time() < end:
         time.sleep(10); n += 1
@@ -160,10 +171,11 @@ def stability(seconds=300):
         worst = max(worst, frac)
         if frac > 0.02: problems.append('screen changed %.1f%% at sample %d' % (frac * 100, n)); shot('stability-change-%d.png' % n)
         prev = img
+    time.sleep(6); q1 = perf_draw()
     g = gfx(); (OUT / 'stability-gfxinfo.txt').write_text(g.pop('raw'))
     log = adb('logcat', '-d', '-s', 'FreeMyTV', check=False)
     stats = re.findall(r'home-stats: (.*)', log)
-    msg = 'STABILITY %d s on the home screen: %d samples, worst screen change %.2f%%, frames drawn %s (janky %s), problems %s, app counters: %s' % (seconds, n, worst * 100, g['frames'], g['janky'], problems or 'none', stats[-1] if stats else 'n/a (older build)')
+    msg = 'STABILITY %d s on the home screen: %d samples, worst screen change %.2f%%, UI-thread draw: %s, problems %s, app counters: %s' % (seconds, n, worst * 100, draw_delta(q0, q1), problems or 'none', stats[-1] if stats else 'n/a (older build)')
     note(msg); (OUT / 'stability.txt').write_text(msg + '\n')
     assert not problems, msg
     if stats:
