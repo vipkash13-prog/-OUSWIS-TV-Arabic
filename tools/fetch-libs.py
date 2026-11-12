@@ -24,6 +24,8 @@ LIBS = [
     (GOOGLE, "androidx.media3", "media3-exoplayer", MEDIA3, "aar"),
     (GOOGLE, "androidx.media3", "media3-exoplayer-hls", MEDIA3, "aar"),
     (GOOGLE, "androidx.annotation", "annotation-jvm", "1.8.0", "jar"),
+    (GOOGLE, "androidx.core", "core", "1.8.0", "aar"),
+    (GOOGLE, "androidx.exifinterface", "exifinterface", "1.3.6", "aar"),
     (GOOGLE, "androidx.collection", "collection", "1.1.0", "jar"),   # Java (CircularIntArray…); 1.4+ is Kotlin and would need its stdlib
     (CENTRAL, "com.google.guava", "guava", "33.0.0-android", "jar"),
     (CENTRAL, "com.google.guava", "failureaccess", "1.0.2", "jar"),
@@ -35,7 +37,7 @@ def get(url):
         return r.read()
 
 # Annotation-only artifacts that Guava and AndroidX list but that no code runs: not needed in the APK.
-IGNORE = {"checker-qual", "error_prone_annotations", "j2objc-annotations", "jsr305", "listenablefuture", "animal-sniffer-annotations", "kotlin-stdlib-common"}
+IGNORE = {"checker-qual", "error_prone_annotations", "j2objc-annotations", "jsr305", "listenablefuture", "animal-sniffer-annotations", "kotlin-stdlib-common", "kotlin-stdlib", "annotation-experimental"}
 
 def audit():
     """Read each library's POM and say which declared compile/runtime dependencies this list does not carry, so a missing
