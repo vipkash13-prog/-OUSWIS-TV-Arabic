@@ -93,8 +93,8 @@ public class SettingsActivity extends Activity {
         matchesButton.setTextColor(0xFFFFFFFF);
         channelsButton.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, 24 * scale);
         matchesButton.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, 24 * scale);
-        channelsButton.setOnClickListener(v -> startActivity(new Intent(this, XtreamActivity.class)));
-        matchesButton.setOnClickListener(v -> startActivity(new Intent(this, MatchesActivity.class)));
+        channelsButton.setOnClickListener(v -> startActivity(new Intent(this, LiveActivity.class)));
+        matchesButton.setOnClickListener(v -> startActivity(new Intent(this, MatchesScreenActivity.class)));
         channelsButton.setNextFocusDownId(matchesButton.getId());
         matchesButton.setNextFocusUpId(channelsButton.getId());
         matchesButton.setNextFocusDownId(updatesButton.getId());

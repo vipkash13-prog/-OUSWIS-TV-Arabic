@@ -637,17 +637,17 @@ final class HomeApps {
                 }
                 break;
             case XTREAM_LIVE:
-                intent = new Intent(a, XtreamActivity.class);
+                intent = new Intent(a, LiveActivity.class);
                 break;
             case UPDATES:
                 intent=new Intent(a,UpdatesActivity.class);
                 break;
             case MATCHES:
-                intent = new Intent(a, MatchesActivity.class);
+                intent = new Intent(a, MatchesScreenActivity.class);
                 break;
             case LIVE_TV:
-                intent = "ouswis_matches".equals(it.key) ? new Intent(a, MatchesActivity.class) :
-                        new Intent(a, XtreamActivity.class);
+                intent = "ouswis_matches".equals(it.key) ? new Intent(a, MatchesScreenActivity.class) :
+                        new Intent(a, LiveActivity.class);
                 break;
             case INPUT:
                 if (HomeMode.AMAZON && fireInput(a, it)) return true;

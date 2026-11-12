@@ -30,6 +30,8 @@ import java.util.ArrayList;
 
 /** Remote-friendly, live-only Xtream Codes player. Credentials never enter the source repository. */
 public final class XtreamActivity extends Activity {
+    /** Set by the Live TV browser (LiveActivity): play this stream at once, and Back returns to the browser. */
+    static final String EXTRA_STREAM_ID="io.ouswis.tv.standalone.STREAM_ID";
     private final Handler main = new Handler(Looper.getMainLooper());
     private final ArrayList<XtreamCatalog.Entry> channels = new ArrayList<>();
     private volatile int catalogGeneration;
@@ -173,11 +175,18 @@ public final class XtreamActivity extends Activity {
     }
     /** Entering Live TV plays the last watched channel (or the first) at once; Back shows the list. */
     private void autoPlay() {
-        if(autoStarted||channels.isEmpty()||current>=0||!getPreferences(0).getBoolean("autoplay",true))return;
-        autoStarted=true;
-        String last=getPreferences(0).getString("lastChannel","");
-        int index=0;
+        String requested=getIntent().getStringExtra(EXTRA_STREAM_ID);
+        if(autoStarted||channels.isEmpty()||current>=0||(requested==null&&!getPreferences(0).getBoolean("autoplay",true)))return;
+        String last=requested!=null?requested:getPreferences(0).getString("lastChannel","");
+        int index=-1;
         for(int i=0;i<channels.size();i++)if(channels.get(i).id.equals(last)){index=i;break;}
+        if(index<0){
+            // The browser asked for a channel the list doesn't hold yet: wait for the rest of the catalogue.
+            if(requested!=null&&catalogLoading)return;
+            if(requested!=null)return;
+            index=0;
+        }
+        autoStarted=true;
         play(index);
     }
     private void load(){load(false);}
@@ -369,7 +378,7 @@ public final class XtreamActivity extends Activity {
         final int generation=playbackGeneration;
         main.removeCallbacks(hideLabel);
         current=index; XtreamCatalog.Entry c=channels.get(index);
-        getPreferences(0).edit().putString("lastChannel",c.id).apply();
+        getPreferences(0).edit().putString("lastChannel",c.id).putString("lastChannelName",c.name).apply();
         player=new FrameLayout(this);
         player.setBackgroundColor(Color.BLACK);
         setContentView(player);
@@ -498,7 +507,10 @@ public final class XtreamActivity extends Activity {
         }
         return super.dispatchKeyEvent(event);
     }
-    @Override public void onBackPressed(){if(current>=0)showChannels();else super.onBackPressed();}
+    @Override public void onBackPressed(){
+        if(current>=0&&getIntent().hasExtra(EXTRA_STREAM_ID)){stopPlayer();finish();return;}
+        if(current>=0)showChannels();else super.onBackPressed();
+    }
     @Override protected void onResume(){super.onResume();foreground=true;}
     @Override protected void onStop(){
         foreground=false;
