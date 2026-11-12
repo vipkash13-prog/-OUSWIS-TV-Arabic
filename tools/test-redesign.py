@@ -28,6 +28,7 @@ def crashed():
     log = adb('logcat', '-d', '-b', 'crash', check=False)
     return 'FATAL EXCEPTION' in log and PKG in log, log
 
+subprocess.run([ADB, 'root'], capture_output=True, timeout=60); subprocess.run([ADB, 'wait-for-device'], timeout=60); time.sleep(3)
 with tempfile.TemporaryDirectory() as temp:
     clip = Path(temp) / 'clip.ts'
     subprocess.run(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', 'testsrc=s=640x360:r=10', '-t', '60',
