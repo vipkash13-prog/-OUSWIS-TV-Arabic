@@ -234,7 +234,8 @@ with tempfile.TemporaryDirectory() as temp:
     got = wait_label('آخر قناة شاهدتها', 'the last-channel card after coming back')
     assert any('beIN Sports 2' in l for l in got), 'Home must read the last channel again on return: ' + str(got)
     recent = adb('shell', 'cat', folder + '/ouswis-live.xml')
-    assert recent.index('111') < recent.index('110'), 'Recent must list B before A: ' + recent[:400]
+    assert '111' in recent and '110' in recent, 'Both channels watched for over 10 s must be in Recent: ' + recent[:900]
+    assert recent.index('111') < recent.index('110'), 'Recent must list B before A: ' + recent[:900]
     note('PASS: watched A (beIN 1) then B (beIN 2), 14 s each: coming back, the home card shows B and Recent lists B before A.')
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.LiveActivity'); wait_label('قسم', 'the live screen')
     keys('DPAD_DOWN', pause=14)    # the preview plays another channel for 14 s
