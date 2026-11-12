@@ -151,8 +151,7 @@ public final class MatchesScreenActivity extends Activity {
         }
         private LiveData.Channel channelFor(MatchCarouselView.Match m){
             if(account==null)return null;
-            Set<String> fav=new HashSet<>();
-            return MatchChannels.find(getContext(),account,m.competition,fav);
+            return MatchChannels.forMatch(getContext(),account,m);
         }
         private void crest(Canvas c,String url,String name,float cx,float cy,float radius){
             Bitmap b=ImageCache.get(url,()->invalidate());

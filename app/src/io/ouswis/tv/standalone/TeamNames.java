@@ -97,6 +97,13 @@ final class TeamNames {
             "Trabzonspor|طرابزون سبور","Olympiacos|أولمبياكوس","Panathinaikos|باناثينايكوس","Shakhtar Donetsk|شاختار دونيتسك","Dynamo Kyiv|دينامو كييف",
             "Club Brugge|كلوب بروج","Anderlecht|أندرلخت","Red Bull Salzburg|ريد بول سالزبورغ","Young Boys|يانغ بويز","Copenhagen|كوبنهاغن",
             "Slavia Prague|سلافيا براغ","Sparta Prague|سبارتا براغ","Dinamo Zagreb|دينامو زغرب","Red Star Belgrade|النجم الأحمر","Qarabag|قره باغ");
+        // short forms and women's sides as TV guides write them
+        add("Lyonnes|ليون","OL Lyonnes|ليون","OL Lyon|ليون","Olympique Lyon|ليون","Man City|مانشستر سيتي","Man United|مانشستر يونايتد","Man Utd|مانشستر يونايتد",
+            "Spurs|توتنهام","Bayern|بايرن ميونخ","Leverkusen|ليفركوزن","Dortmund|دورتموند","Leipzig|لايبزيغ","Frankfurt|آينتراخت فرانكفورت",
+            "Stuttgart|شتوتغارت","Newcastle|نيوكاسل","West Ham|وست هام","Atletico|أتلتيكو مدريد","Athletic|أتلتيك بلباو","Sporting|سبورتينغ لشبونة",
+            "Paris SG|باريس سان جيرمان","Paris Saint Germain|باريس سان جيرمان","Olympique de Marseille|مارسيليا","Inter Milano|إنتر ميلان",
+            "Internazionale Milano|إنتر ميلان","Slavia Praha|سلافيا براغ","Sparta Praha|سبارتا براغ","Sturm Graz|شتورم غراتس","Bordeaux|بوردو",
+            "Montpellier|مونبلييه","Saint-Etienne|سانت إتيان","Barca|برشلونة","Bayern Munchen|بايرن ميونخ");
         // South America and the US
         add("Flamengo|فلامنغو","Palmeiras|بالميراس","Corinthians|كورنثيانز","Sao Paulo|ساو باولو","Santos|سانتوس","Fluminense|فلومينينسي",
             "Boca Juniors|بوكا جونيورز","River Plate|ريفر بليت","Inter Miami|إنتر ميامي","LA Galaxy|لوس أنجلوس غالاكسي","Los Angeles FC|لوس أنجلوس إف سي",

@@ -40,8 +40,8 @@ final class LiveData {
         Category(String id,String name){this.id=id;this.name=name;}
     }
     static final class Program {
-        final String title;final long start,end;
-        Program(String title,long start,long end){this.title=title;this.start=start;this.end=end;}
+        final String title,shown;final long start,end;   // shown: the Arabic text of a match title, else the title itself
+        Program(String title,long start,long end){this.title=title;this.shown=Titles.arabic(title);this.start=start;this.end=end;}
     }
     static final String FAVORITES="*fav",RECENT="*recent";
     private static final long DAY=24L*3600_000,EPG_TTL=30L*60_000;
@@ -239,21 +239,25 @@ final class LiveData {
         }
         io.execute(()->{
             List<Program> out=new ArrayList<>();
-            try{
-                JSONObject o=new JSONObject(XtreamAccount.get(account.api("get_short_epg","stream_id="+XtreamAccount.enc(id)+"&limit=4")));
-                JSONArray rows=o.optJSONArray("epg_listings");
-                for(int i=0;rows!=null&&i<rows.length();i++){
-                    JSONObject r=rows.optJSONObject(i);if(r==null)continue;
-                    long s=r.optLong("start_timestamp",0)*1000,e=r.optLong("stop_timestamp",0)*1000;
-                    if(s==0||e==0)continue;
-                    String t=r.optString("title");
-                    try{t=new String(Base64.decode(t,Base64.DEFAULT),StandardCharsets.UTF_8);}catch(Exception ignored){}
-                    out.add(new Program(t.trim(),s,e));
-                }
-            }catch(Exception e){AppLog.w("live guide failed");}
+            try{out=fetchGuide(account,id);}catch(Exception e){AppLog.w("live guide failed");}
             synchronized(epg){epg.put(id,out);epgAt.put(id,System.currentTimeMillis());epgBusy.remove(id);}
             main.post(changed);
         });
+    }
+    /** The next four programmes of a channel as the provider lists them (titles are Base64 there). Blocks: call off the UI thread. */
+    static List<Program> fetchGuide(XtreamAccount account,String id) throws Exception {
+        List<Program> out=new ArrayList<>();
+        JSONObject o=new JSONObject(XtreamAccount.get(account.api("get_short_epg","stream_id="+XtreamAccount.enc(id)+"&limit=4")));
+        JSONArray rows=o.optJSONArray("epg_listings");
+        for(int i=0;rows!=null&&i<rows.length();i++){
+            JSONObject r=rows.optJSONObject(i);if(r==null)continue;
+            long s=r.optLong("start_timestamp",0)*1000,e=r.optLong("stop_timestamp",0)*1000;
+            if(s==0||e==0)continue;
+            String t=r.optString("title");
+            try{t=new String(Base64.decode(t,Base64.DEFAULT),StandardCharsets.UTF_8);}catch(Exception ignored){}
+            out.add(new Program(t.trim(),s,e));
+        }
+        return out;
     }
     static Program current(List<Program> list,long now){
         if(list!=null)for(Program p:list)if(p.start<=now&&now<p.end)return p;

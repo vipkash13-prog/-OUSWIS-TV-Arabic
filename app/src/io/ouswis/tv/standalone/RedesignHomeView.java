@@ -45,7 +45,7 @@ final class RedesignHomeView extends View {
     private final Paint title=Design.text(Design.TEXT,30,Design.bold()),sub=Design.text(Design.MUTED,18,Design.regular()),
             chip=Design.text(Design.TEXT,20,Design.regular()),section=Design.text(Design.MUTED,24,Design.regular()),
             dateLine=Design.text(0xCCF4EFE4,21,Design.regular()),   // 14sp, 80 % opaque, a light shadow for legibility
-            clock=Design.text(Design.TEXT,100,Design.light()),ampm=Design.text(Design.MUTED,36,Design.light()),
+            clock=Design.text(Design.TEXT,100,Design.light()),ampm=Design.text(Design.MUTED,40,Design.light()),
             bold=Design.text(Design.TEXT,27,Design.bold()),goldText=Design.text(Design.GOLD,18,Design.regular()),
             badge=Design.text(0xFFFFFFFF,16,Design.bold()),muted=Design.text(Design.MUTED,19,Design.regular()),
             dark=Design.text(0xFF1A1408,22,Design.bold());
@@ -186,12 +186,18 @@ final class RedesignHomeView extends View {
         drawTop(c);
         boolean hasMatches=!today.isEmpty();
         spread(hasMatches);
+        // #0B0D1A at 55 % from the matches row down, with a short ramp above it, so the skyline never shows behind the cards
+        float layerTop=(hasMatches?400+dy[1]+10:626+dy[2]-20);
+        layer.setShader(new LinearGradient(0,layerTop-40,0,layerTop,0x000B0D1A,0x8C0B0D1A,Shader.TileMode.CLAMP));
+        c.drawRect(0,layerTop-40,1920,layerTop,layer);
+        layer.setShader(null);layer.setColor(0x8C0B0D1A);
+        c.drawRect(0,layerTop,1920,getHeight()/k+1,layer);
         block(c,dy[0]);drawHero(c);drawPrayer(c);unblock(c);
         if(hasMatches){block(c,dy[1]);drawMatches(c);unblock(c);}
         block(c,dy[2]);drawApps(c);unblock(c);
         block(c,dy[3]);drawShortcuts(c);unblock(c);
-        Design.right(c,"◀ ▶ ▲ ▼ للتنقل · OK للفتح",1848,1054,Design.text(0x73F4EFE4,18,Design.regular()));
-        Design.left(c,"الشاشة الرئيسية",72,1054,Design.text(0x73F4EFE4,18,Design.regular()));
+        Design.right(c,"◀ ▶ ▲ ▼ للتنقل · OK للفتح",1848,1034,Design.text(0x73F4EFE4,18,Design.regular()));
+        Design.left(c,"الشاشة الرئيسية",72,1034,Design.text(0x73F4EFE4,18,Design.regular()));
         c.restore();
     }
 
@@ -202,7 +208,7 @@ final class RedesignHomeView extends View {
         final float[] h={229.5f,172f,175f,76f},top={163f,400f,626f,828f};
         float sum=0;int n=0;
         for(int i=0;i<4;i++)if(i!=1||withMatches){sum+=h[i];n++;}
-        float gap=(1018f-118f-sum)/n,y=118f+gap;
+        float gap=(998f-118f-sum)/n,y=118f+gap;
         for(int i=0;i<4;i++){
             if(i==1&&!withMatches){dy[1]=0;continue;}
             dy[i]=y-top[i];y+=h[i]+gap;
@@ -256,6 +262,7 @@ final class RedesignHomeView extends View {
     private final Paint heroFill=new Paint(Paint.ANTI_ALIAS_FLAG),heroStroke=new Paint(Paint.ANTI_ALIAS_FLAG);
     private float heroL,heroT,heroR,heroB;   // the box the gradient was made for
     private final Path heroClip=new Path();
+    private final Paint layer=new Paint();
 
     /** The last-channel card: 153 dp tall, always, and everything inside it is clipped to it, so it can't cover the row below. */
     private void drawHero(Canvas c){
@@ -263,7 +270,7 @@ final class RedesignHomeView extends View {
         // separate paints, so no later change to one can touch what is already recorded for the other
         if(box.left!=heroL||box.top!=heroT||box.right!=heroR||box.bottom!=heroB){
             heroL=box.left;heroT=box.top;heroR=box.right;heroB=box.bottom;
-            heroFill.setShader(new LinearGradient(heroL,heroT,heroR,heroB,0xD9123D5C,0xD9121A3A,Shader.TileMode.CLAMP));   // #123D5C to #121A3A at 85 %
+            heroFill.setShader(new LinearGradient(heroL,heroT,heroR,heroB,0xF2123D5C,0xF2121A3A,Shader.TileMode.CLAMP));   // #123D5C to #121A3A at 95 %: the city behind never shows through
         }
         heroFill.setStyle(Paint.Style.FILL);c.drawRoundRect(box,30,30,heroFill);
         heroStroke.setStyle(Paint.Style.STROKE);heroStroke.setStrokeWidth(1);heroStroke.setColor(Design.STROKE);c.drawRoundRect(box,30,30,heroStroke);
@@ -282,8 +289,10 @@ final class RedesignHomeView extends View {
                 float lw=logo.getWidth()*sc,lh=logo.getHeight()*sc;
                 bm.set(thumb.centerX()-lw/2,thumb.centerY()-lh/2,thumb.centerX()+lw/2,thumb.centerY()+lh/2);p.setColor(0xFFFFFFFF);c.drawBitmap(logo,null,bm,p);
             }else{   // no logo: the channel's short name on the dark tile
-                Paint sn=Design.text(Design.TEXT,34,Design.bold());
-                Design.center(c,Design.fit(ch.name,sn,tw-36),thumb.centerX(),thumb.centerY()+12,sn);
+                String shortName=shortName(ch.name);
+                Paint sn=Design.text(Design.TEXT,56,Design.bold());
+                while(sn.getTextSize()>26&&sn.measureText(shortName)>tw-40)sn.setTextSize(sn.getTextSize()-2);   // smaller, never cut
+                Design.center(c,shortName,thumb.centerX(),thumb.centerY()+sn.getTextSize()*0.35f,sn);
             }
             Design.liveBadge(c,thumb.right-52,thumb.top+26,"مباشر",15,p,badge);
         }
@@ -297,25 +306,46 @@ final class RedesignHomeView extends View {
             long now=System.currentTimeMillis();
             List<LiveData.Program> guide=live==null?null:live.guide(ch.id);
             LiveData.Program cur=LiveData.current(guide,now),nxt=LiveData.following(guide,now);
-            Paint line=Design.text(Design.MUTED,22,Design.regular());
             if(cur!=null){
-                Design.right(c,Design.fit("الآن: "+cur.title,line,x-box.left-40),x,box.top+142,line);
+                programLine(c,"الآن","",cur.shown,x,box.left+40,box.top+142);
                 float f=Math.max(0,Math.min(1,(now-cur.start)/(float)Math.max(1,cur.end-cur.start)));
                 r.set(box.left+40,box.bottom-24,x,box.bottom-20);Design.fill(c,r,2,p,0x1FFFFFFF);
                 r.set(x-(x-box.left-40)*f,box.bottom-24,x,box.bottom-20);Design.fill(c,r,2,p,Design.GOLD);
             }
-            if(nxt!=null)Design.right(c,Design.fit("التالي "+fmt("h:mm a",nxt.start)+": "+nxt.title,line,x-box.left-40),x,box.top+178,line);
+            if(nxt!=null)programLine(c,"التالي",fmt("h:mm a",nxt.start),nxt.shown,x,box.left+40,box.top+178);
         }
         c.restore();
         a11y.add(box,heroLabel(ch),focus(1,0),true);
         if(focus(1,0))Design.focusRing(c,box,30,1,p);
+    }
+    private final Paint programText=Design.text(Design.MUTED,19.5f,Design.regular()),tag=Design.text(Design.GOLD,15,Design.bold());   // 13sp, one line
+    /**
+     * One programme line: a small pill ("الآن" / "التالي") at the right, then the title after it on a single line,
+     * cut with "…" when it is too long. The title sits inside a bidi isolate so English words can't reorder the line.
+     */
+    private void programLine(Canvas c,String label,String time,String title,float right,float leftLimit,float base){
+        float pw=tag.measureText(label)+22;
+        r.set(right-pw,base-19,right,base+6);Design.fill(c,r,13,p,0x2EF2C14E);
+        Design.center(c,label,right-pw/2,base-1,tag);
+        float x=right-pw-12,room=x-leftLimit;
+        String prefix=time.isEmpty()?"":time+"  ";
+        String body=Design.fit(title==null?"":title,programText,Math.max(40,room-programText.measureText(prefix)));
+        Design.right(c,prefix+"\u2068"+body+"\u2069",x,base,programText);
+    }
+    /** "beIN SPORTS 2 HD" → "beIN 2", "FR|TF1 HD" → "TF1": the country prefix, quality words and "SPORTS" go. */
+    static String shortName(String name){
+        String n=name==null?"":name;
+        int bar=n.indexOf('|');if(bar>=0&&bar<6)n=n.substring(bar+1);
+        n=n.replaceAll("(?i)(?<=\\d)(FHD|UHD|HD|SD|4K)\\b","").replaceAll("(?i)\\b(FHD|UHD|HD|SD|4K|HEVC|RAW|VIP|SPORTS?|TV)\\b"," ");
+        n=n.replaceAll("[\\[\\]()]"," ").replaceAll("\\s{2,}"," ").trim();
+        return n.isEmpty()?(name==null?"":name.trim()):n;
     }
     private String heroLabel(LiveData.Channel ch){
         if(ch==null)return "ابدأ المشاهدة · افتح البث المباشر واختر قناة";
         long now=System.currentTimeMillis();
         List<LiveData.Program> guide=live==null?null:live.guide(ch.id);
         LiveData.Program cur=LiveData.current(guide,now);
-        return "آخر قناة شاهدتها: "+ch.name+(cur==null?"":" · الآن: "+cur.title);
+        return "آخر قناة شاهدتها: "+ch.name+(cur==null?"":" · الآن: "+cur.shown);
     }
     private String fmt(String pattern,long at){
         SimpleDateFormat f=new SimpleDateFormat(pattern,Design.AR);
@@ -397,7 +427,7 @@ final class RedesignHomeView extends View {
         }
     }
     private LiveData.Channel channelFor(MatchCarouselView.Match m){
-        return account==null?null:MatchChannels.find(getContext(),account,m.competition,null);
+        return account==null?null:MatchChannels.forMatch(getContext(),account,m);
     }
     private String minute(MatchCarouselView.Match m){
         String d=m.status==null?"":m.status.replaceAll("[^0-9+]","");return d.isEmpty()?"مباشر":d;

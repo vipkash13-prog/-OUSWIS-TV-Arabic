@@ -30,7 +30,7 @@ public final class UpcomingMatches {
     private UpcomingMatches(){}
     public static final String[] LEAGUES={
         "ksa.1", "ksa.kings.cup", "afc.champions", "afc.cup", "afc.asian.cup", "fifa.worldq.afc", "fifa.world",
-        "uefa.champions", "uefa.europa", "uefa.europa.conf", "uefa.nations",
+        "uefa.champions", "uefa.wchampions", "uefa.europa", "uefa.europa.conf", "uefa.nations",
         "eng.1", "eng.fa", "eng.league_cup", "esp.1", "esp.copa_del_rey", "ita.1", "ita.coppa_italia",
         "ger.1", "ger.dfb_pokal", "fra.1", "fra.coupe_de_france", "por.1", "ned.1", "tur.1", "caf.nations"
     };
@@ -38,7 +38,7 @@ public final class UpcomingMatches {
         {"Saudi Pro League","دوري روشن السعودي"},{"Saudi Kings Cup","كأس الملك"},{"King's Cup","كأس الملك"},
         {"AFC Champions League Elite","دوري أبطال آسيا للنخبة"},{"AFC Champions League","دوري أبطال آسيا"},
         {"AFC Champions League Two","دوري أبطال آسيا 2"},{"AFC Asian Cup","كأس آسيا"},
-        {"FIFA World Cup","كأس العالم"},{"UEFA Champions League","دوري أبطال أوروبا"},
+        {"FIFA World Cup","كأس العالم"},{"UEFA Champions League","دوري أبطال أوروبا"},{"UEFA Women's Champions League","دوري أبطال أوروبا للسيدات"},
         {"UEFA Europa League","الدوري الأوروبي"},{"UEFA Conference League","دوري المؤتمر الأوروبي"},
         {"UEFA Europa Conference League","دوري المؤتمر الأوروبي"},{"UEFA Nations League","دوري الأمم الأوروبية"},
         {"English Premier League","الدوري الإنجليزي الممتاز"},{"English FA Cup","كأس الاتحاد الإنجليزي"},
@@ -220,6 +220,7 @@ public final class UpcomingMatches {
                 else include="pre".equals(state)&&kickoff>=now&&kickoff<now+14L*24*60*60*1000;
                 if(!include)continue;
                 MatchCarouselView.Match m=new MatchCarouselView.Match(competition,arabic(home),arabic(away),fmt.format(date),kickoff);
+                m.homeEn=home;m.awayEn=away;
                 m.key=league+":"+e.optString("id");
                 m.state=state;m.leagueLogo=leagueLogo;m.homeLogo=homeLogo;m.awayLogo=awayLogo;
                 if(!"pre".equals(state)){m.homeScore=hs;m.awayScore=as;}

@@ -2,7 +2,7 @@ name: Compile check
 on:
   push:
     branches: ['feature/**']
-    paths: ['app/**', 'build.sh', '.github/workflows/compile-check.yml']
+    paths: ['app/**', 'tools/java-checks/**', 'build.sh', '.github/workflows/compile-check.yml']
   workflow_dispatch:
 jobs:
   compile:
@@ -11,6 +11,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with: {distribution: temurin, java-version: '17'}
+      - name: Titles and team matching (plain JVM)
+        run: |
+          mkdir -p "$RUNNER_TEMP/tc"
+          javac -encoding UTF-8 -d "$RUNNER_TEMP/tc" app/src/io/ouswis/tv/standalone/Titles.java app/src/io/ouswis/tv/standalone/TeamNames.java tools/java-checks/TitlesCheck.java
+          java -Dfile.encoding=UTF-8 -cp "$RUNNER_TEMP/tc" io.ouswis.tv.standalone.TitlesCheck
       - name: Android SDK
         shell: bash
         run: |

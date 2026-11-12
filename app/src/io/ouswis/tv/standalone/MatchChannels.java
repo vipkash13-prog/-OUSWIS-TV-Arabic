@@ -140,12 +140,95 @@ final class MatchChannels {
                     if(ch==null)continue;
                     String canon=canonical(ch.name);
                     if(!canon.startsWith(family))continue;
-                    int score=number(canon)+(favorites.contains(ch.id)?-1000:0);
+                    // "beIN SPORTS 2" before "beIN SPORTS XTRA 1" or "beIN SPORTS NEWS": only plain numbered channels are the match channels
+                    String core=canon.substring(family.length()).replaceFirst("^sports?","");
+                    int score=number(canon)+(core.matches("\\d*")?0:5000)+(favorites.contains(ch.id)?-1000:0);
                     if(score<bestScore){bestScore=score;best=ch;}
                 }
             }catch(Exception ignored){}
         }
         return best;
+    }
+
+    // MARK: the guide decides (SPEC: a title naming both teams on a sports channel beats the competition's default)
+
+    private static final long GUIDE_TTL=12*60_000L;
+    private static final java.util.Map<String,java.util.List<LiveData.Program>> guides=new java.util.concurrent.ConcurrentHashMap<>();
+    private static final java.util.Map<String,LiveData.Channel> guideChannels=new java.util.concurrent.ConcurrentHashMap<>();
+    private static volatile long guideAt;
+    private static volatile boolean scanning;
+    private static final int GUIDE_CAP=90;
+
+    /**
+     * Reads the guide of the sports channels already downloaded (at most {@value #GUIDE_CAP}, four programmes each, a
+     * few at a time) so {@link #forMatch} can look for the teams' names in the current and next titles. Repeats at most
+     * every 12 minutes; never on the UI thread; the listeners are told when it finished.
+     */
+    static void scanGuides(Context c,XtreamAccount a){
+        if(a==null||scanning||System.currentTimeMillis()-guideAt<GUIDE_TTL)return;
+        scanning=true;
+        final Context app=c.getApplicationContext();
+        worker.execute(()->{
+            try{
+                java.util.List<LiveData.Channel> list=sportChannels(app,a);
+                java.util.concurrent.ExecutorService pool=java.util.concurrent.Executors.newFixedThreadPool(4);
+                java.util.List<java.util.concurrent.Future<?>> jobs=new ArrayList<>();
+                for(LiveData.Channel ch:list)jobs.add(pool.submit(()->{
+                    try{guides.put(ch.id,LiveData.fetchGuide(a,ch.id));guideChannels.put(ch.id,ch);}catch(Exception ignored){}
+                }));
+                for(java.util.concurrent.Future<?> j:jobs){try{j.get(40,java.util.concurrent.TimeUnit.SECONDS);}catch(Exception ignored){}}
+                pool.shutdownNow();
+            }catch(Throwable ignored){}
+            guideAt=System.currentTimeMillis();scanning=false;
+            synchronized(memo){memo.clear();}
+            fire();
+        });
+    }
+    /** Channels of the downloaded category files, plain numbered ones of the known families first; the cap keeps the scan short. */
+    private static java.util.List<LiveData.Channel> sportChannels(Context c,XtreamAccount a){
+        java.util.List<LiveData.Channel> out=new ArrayList<>();
+        String key=Integer.toHexString((a.server+"|"+a.user).hashCode());
+        File[] files=c.getFilesDir().listFiles();
+        if(files==null)return out;
+        for(File f:files){
+            if(!f.getName().startsWith("live-cat-"+key+"-"))continue;
+            try{
+                JSONArray items=new JSONObject(new String(Files.readAllBytes(f.toPath()),StandardCharsets.UTF_8)).getJSONArray("items");
+                for(int i=0;i<items.length()&&out.size()<GUIDE_CAP;i++){
+                    LiveData.Channel ch=LiveData.Channel.from(items.optJSONObject(i));
+                    if(ch!=null)out.add(ch);
+                }
+            }catch(Exception ignored){}
+        }
+        return out;
+    }
+
+    /** The sports channel whose current or next programme names both teams, or null. Uses only what the last scan read. */
+    static LiveData.Channel fromGuide(MatchCarouselView.Match m){
+        if(m==null||m.homeEn.isEmpty()||m.awayEn.isEmpty())return null;
+        long now=System.currentTimeMillis();
+        LiveData.Channel best=null;int bestScore=Integer.MAX_VALUE;
+        for(java.util.Map.Entry<String,java.util.List<LiveData.Program>> e:guides.entrySet()){
+            for(LiveData.Program p:e.getValue()){
+                if(p.end<now)continue;
+                long kick=m.kickoffMillis;
+                if(kick>0&&(p.start>kick+3*3600_000L||p.end<kick-3600_000L))continue;   // a rerun on another day isn't this match
+                if(!Titles.mentions(p.title,m.homeEn,m.home)||!Titles.mentions(p.title,m.awayEn,m.away))continue;
+                LiveData.Channel ch=guideChannels.get(e.getKey());
+                if(ch==null)continue;
+                String core=canonical(ch.name);
+                int score=number(core)+(core.matches("[a-z]+\\d*|.*sports?\\d*")?0:2000);
+                if(score<bestScore){bestScore=score;best=ch;}
+            }
+        }
+        return best;
+    }
+    /** The channel for a match: the guide first, then the league's picked channel or default family. */
+    static LiveData.Channel forMatch(Context c,XtreamAccount a,MatchCarouselView.Match m){
+        scanGuides(c,a);
+        LiveData.Channel viaGuide=fromGuide(m);
+        if(viaGuide!=null)return viaGuide;
+        return find(c,a,m.competition,null);
     }
 
     /** The downloaded section that holds this channel ("" when none does). Reads one file at a time; call off the UI thread. */

@@ -317,11 +317,11 @@ public final class LiveActivity extends Activity {
                 }
                 Design.right(c,Design.fit(ch.name,name,400),1351,y+36,name);
                 LiveData.Program nowProg=LiveData.current(data.guide(ch.id),now);
-                a11y.add(917,y,1511,y+80,(ch.num.isEmpty()?String.valueOf(i+1):ch.num)+" · "+ch.name+(nowProg!=null?" · "+nowProg.title:"")+(data.isFavorite(ch.id)?" ★":""),focused,true);
+                a11y.add(917,y,1511,y+80,(ch.num.isEmpty()?String.valueOf(i+1):ch.num)+" · "+ch.name+(nowProg!=null?" · "+nowProg.shown:"")+(data.isFavorite(ch.id)?" ★":""),focused,true);
                 LiveData.Program prog=LiveData.current(data.guide(ch.id),now);
                 muted.setTextSize(16);
                 if(prog!=null){
-                    Design.right(c,Design.fit(prog.title,muted,380),1351,y+58,muted);
+                    Design.right(c,Design.fit(prog.shown,muted,380),1351,y+58,muted);
                     float f=Math.max(0,Math.min(1,(now-prog.start)/(float)Math.max(1,prog.end-prog.start)));
                     r.set(970,y+68,1351,y+72);Design.fill(c,r,2,p,0x1FFFFFFF);
                     r.set(1351-381*f,y+68,1351,y+72);Design.fill(c,r,2,p,Design.GOLD);
@@ -366,8 +366,8 @@ public final class LiveActivity extends Activity {
                     chip.setColor(cur?Design.GOLD:Design.MUTED);chip.setTextSize(21);
                     Design.right(c,hm(pr.start),851,y,chip);
                     name.setColor(cur?Design.TEXT:Design.MUTED);name.setTextSize(21);
-                    Design.right(c,Design.fit(pr.title,name,560),723,y,name);
-                    a11y.add(101,y-28,851,y+8,hm(pr.start)+" "+pr.title,false,false);
+                    Design.right(c,Design.fit(pr.shown,name,560),723,y,name);
+                    a11y.add(101,y-28,851,y+8,hm(pr.start)+" "+pr.shown,false,false);
                     name.setColor(Design.TEXT);name.setTextSize(23);chip.setColor(Design.TEXT);chip.setTextSize(19);
                     if(i<3){r.set(101,y+14,851,y+15);Design.fill(c,r,0,p,0x14FFFFFF);}
                 }
