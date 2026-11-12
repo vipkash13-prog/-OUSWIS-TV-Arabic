@@ -42,7 +42,7 @@ def tree():
     raise RuntimeError('uiautomator never answered')
 
 def labels():
-    return [(n.get('text', '') + ' ' + n.get('content-desc', '')).strip() for n in tree().iter('node') if n.get('package') == PKG]
+    return [(n.get('text', '') or n.get('content-desc', '')).strip() for n in tree().iter('node') if n.get('package') == PKG]
 
 def wait_label(part, what, tries=30):
     for _ in range(tries):
