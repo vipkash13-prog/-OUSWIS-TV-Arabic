@@ -286,8 +286,10 @@ with tempfile.TemporaryDirectory() as temp:
     # 7. sections: order and hiding (Settings)
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.SectionOrderActivity')
     wait_label('FR|TF1 HD', 'the sections list in Settings')
-    tap('FR|TF1 HD'); tap('إلى أول القائمة')
-    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.LiveActivity'); wait_label('قسم FR|TF1 HD', 'the live sections after reordering')
+    tap('FR|TF1 HD'); tap('إلى أول القائمة'); time.sleep(1)
+    note('am start Live -> ' + adb('shell', 'am', 'start', '-W', '-n', PKG + '/.LiveActivity', check=False)[-300:] + ' | front ' + adb('shell', 'dumpsys', 'activity', 'activities', check=False).split('topResumedActivity')[-1][:120])
+    time.sleep(2)
+    wait_label('قسم FR|TF1 HD', 'the live sections after reordering')
     firsts = [l for l in labels() if l.strip().startswith('قسم ')]
     assert firsts and 'FR|TF1 HD' in firsts[0] or any('FR|TF1 HD' in l for l in firsts[:2]), 'A saved order must win: ' + str(firsts[:4])
     note('PASS: moving a section to the top in Settings changed the live screen order.')
