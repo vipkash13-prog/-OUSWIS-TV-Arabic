@@ -286,7 +286,7 @@ with tempfile.TemporaryDirectory() as temp:
         time.sleep(1)
     img = shot('redesign-matches.png'); keys('DPAD_DOWN'); keys('DPAD_LEFT'); shot('redesign-matches-focus.png')
     no_crash('Matches')
-    cards = [l for l in labels() if ' ضد ' in l]
+    cards = [l for l in labels() if ' ضد ' in l and not l.startswith('تفاصيل')]
     # the guide of the sports channels names one match (الهلال × النصر): it is a match on the screen, with its channel
     guide_card = wait_label('الهلال ضد النصر', 'the match found only in the guide')
     assert any(('SSC 1 HD' in l or 'beIN Sports 1 HD' in l or 'AD Sports 1' in l) for l in guide_card), 'The guide match must carry the channel it was found on: ' + str(guide_card)
