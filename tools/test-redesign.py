@@ -107,7 +107,7 @@ with tempfile.TemporaryDirectory() as temp:
                     '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-f', 'mpegts', str(clip)], check=True)
     data = clip.read_bytes()
     CATS = [('10', 'FR|TF1 HD'), ('11', 'رياضة'), ('12', 'أخبار'), ('13', 'أفلام')]
-    STREAMS = {'11': [('101', 'SSC 1 HD', 'ts'), ('102', 'SSC 2 HD', 'ts'), ('103', 'SSC 3 HD', 'ts'), ('110', 'beIN Sports 1 HD', 'ts'),
+    STREAMS = {'11': [('105', 'beIN SPORTS XTRA 1HD', 'ts'), ('101', 'SSC 1 HD', 'ts'), ('102', 'SSC 2 HD', 'ts'), ('103', 'SSC 3 HD', 'ts'), ('110', 'beIN Sports 1 HD', 'ts'),
                       ('111', 'beIN Sports 2', 'ts'), ('112', 'beIN Sports 3', 'm3u8'), ('120', 'AD Sports 1', 'ts')],
                '12': [('201', 'Al Arabiya', 'ts'), ('202', 'Sky News Arabia', 'ts')], '13': [('301', 'Movies One', 'ts')], '10': [('401', 'TF1 HD', 'ts')]}
 
@@ -126,6 +126,8 @@ with tempfile.TemporaryDirectory() as temp:
                 elif action == 'get_short_epg':
                     now = int(time.time())
                     titles = ['الهلال × النصر · دوري روشن', 'الاستوديو التحليلي', 'أهداف الجولة', 'نشرة الرياضة']
+                    if q.get('stream_id', [''])[0] == '101':   # a TV guide in English: the app shows Arabic
+                        titles = ["Juventus vs OL Lyonnes - UEFA Women's Champions League", 'Arsenal vs Chelsea - English Premier League 2026/2027 - MD4', 'Game of Thrones', 'Week 10']
                     body = {'epg_listings': [{'title': base64.b64encode(t.encode()).decode(), 'start_timestamp': str(now - 1800 + i * 3600), 'stop_timestamp': str(now + 1800 + i * 3600)} for i, t in enumerate(titles)]}
                 else:
                     body = {'user_info': {'status': 'Active', 'exp_date': str(int(time.time()) + 86400 * 120)}}
@@ -161,7 +163,10 @@ with tempfile.TemporaryDirectory() as temp:
     # 1. home, and the account sealed at rest
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.HomeActivity')
     hero = wait_label('آخر قناة شاهدتها: SSC 1 HD', 'the last-channel card with the saved channel')
+    arabic = wait_label('يوفنتوس × ليون — دوري أبطال أوروبا للسيدات', 'the guide title of the last channel in Arabic')
+    assert not any('Lyonnes' in l or 'Juventus' in l for l in labels()), 'The English match title must not show: ' + str(labels()[:12])
     shot('redesign-home.png'); no_crash('Home')
+    note('PASS: the English guide title "Juventus vs OL Lyonnes - UEFA Women\'s Champions League" shows as ' + arabic[0][-60:] + '.')
     assert 'آخر قناة' in focused_label(), 'The last-channel card must hold the first focus: ' + focused_label()
     time.sleep(2)
     plain = adb('shell', 'cat', folder + '/XtreamActivity.xml')
