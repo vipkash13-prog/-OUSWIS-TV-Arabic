@@ -100,7 +100,7 @@ public final class UpcomingMatches {
         SimpleDateFormat day=new SimpleDateFormat("yyyyMMdd",Locale.US);
         day.setTimeZone(TimeZone.getTimeZone("UTC"));
         final String from=day.format(new Date(now-2L*24*60*60*1000)),to=day.format(new Date(now+14L*24*60*60*1000));
-        ExecutorService pool=Executors.newFixedThreadPool(6);
+        ExecutorService pool=Executors.newFixedThreadPool(10);
         List<Future<List<MatchCarouselView.Match>>> jobs=new ArrayList<>();
         final String sec=section;
         for(final String league:leagues){
