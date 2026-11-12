@@ -58,6 +58,14 @@ final class RedesignHomeView extends View {
     private final android.graphics.Rect cropRect=new android.graphics.Rect();
     private final Paint wallPaint=new Paint(Paint.FILTER_BITMAP_FLAG);
     private float k=1;
+    private final java.util.HashMap<String,Paint> texts=new java.util.HashMap<>();
+    /** A text paint made once per (colour, size, weight): drawing never makes one. Callers must not change what they get. */
+    private Paint tx(int color,float size,android.graphics.Typeface face){
+        String key=color+":"+size+":"+System.identityHashCode(face);
+        Paint t=texts.get(key);
+        if(t==null){t=Design.text(color,size,face);texts.put(key,t);}
+        return t;
+    }
     private int row=1;
     private final int[] col=new int[5];
     private final List<MatchCarouselView.Match> today=new ArrayList<>(),apiToday=new ArrayList<>();   // today: the feed's matches plus the guide's
@@ -65,37 +73,70 @@ final class RedesignHomeView extends View {
     private LiveData live;
     private XtreamAccount account;
     private boolean resumed;
-    private long matchesAt;
+    private long matchesAt,drawnMinute=-1;
     private final long startedAt=System.currentTimeMillis();
     private boolean feedDone;       // the feed answered at least once
     private int feedAnswered;       // how many competitions answered: 0 means it could not be reached, not that there are no matches
     /** True only when it is certain there are no matches today: the feed answered and the guides were read. Until then the row shows empty cards. */
     private boolean confirmedEmpty(){
-        if(!today.isEmpty())return false;
+        if(!today.isEmpty()||everHadData)return false;
         long waited=System.currentTimeMillis()-startedAt;
         boolean guidesIn=account==null||MatchChannels.guideReady();
         return feedDone&&feedAnswered>0&&(guidesIn||waited>30_000L);
     }
     private final Runnable tick=new Runnable(){@Override public void run(){
         if(!resumed)return;
-        invalidate();
+        long minute=System.currentTimeMillis()/60_000L;
+        if(minute!=drawnMinute){drawnMinute=minute;invalidate();logStats();}   // the clock, the countdown and the progress bar change once a minute
         refreshData();
         main.postDelayed(this,30_000);
     }};
     private final Runnable prayerChanged=this::postInvalidate;
-    private final Runnable guideChanged=()->{rebuildToday();clampColumns();postInvalidate();};
-    /** The feed's matches of today plus those found in the sports channels' guides, live first, then by kickoff. */
+    private final Runnable guideChanged=this::rebuildToday;
+    // what the home screen did about its data, for the stability check (logged by logStats)
+    private int todayChanges,skeletonAfterData,focusResets,sameDataSkips;
+    private boolean everHadData;
+    private long dataDay;
+    private String todaySig="",apiSig="";
+    /**
+     * The feed's matches of today plus those found in the sports channels' guides, live first, then by kickoff. Worked out
+     * on the background thread; the screen is told only when what it would draw is different (same data: nothing happens).
+     */
     private void rebuildToday(){
-        long start=dayStart(),end=start+24L*3600_000;
-        List<MatchCarouselView.Match> list=new ArrayList<>();
-        for(MatchCarouselView.Match m:MatchChannels.withGuide(apiToday))if(m.live()||(m.kickoffMillis>=start&&m.kickoffMillis<end))list.add(m);
-        java.util.Collections.sort(list,(a,b)->{
-            int ra=a.live()?0:a.upcoming()?1:2,rb=b.live()?0:b.upcoming()?1:2;
-            return ra!=rb?Integer.compare(ra,rb):Long.compare(a.kickoffMillis,b.kickoffMillis);
+        final List<MatchCarouselView.Match> api=new ArrayList<>(apiToday);
+        final long start=dayStart();
+        io.execute(()->{
+            long end=start+24L*3600_000;
+            List<MatchCarouselView.Match> list=new ArrayList<>();
+            for(MatchCarouselView.Match m:MatchChannels.withGuide(api))if(m.live()||(m.kickoffMillis>=start&&m.kickoffMillis<end))list.add(m);
+            java.util.Collections.sort(list,(a,b)->{
+                int ra=a.live()?0:a.upcoming()?1:2,rb=b.live()?0:b.upcoming()?1:2;
+                return ra!=rb?Integer.compare(ra,rb):Long.compare(a.kickoffMillis,b.kickoffMillis);
+            });
+            StringBuilder sig=new StringBuilder();
+            for(int i=0;i<Math.min(4,list.size());i++){
+                MatchCarouselView.Match m=list.get(i);
+                LiveData.Channel ch=account==null?null:MatchChannels.forMatch(getContext(),account,m);
+                sig.append(m.key).append('|').append(m.state).append('|').append(m.homeScore).append('-').append(m.awayScore).append('|').append(m.status)
+                   .append('|').append(ch==null?(MatchChannels.resolved(getContext(),m)?"none":"wait"):ch.id).append(';');
+            }
+            sig.append(list.size());
+            final String s2=sig.toString();
+            main.post(()->applyToday(list,s2,start));
         });
-        today.clear();today.addAll(list);
     }
-    private String scoreText(MatchCarouselView.Match m){return m.awayScore.isEmpty()&&m.homeScore.isEmpty()?"—":m.awayScore+" - "+m.homeScore;}
+    private void applyToday(List<MatchCarouselView.Match> list,String sig,long start){
+        if(list.isEmpty()&&everHadData&&dataDay==start){sameDataSkips++;return;}   // a failed or partial load never empties a row that has shown data
+        if(sig.equals(todaySig)){sameDataSkips++;return;}                           // the same data again: nothing to update
+        String focusedKey=row==2&&col[2]<today.size()&&col[2]<4?today.get(col[2]).key:null;
+        today.clear();today.addAll(list);todaySig=sig;todayChanges++;
+        if(!list.isEmpty()){everHadData=true;dataDay=start;}
+        if(focusedKey!=null)for(int i=0;i<Math.min(4,today.size());i++)if(today.get(i).key.equals(focusedKey)){col[2]=i;break;}   // the focus stays on the same match
+        clampColumns();invalidate();
+    }
+    /** One line the stability test reads: how often the data really changed, and that nothing relapsed. */
+    private void logStats(){AppLog.w("home-stats: todayChanges="+todayChanges+" sameDataSkips="+sameDataSkips+" skeletonAfterData="+skeletonAfterData+" focusResets="+focusResets);}
+    private String scoreText(MatchCarouselView.Match m){return m.awayScore.isEmpty()&&m.homeScore.isEmpty()?(m.live()?"0 - 0":"—"):m.awayScore+" - "+m.homeScore;}   // a live match with no goals is 0 - 0
 
     RedesignHomeView(Context c,Host host){
         super(c);this.host=host;
@@ -105,8 +146,8 @@ final class RedesignHomeView extends View {
         if(account!=null)live=new LiveData(c,account);
     }
 
-    @Override protected void onAttachedToWindow(){super.onAttachedToWindow();MatchChannels.listen(prayerChanged);MatchChannels.listen(guideChanged);}
-    @Override protected void onDetachedFromWindow(){MatchChannels.unlisten(prayerChanged);MatchChannels.unlisten(guideChanged);super.onDetachedFromWindow();}
+    @Override protected void onAttachedToWindow(){super.onAttachedToWindow();MatchChannels.listen(guideChanged);}
+    @Override protected void onDetachedFromWindow(){MatchChannels.unlisten(guideChanged);super.onDetachedFromWindow();}
 
     // MARK: lifecycle
 
@@ -118,9 +159,9 @@ final class RedesignHomeView extends View {
         main.removeCallbacks(tick);main.post(tick);
         loadApps();
     }
-    void pause(){resumed=false;main.removeCallbacks(tick);PrayerTimes.get(getContext()).removeListener(prayerChanged);}
+    void pause(){logStats();resumed=false;main.removeCallbacks(tick);PrayerTimes.get(getContext()).removeListener(prayerChanged);}
     void destroy(){pause();io.shutdownNow();if(live!=null)live.shutdown();}
-    void reset(){row=1;col[1]=0;invalidate();}
+    void reset(){row=1;col[1]=0;invalidate();}   // only the Home button asks for this
 
     private void refreshData(){
         HomeData.get(getContext()).refreshIfStale();
@@ -137,6 +178,7 @@ final class RedesignHomeView extends View {
                     for(String section:new String[]{"live","upcoming","today"}){UpcomingMatches.Result res=UpcomingMatches.load(null,section);found.addAll(res.matches);answered+=res.answered;}
                 }catch(Throwable ignored){}
                 final int answeredNow=answered;
+                final StringBuilder fresh=new StringBuilder();
                 final List<MatchCarouselView.Match> shown=new ArrayList<>();
                 long start=dayStart(),end=start+24L*3600_000;
                 java.util.Set<String> seen=new java.util.HashSet<>();
@@ -146,14 +188,18 @@ final class RedesignHomeView extends View {
                     int ra=a.live()?0:a.upcoming()?1:2,rb=b.live()?0:b.upcoming()?1:2;
                     return ra!=rb?Integer.compare(ra,rb):Long.compare(a.kickoffMillis,b.kickoffMillis);
                 });
+                for(MatchCarouselView.Match m:shown)fresh.append(m.key).append('|').append(m.state).append('|').append(m.homeScore).append('-').append(m.awayScore).append('|').append(m.status).append(';');
                 main.post(()->{
+                    boolean first=!feedDone||answeredNow>feedAnswered;
                     feedDone=true;feedAnswered=Math.max(feedAnswered,answeredNow);
                     // a failed load keeps what was there rather than hiding the section
-                    if(!found.isEmpty()||apiToday.isEmpty()){apiToday.clear();apiToday.addAll(shown);}
-                    rebuildToday();clampColumns();invalidate();
+                    String sigNow=fresh.toString();
+                    boolean changed=(!found.isEmpty()||apiToday.isEmpty())&&!sigNow.equals(apiSig);
+                    if(changed){apiToday.clear();apiToday.addAll(shown);apiSig=sigNow;}
+                    if(changed||first)rebuildToday();else sameDataSkips++;
                 });
             });
-            if(account!=null)MatchChannels.prepare(getContext(),account,()->{MatchChannels.scanGuides(getContext(),account);postInvalidate();});
+            if(account!=null)MatchChannels.prepare(getContext(),account,()->{MatchChannels.scanGuides(getContext(),account);});
         }
     }
     private boolean anyLive(){for(MatchCarouselView.Match m:today)if(m.live())return true;return false;}
@@ -167,7 +213,12 @@ final class RedesignHomeView extends View {
             List<HomeApps.Item> list;
             try{list=HomeApps.shelf(getContext(),false);}catch(Throwable t){list=new ArrayList<>();}
             final List<HomeApps.Item> result=list;
-            main.post(()->{apps=result;clampColumns();invalidate();});
+            main.post(()->{
+                boolean same=apps.size()==result.size();
+                for(int i=0;same&&i<result.size();i++)same=java.util.Objects.equals(apps.get(i).label,result.get(i).label)&&java.util.Objects.equals(apps.get(i).pkg,result.get(i).pkg);
+                if(same){sameDataSkips++;return;}
+                apps=result;clampColumns();invalidate();
+            });
         });
     }
     private void clampColumns(){
@@ -179,15 +230,35 @@ final class RedesignHomeView extends View {
 
     @Override protected void onSizeChanged(int w,int h,int ow,int oh){
         k=w/1920f;
-        // the supplied wallpaper, nothing laid over it; the 4K file only on a 4K panel with memory to spare
-        boolean big=w>=3000&&!HomeApps.lowRam(getContext());
-        String name=big?"backgrounds/ouswis_bg_4k.webp":"backgrounds/ouswis_bg_1080p.webp";
-        try(InputStream in=getContext().getAssets().open(name)){wallpaper=BitmapFactory.decodeStream(in);}catch(Exception ignored){wallpaper=null;}
+        loadWallpaper(w,h);
+        layerKey=-1;
     }
+    /**
+     * The supplied wallpaper, loaded once: the 1080p file (never the 4K one), RGB_565, already cropped to the screen's
+     * shape, so drawing it is one plain bitmap copy. A size change (not a refresh) is the only reason to load it again.
+     */
+    private void loadWallpaper(int w,int h){
+        if(wallpaper!=null&&wallW==w&&wallH==h)return;
+        Bitmap old=wallpaper;wallpaper=null;
+        try(InputStream in=getContext().getAssets().open("backgrounds/ouswis_bg_1080p.webp")){
+            BitmapFactory.Options o=new BitmapFactory.Options();o.inPreferredConfig=Bitmap.Config.RGB_565;
+            Bitmap full=BitmapFactory.decodeStream(in,null,o);
+            if(full!=null){
+                float aspect=w/(float)Math.max(1,h),have=full.getWidth()/(float)full.getHeight();
+                int cw=aspect>have?full.getWidth():Math.round(full.getHeight()*aspect),ch=aspect>have?Math.round(full.getWidth()/aspect):full.getHeight();
+                wallpaper=Bitmap.createBitmap(full,(full.getWidth()-cw)/2,(full.getHeight()-ch)/2,cw,ch);
+                if(wallpaper!=full)full.recycle();
+            }
+        }catch(Throwable ignored){wallpaper=null;}
+        wallW=w;wallH=h;
+        if(old!=null&&old!=wallpaper)old.recycle();
+    }
+    private int wallW,wallH;
+    private long dateStamp=-1;
+    private String dateText="";
     private String clockText(){return fmt("h:mm");}
     private String fmt(String pattern){
-        SimpleDateFormat f=new SimpleDateFormat(pattern,Design.AR);
-        f.setTimeZone(TimeZone.getTimeZone("Asia/Riyadh"));return f.format(new Date());
+        return Design.clock(System.currentTimeMillis(),pattern);
     }
     private boolean online(){
         try{
@@ -201,29 +272,28 @@ final class RedesignHomeView extends View {
 
     @Override protected void onDraw(Canvas c){
         int w=getWidth(),h=getHeight();
-        if(wallpaper!=null){   // centerCrop
-            float s=Math.max(w/(float)wallpaper.getWidth(),h/(float)wallpaper.getHeight());
-            float sw=w/s,sh=h/s;
-            android.graphics.Rect src=cropRect;src.set((int)((wallpaper.getWidth()-sw)/2),(int)((wallpaper.getHeight()-sh)/2),(int)((wallpaper.getWidth()+sw)/2),(int)((wallpaper.getHeight()+sh)/2));
-            cropDst.set(0,0,w,h);c.drawBitmap(wallpaper,src,cropDst,wallPaint);
-        }else c.drawColor(Design.BG);
+        if(wallpaper!=null){cropDst.set(0,0,w,h);c.drawBitmap(wallpaper,null,cropDst,wallPaint);}   // already cropped to the screen's shape
+        else c.drawColor(Design.BG);
         a11y.begin(k);
         c.save();c.scale(k,k);
         drawTop(c);
-        boolean hasMatches=!today.isEmpty()||!confirmedEmpty();   // while loading the row shows empty cards of the same size
+        boolean hasMatches=!today.isEmpty()||!confirmedEmpty();   // (after data has shown once, the row never goes back to empty cards)   // while loading the row shows empty cards of the same size
         spread(hasMatches);
         // #0B0D1A at 55 % from the matches row down, with a short ramp above it, so the skyline never shows behind the cards
         float layerTop=(hasMatches?400+dy[1]+10:626+dy[2]-20);
-        layer.setShader(new LinearGradient(0,layerTop-40,0,layerTop,0x000B0D1A,0x8C0B0D1A,Shader.TileMode.CLAMP));
-        c.drawRect(0,layerTop-40,1920,layerTop,layer);
-        layer.setShader(null);layer.setColor(0x8C0B0D1A);
+        if(layerKey!=(int)layerTop){   // the ramp's shader is made again only when the layer moves
+            layerKey=(int)layerTop;
+            layerRamp.setShader(new LinearGradient(0,layerTop-40,0,layerTop,0x000B0D1A,0x8C0B0D1A,Shader.TileMode.CLAMP));
+        }
+        c.drawRect(0,layerTop-40,1920,layerTop,layerRamp);
+        layer.setColor(0x8C0B0D1A);
         c.drawRect(0,layerTop,1920,getHeight()/k+1,layer);
         block(c,dy[0]);drawHero(c);drawPrayer(c);unblock(c);
         if(hasMatches){block(c,dy[1]);drawMatches(c);unblock(c);}
         block(c,dy[2]);drawApps(c);unblock(c);
         block(c,dy[3]);drawShortcuts(c);unblock(c);
-        Design.right(c,"◀ ▶ ▲ ▼ للتنقل · OK للفتح",1848,1034,Design.text(0x73F4EFE4,18,Design.regular()));
-        Design.left(c,"الشاشة الرئيسية",72,1034,Design.text(0x73F4EFE4,18,Design.regular()));
+        Design.right(c,"◀ ▶ ▲ ▼ للتنقل · OK للفتح",1848,1034,tx(0x73F4EFE4,18,Design.regular()));
+        Design.left(c,"الشاشة الرئيسية",72,1034,tx(0x73F4EFE4,18,Design.regular()));
         c.restore();
     }
 
@@ -252,12 +322,16 @@ final class RedesignHomeView extends View {
         float tw=clock.measureText(time);
         Design.center(c,time,1050,104,clock);
         Design.right(c,fmt("a"),1050-tw/2-10,104,ampm);
-        SaudiDates dates=new SaudiDates();dates.update(System.currentTimeMillis(),new Locale("ar"));
-        SimpleDateFormat g2=new SimpleDateFormat("d MMMM yyyy",Design.AR);g2.setTimeZone(TimeZone.getTimeZone("Asia/Riyadh"));
+        long nowMs=System.currentTimeMillis();
+        if(dateStamp!=nowMs/60_000L){   // the date line (with the Hijri date) is worked out once a minute, not every frame
+            dateStamp=nowMs/60_000L;
+            SaudiDates dates=new SaudiDates();dates.update(nowMs,new Locale("ar"));
+            dateText=Design.clock(nowMs,"d MMMM yyyy")+" · "+dates.hijri;
+        }
         // the date sits under the clock's own descent with a 6dp (9 reference px) gap: the two lines never touch
         float dateBase=104+9+dateLine.getTextSize()*0.8f;   // the digits have no descender: their baseline is their bottom
-        Design.center(c,g2.format(new Date())+" · "+dates.hijri,1015,dateBase,dateLine);
-        a11y.add(760,30,1340,dateBase+dateLine.descent(),"الساعة "+time+" "+fmt("a")+" · "+g2.format(new Date())+" · "+dates.hijri,false,false);
+        Design.center(c,dateText,1015,dateBase,dateLine);
+        a11y.add(760,30,1340,dateBase+dateLine.descent(),"الساعة "+time+" "+fmt("a")+" · "+dateText,false,false);
         // chips: weather, connection, settings
         HomeData.Weather wx=HomeData.get(getContext()).weather;
         r.set(272,60,436,116);RectF box=ring(r,focus(0,0));Design.card(c,box,28,1,p,Design.SURFACE);
@@ -288,6 +362,8 @@ final class RedesignHomeView extends View {
     private final Paint heroFill=new Paint(Paint.ANTI_ALIAS_FLAG),heroStroke=new Paint(Paint.ANTI_ALIAS_FLAG);
     private float heroL,heroT,heroR,heroB;   // the box the gradient was made for
     private final Path heroClip=new Path();
+    private int layerKey=-1;
+    private final Paint layerRamp=new Paint();
     private final Paint layer=new Paint(),goldText15=Design.text(Design.GOLD,15,Design.regular());
 
     /** The last-channel card: 153 dp tall, always, and everything inside it is clipped to it, so it can't cover the row below. */
@@ -323,11 +399,11 @@ final class RedesignHomeView extends View {
             Design.liveBadge(c,thumb.right-52,thumb.top+26,"مباشر",15,p,badge);
         }
         if(ch==null){
-            Design.right(c,"ابدأ المشاهدة",x,box.top+box.height()*0.5f,Design.text(Design.TEXT,40,Design.bold()));
-            Design.right(c,"افتح البث المباشر واختر قناة",x,box.top+box.height()*0.5f+40,Design.text(Design.MUTED,22,Design.regular()));
+            Design.right(c,"ابدأ المشاهدة",x,box.top+box.height()*0.5f,tx(Design.TEXT,40,Design.bold()));
+            Design.right(c,"افتح البث المباشر واختر قناة",x,box.top+box.height()*0.5f+40,tx(Design.MUTED,22,Design.regular()));
         }else{
-            Design.right(c,"آخر قناة شاهدتها",x,box.top+50,Design.text(Design.GOLD,22,Design.regular()));
-            Paint nameP=Design.text(Design.TEXT,44,Design.bold());
+            Design.right(c,"آخر قناة شاهدتها",x,box.top+50,tx(Design.GOLD,22,Design.regular()));
+            Paint nameP=tx(Design.TEXT,44,Design.bold());
             Design.right(c,Design.fit(ch.name,nameP,x-box.left-40),x,box.top+104,nameP);
             long now=System.currentTimeMillis();
             List<LiveData.Program> guide=live==null?null:live.guide(ch.id);
@@ -374,8 +450,7 @@ final class RedesignHomeView extends View {
         return "آخر قناة شاهدتها: "+ch.name+(cur==null?"":" · الآن: "+cur.shown);
     }
     private String fmt(String pattern,long at){
-        SimpleDateFormat f=new SimpleDateFormat(pattern,Design.AR);
-        f.setTimeZone(TimeZone.getTimeZone("Asia/Riyadh"));return f.format(new Date(at));
+        return Design.clock(at,pattern);
     }
 
     private void drawPrayer(Canvas c){
@@ -385,7 +460,7 @@ final class RedesignHomeView extends View {
         PrayerSchedule day=pt.today();long now=System.currentTimeMillis();
         PrayerCountdown next=PrayerCountdown.next(day,pt.tomorrow(),now);
         if(next==null||day==null){
-            Design.center(c,pt.failed?"تعذّر تحميل مواقيت الصلاة":"جارٍ تحميل المواقيت…",box.centerX(),box.centerY(),Design.text(Design.MUTED,26,Design.regular()));
+            Design.center(c,pt.failed?"تعذّر تحميل مواقيت الصلاة":"جارٍ تحميل المواقيت…",box.centerX(),box.centerY(),tx(Design.MUTED,26,Design.regular()));
         }else{
             long remaining=Math.max(0,next.at-now);
             long minutes=(remaining+59_999)/60_000;
@@ -396,17 +471,17 @@ final class RedesignHomeView extends View {
             p.setShader(null);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(13);p.setStrokeCap(Paint.Cap.ROUND);
             p.setColor(0x1AFFFFFF);c.drawArc(arc,0,360,false,p);
             p.setColor(Design.GOLD);c.drawArc(arc,-90,360*f,false,p);p.setStrokeCap(Paint.Cap.BUTT);
-            Design.center(c,String.format(Locale.US,"%d:%02d",minutes/60,minutes%60),cx,cy+10,Design.text(Design.TEXT,44,Design.bold()));
-            Design.center(c,"متبقي",cx,cy+36,Design.text(Design.MUTED,15,Design.regular()));
+            Design.center(c,String.format(Locale.US,"%d:%02d",minutes/60,minutes%60),cx,cy+10,tx(Design.TEXT,44,Design.bold()));
+            Design.center(c,"متبقي",cx,cy+36,tx(Design.MUTED,15,Design.regular()));
             boolean tomorrow=!Design.clock(next.at,"yyyyMMdd").equals(Design.clock(now,"yyyyMMdd"));
-            Design.right(c,tomorrow?"الصلاة القادمة · غدًا":"الصلاة القادمة",385,226,Design.text(Design.MUTED,21,Design.regular()));
-            Paint nameP=Design.text(Design.TEXT,52,Design.bold());
+            Design.right(c,tomorrow?"الصلاة القادمة · غدًا":"الصلاة القادمة",385,226,tx(Design.MUTED,21,Design.regular()));
+            Paint nameP=tx(Design.TEXT,52,Design.bold());
             String name=Design.prayer(next.index);
             Design.right(c,name,385,284,nameP);
-            Design.right(c,Design.clock(next.at,"h:mm a"),385-nameP.measureText(name)-14,284,Design.text(Design.GOLD,28,Design.bold()));
+            Design.right(c,Design.clock(next.at,"h:mm a"),385-nameP.measureText(name)-14,284,tx(Design.GOLD,28,Design.bold()));
             List<String> others=new ArrayList<>();
             for(int i=0;i<5;i++)if(i!=next.index)others.add(Design.prayer(i)+" "+Design.clock(day.time(i),"h:mm"));
-            Paint line=Design.text(Design.MUTED,21,Design.regular());
+            Paint line=tx(Design.MUTED,21,Design.regular());
             Design.right(c,others.get(0)+" · "+others.get(1),385,328,line);
             Design.right(c,others.get(2)+" · "+others.get(3),385,362,line);
             String left=minutes<60?minutes+" دقيقة":(minutes/60)+" س "+(minutes%60)+" د";
@@ -421,11 +496,13 @@ final class RedesignHomeView extends View {
         Design.right(c,"مباريات اليوم",1842,448,section);
         goldText.setTextSize(20);
         boolean linkFocus=focus(2,Math.min(today.size(),4));
-        Design.left(c,"عرض الكل ←",78,446,linkFocus?Design.text(0xFFFFFFFF,22,Design.bold()):goldText);
+        Design.left(c,"عرض الكل ←",78,446,linkFocus?tx(0xFFFFFFFF,22,Design.bold()):goldText);
         a11y.add(1500,420,1842,456,"مباريات اليوم",false,false);
         a11y.add(70,420,200,456,"عرض الكل",linkFocus,true);
         int n=Math.min(4,today.size());
-        if(today.isEmpty()){   // placeholders: same size and place as the cards, nothing to focus
+        if(today.isEmpty()){
+            if(everHadData)skeletonAfterData++;
+            // placeholders: same size and place as the cards, nothing to focus
             for(int i=0;i<4;i++){
                 float right=1847-i*425,left=right-404;
                 r.set(left,466,right,592);
@@ -442,26 +519,28 @@ final class RedesignHomeView extends View {
             float right=1847-i*425,left=right-404;
             r.set(left,466,right,592);RectF box=ring(r,focus(2,i));
             boolean done=!m.live()&&!m.upcoming();
-            Design.card(c,box,22,1,p,m.live()?0xBF2A0F1A:CARD_DARK);
+            Design.card(c,box,22,1,p,CARD_DARK);   // a live card has the same fill as the others: a red 2dp border and the badge say it is live
+            if(m.live()){p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(3);p.setColor(Design.LIVE);c.drawRoundRect(box,22,22,p);}
             crest(c,m.homeLogo,m.home,right-67,516,26);crest(c,m.awayLogo,m.away,left+67,516,26);
-            Paint team=Design.text(Design.TEXT,17,Design.regular());
-            Design.center(c,Design.fit(m.home,team,120),right-67,566,team);
-            Design.center(c,Design.fit(m.away,team,120),left+67,566,team);
+            Paint team=tx(Design.TEXT,17,Design.regular());
+            Design.center(c,Design.fitShrink(m.home,team,140),right-67,566,team);
+            Design.center(c,Design.fitShrink(m.away,team,140),left+67,566,team);
             float cx=(left+right)/2;
             if(m.live()){
                 Design.liveBadge(c,cx,490,"'"+minute(m),15,p,badge);
-                Design.center(c,scoreText(m),cx,543,Design.text(Design.TEXT,42,Design.bold()));
+                Design.center(c,scoreText(m),cx,543,tx(Design.TEXT,42,Design.bold()));
             }else if(done){
-                Design.center(c,"انتهت",cx,492,Design.text(Design.MUTED,15,Design.regular()));
-                Design.center(c,scoreText(m),cx,543,Design.text(0x99F4EFE4,42,Design.bold()));
+                Design.center(c,"انتهت",cx,492,tx(Design.MUTED,15,Design.regular()));
+                Design.center(c,scoreText(m),cx,543,tx(0x99F4EFE4,42,Design.bold()));
             }else{
-                Design.center(c,"اليوم",cx,492,Design.text(Design.MUTED,15,Design.regular()));
-                Design.center(c,fmt("h:mm a",m.kickoffMillis),cx,543,Design.text(Design.TEXT,38,Design.bold()));
+                Design.center(c,"اليوم",cx,492,tx(Design.MUTED,15,Design.regular()));
+                Design.center(c,fmt("h:mm a",m.kickoffMillis),cx,543,tx(Design.TEXT,38,Design.bold()));
             }
             LiveData.Channel ch=channelFor(m);
-            if(ch!=null&&!done)Design.center(c,(m.live()?"▶ ":"")+Design.fit(ch.name,goldText15,360),cx,575,goldText15);
-            else if(!done)Design.center(c,"اختر القناة",cx,575,Design.text(Design.MUTED,15,Design.regular()));
-            a11y.add(box,m.home+" ضد "+m.away+" · "+(m.live()?"مباشر "+m.awayScore+" - "+m.homeScore:done?"انتهت "+m.awayScore+" - "+m.homeScore:fmt("h:mm a",m.kickoffMillis))+(ch!=null&&!done?" · "+ch.name:!done?" · اختر القناة":""),focus(2,i),true);
+            boolean known=MatchChannels.resolved(getContext(),m);   // until it is known the line stays empty: no "اختر القناة" that then turns into a name
+            if(ch!=null&&!done)Design.center(c,(m.live()?"▶ ":"")+Design.fit(MatchChannels.shortName(ch.name),goldText15,360),cx,575,goldText15);
+            else if(!done&&known)Design.center(c,"اختر القناة",cx,575,tx(Design.MUTED,15,Design.regular()));
+            a11y.add(box,m.home+" ضد "+m.away+" · "+(m.live()?"مباشر "+scoreText(m):done?"انتهت "+m.awayScore+" - "+m.homeScore:fmt("h:mm a",m.kickoffMillis))+(ch!=null&&!done?" · "+MatchChannels.shortName(ch.name):!done&&known?" · اختر القناة":""),focus(2,i),true);
             if(focus(2,i))Design.focusRing(c,box,22,1,p);
         }
     }
@@ -488,7 +567,7 @@ final class RedesignHomeView extends View {
         if(col[3]<appFirst)appFirst=col[3];
         if(col[3]>=appFirst+APP_SLOTS)appFirst=col[3]-APP_SLOTS+1;
         appFirst=Math.max(0,Math.min(appFirst,Math.max(0,n+1-APP_SLOTS)));
-        Paint more=Design.text(Design.GOLD,44,Design.bold());
+        Paint more=tx(Design.GOLD,44,Design.bold());
         if(appFirst>0)Design.center(c,"›",1888,732,more);
         if(appFirst+APP_SLOTS<n+1)Design.center(c,"‹",32,732,more);
         for(int i=appFirst;i<n&&i<appFirst+APP_SLOTS;i++){
@@ -507,7 +586,7 @@ final class RedesignHomeView extends View {
             }else Design.card(c,box,22,1,p,Design.SURFACE);
             a11y.add(box,it.label,focus(3,i),true);
             if(focus(3,i))Design.focusRing(c,box,22,1,p);
-            Design.center(c,Design.fit(it.label,Design.text(Design.MUTED,18,Design.regular()),170),right-89,796,Design.text(focus(3,i)?Design.TEXT:Design.MUTED,18,Design.regular()));
+            Design.center(c,Design.fit(it.label,tx(Design.MUTED,18,Design.regular()),170),right-89,796,tx(focus(3,i)?Design.TEXT:Design.MUTED,18,Design.regular()));
         }
         // the dashed "+ add" tile closes the row
         if(n<appFirst+APP_SLOTS){
@@ -516,10 +595,10 @@ final class RedesignHomeView extends View {
         p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(2);p.setColor(0x4DFFFFFF);
         p.setPathEffect(new android.graphics.DashPathEffect(new float[]{10,8},0));
         c.drawRoundRect(box,22,22,p);p.setPathEffect(null);
-        Design.center(c,"+",box.centerX(),box.centerY()+14,Design.text(Design.TEXT,48,Design.light()));
+        Design.center(c,"+",box.centerX(),box.centerY()+14,tx(Design.TEXT,48,Design.light()));
         a11y.add(box,"إضافة تطبيق",focus(3,n),true);
         if(focus(3,n))Design.focusRing(c,box,22,1,p);
-        Design.center(c,"إضافة",right-89,796,Design.text(Design.MUTED,18,Design.regular()));
+        Design.center(c,"إضافة",right-89,796,tx(Design.MUTED,18,Design.regular()));
         }
     }
 
@@ -530,10 +609,10 @@ final class RedesignHomeView extends View {
             float right=1847-i*299;
             r.set(right-283,828,right,904);RectF box=ring(r,focus(4,i));
             Design.card(c,box,26,1,p,Design.SURFACE);
-            Paint lab=Design.text(Design.TEXT,23,Design.bold());
+            Paint lab=tx(Design.TEXT,23,Design.bold());
             float tw=lab.measureText(SHORTCUT_LABELS[i]);
             Design.center(c,SHORTCUT_LABELS[i],box.centerX()-12,box.centerY()+8,lab);
-            Design.center(c,SHORTCUT_ICONS[i],box.centerX()-12+tw/2+30,box.centerY()+9,Design.text(Design.GOLD,26,Design.bold()));
+            Design.center(c,SHORTCUT_ICONS[i],box.centerX()-12+tw/2+30,box.centerY()+9,tx(Design.GOLD,26,Design.bold()));
             a11y.add(box,SHORTCUT_LABELS[i],focus(4,i),true);
             if(focus(4,i))Design.focusRing(c,box,26,1,p);
         }

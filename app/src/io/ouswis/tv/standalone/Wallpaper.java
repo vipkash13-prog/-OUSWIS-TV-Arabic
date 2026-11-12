@@ -9,7 +9,7 @@ import android.graphics.Rect;
 import android.graphics.RectF;
 import java.io.InputStream;
 
-/** The supplied home wallpaper (ouswis_bg_1080p.webp), centre-cropped, for screens that put a dark layer over it. */
+/** The inner screens' background (ouswis_bg_inner_1080p.webp: the city without the crescent), centre-cropped, under a dark layer. The home screen keeps ouswis_bg_1080p.webp. */
 final class Wallpaper {
     private Wallpaper(){}
 
@@ -18,7 +18,7 @@ final class Wallpaper {
     /** The same with the dark layer in the given colour (RGB), e.g. #0B0D1A. */
     static void draw(Context c,Canvas canvas,int w,int h,float dim,int rgb){
         Bitmap bmp=null;
-        try(InputStream in=c.getAssets().open("backgrounds/ouswis_bg_1080p.webp")){bmp=BitmapFactory.decodeStream(in);}catch(Exception ignored){}
+        try(InputStream in=c.getAssets().open("backgrounds/ouswis_bg_inner_1080p.webp")){BitmapFactory.Options o=new BitmapFactory.Options();o.inPreferredConfig=Bitmap.Config.RGB_565;bmp=BitmapFactory.decodeStream(in,null,o);}catch(Exception ignored){}
         if(bmp==null){canvas.drawColor(Design.BG);return;}
         float s=Math.max(w/(float)bmp.getWidth(),h/(float)bmp.getHeight());
         float sw=w/s,sh=h/s;

@@ -45,6 +45,19 @@ public final class TitlesCheck {
         is(false,Titles.sameMatch("غانا × نيجيريا","Ghana","غانا","Somalia","الصومال"),"other opponent");
         is(false,Titles.sameMatch("Arsenal vs Chelsea","Ghana","غانا","Somalia","الصومال"),"other match");
         is(true,Titles.sameTeam("Man City","Manchester City","مانشستر سيتي"),"Man City");
+        eq("beIN SPORTS 1",Titles.channelName("FR| beIN SPORTS 1 HD (H.265)"));
+        eq("beIN SPORTS 1",Titles.channelName("beIN SPORTS 1 HD"));
+        eq("SSC 2",Titles.channelName("AR: SSC 2 FHD"));
+        eq("beIN Sports 2",Titles.channelName("beIN Sports 2"));
+        eq("AD Sports 1",Titles.channelName("AD Sports 1"));
+        is(true,Titles.qualityPenalty("beIN SPORTS 1 HD")<Titles.qualityPenalty("beIN SPORTS 1 4K"),"HD before 4K");
+        is(true,Titles.qualityPenalty("beIN SPORTS 1 FHD")<Titles.qualityPenalty("beIN SPORTS 1 H.265"),"FHD before H.265");
+        is(true,Titles.qualityPenalty("beIN SPORTS 1 HD")<Titles.qualityPenalty("beIN SPORTS 1"),"HD before unmarked");
+        eq("فياريال",TeamNames.arabic("Villareal"));
+        eq("فياريال",TeamNames.arabic("Villarreal"));
+        eq("إريتريا",TeamNames.arabic("Eritrea"));
+        eq("غينيا بيساو",TeamNames.arabic("Guinea-Bissau"));
+        eq("سورينام",TeamNames.arabic("Suriname"));
         if(bad>0){System.out.println(bad+" failed");System.exit(1);}
         System.out.println("TitlesCheck: all passed");
     }

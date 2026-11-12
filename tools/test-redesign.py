@@ -100,6 +100,72 @@ def crashed():
 def no_crash(where):
     bad, log = crashed(); assert not bad, where + ' crashed:\n' + log[-2500:]
 
+def gfx():
+    out = adb('shell', 'dumpsys', 'gfxinfo', PKG, check=False)
+    pick = lambda pat: (re.search(pat, out) or [None, '?'])[1]
+    return {'frames': pick(r'Total frames rendered: (\d+)'), 'janky': pick(r'Janky frames: (\d+ \([\d.]+%\))'), 'p50': pick(r'50th percentile: (\d+ms)'),
+            'p90': pick(r'90th percentile: (\d+ms)'), 'p99': pick(r'99th percentile: (\d+ms)'), 'slow_ui': pick(r'Number Slow UI thread: (\d+)'),
+            'slow_draw': pick(r'Number Slow issue draw commands: (\d+)'), 'raw': out}
+
+def measure(tag):
+    """Performance of the home screen: cold open time, time until the first match card shows, then 40 s of remote use under gfxinfo."""
+    totals = []
+    for _ in range(3):
+        adb('shell', 'am', 'force-stop', PKG); time.sleep(2)
+        t0 = time.time()
+        out = adb('shell', 'am', 'start', '-W', '-n', PKG + '/.HomeActivity')
+        totals.append(int((re.search(r'TotalTime: (\d+)', out) or [0, 0])[1]))
+    first = None; ghana = None
+    while time.time() - t0 < 90 and not ghana:
+        ls = labels()
+        if first is None and any(' ضد ' in l for l in ls): first = round(time.time() - t0, 1)
+        if any('غانا ضد الصومال' in l and 'beIN Sports 2' in l for l in ls): ghana = round(time.time() - t0, 1)
+    time.sleep(15)
+    adb('shell', 'dumpsys', 'gfxinfo', PKG, 'reset', check=False)
+    cycle = ['DOWN', 'DOWN', 'LEFT', 'RIGHT', 'LEFT', 'UP', 'RIGHT', 'UP']
+    t1 = time.time(); i = 0
+    while time.time() - t1 < 40: keys(cycle[i % len(cycle)], pause=1.0); i += 1
+    g = gfx(); (OUT / ('perf-%s-gfxinfo.txt' % tag)).write_text(g.pop('raw'))
+    line = '%s | cold open ms (3 runs): %s | first match card after %ss | channel on the Ghana card after %ss | remote use 40 s: frames %s, janky %s, p50 %s p90 %s p99 %s, slow UI %s, slow draw %s' % (
+        tag, totals, first, ghana, g['frames'], g['janky'], g['p50'], g['p90'], g['p99'], g['slow_ui'], g['slow_draw'])
+    note('PERF ' + line); (OUT / ('perf-%s.txt' % tag)).write_text(line + '\n')
+    adb('shell', 'am', 'force-stop', PKG); time.sleep(2)
+
+def stability(seconds=300):
+    """The home screen left open: nothing may blink, jump, lose its cards or its focus."""
+    adb('shell', 'am', 'force-stop', PKG); time.sleep(2); adb('logcat', '-c')
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.HomeActivity')
+    wait_label('غانا ضد الصومال', 'the home matches', tries=60)
+    for _ in range(40):
+        if any('غانا ضد الصومال' in l and 'beIN Sports 2' in l for l in labels()): break
+        time.sleep(1)
+    cards = lambda: sorted(l for l in labels() if ' ضد ' in l and not l.startswith('تفاصيل'))
+    base = cards(); focus0 = focused_label(); assert len(base) >= 3, base
+    adb('shell', 'dumpsys', 'gfxinfo', PKG, 'reset', check=False)
+    prev = shot('stability-0.png'); worst = 0.0; end = time.time() + seconds; n = 0; problems = []
+    while time.time() < end:
+        time.sleep(10); n += 1
+        now = cards()
+        if now != base: problems.append('cards changed at sample %d: %s vs %s' % (n, now, base))
+        if focused_label() != focus0: problems.append('focus moved at sample %d: %s' % (n, focused_label()))
+        img = shot('stability-last.png')
+        # compare the body of the screen (below the top bar, above the hint line): only the progress bar may move
+        box = (0, 250, 1920, 1000); a = prev.crop(box).convert('L'); b = img.crop(box).convert('L')
+        from PIL import ImageChops
+        diff = ImageChops.difference(a, b).point(lambda v: 255 if v > 40 else 0)
+        frac = sum(1 for v in diff.getdata() if v) / float(diff.width * diff.height)
+        worst = max(worst, frac)
+        if frac > 0.02: problems.append('screen changed %.1f%% at sample %d' % (frac * 100, n)); shot('stability-change-%d.png' % n)
+        prev = img
+    g = gfx(); (OUT / 'stability-gfxinfo.txt').write_text(g.pop('raw'))
+    log = adb('logcat', '-d', '-s', 'FreeMyTV', check=False)
+    stats = re.findall(r'home-stats: (.*)', log)
+    msg = 'STABILITY %d s on the home screen: %d samples, worst screen change %.2f%%, frames drawn %s (janky %s), problems %s, app counters: %s' % (seconds, n, worst * 100, g['frames'], g['janky'], problems or 'none', stats[-1] if stats else 'n/a (older build)')
+    note(msg); (OUT / 'stability.txt').write_text(msg + '\n')
+    assert not problems, msg
+    if stats:
+        assert 'skeletonAfterData=0' in stats[-1] and 'focusResets=0' in stats[-1], 'The app reports a relapse: ' + stats[-1]
+
 subprocess.run([ADB, 'root'], capture_output=True, timeout=60); subprocess.run([ADB, 'wait-for-device'], timeout=60); time.sleep(3)
 with tempfile.TemporaryDirectory() as temp:
     clip = Path(temp) / 'clip.ts'
@@ -108,7 +174,7 @@ with tempfile.TemporaryDirectory() as temp:
     data = clip.read_bytes()
     CATS = [('10', 'FR|TF1 HD'), ('11', 'رياضة'), ('12', 'أخبار'), ('13', 'أفلام')]
     STREAMS = {'11': [('101', 'SSC 1 HD', 'ts'), ('102', 'SSC 2 HD', 'ts'), ('103', 'SSC 3 HD', 'ts'), ('110', 'beIN Sports 1 HD', 'ts'),
-                      ('111', 'beIN Sports 2', 'ts'), ('112', 'beIN Sports 3', 'm3u8'), ('120', 'AD Sports 1', 'ts'), ('105', 'beIN SPORTS XTRA 1HD', 'ts')],
+                      ('111', 'beIN Sports 2', 'ts'), ('112', 'beIN Sports 3', 'm3u8'), ('113', 'FR| beIN SPORTS 4 HD (H.265)', 'ts'), ('120', 'AD Sports 1', 'ts'), ('105', 'beIN SPORTS XTRA 1HD', 'ts')],
                '12': [('201', 'Al Arabiya', 'ts'), ('202', 'Sky News Arabia', 'ts')], '13': [('301', 'Movies One', 'ts')], '10': [('401', 'TF1 HD', 'ts')]}
 
     class Provider(BaseHTTPRequestHandler):
@@ -142,7 +208,7 @@ with tempfile.TemporaryDirectory() as temp:
                     titles = ['الهلال × النصر · دوري روشن', 'الاستوديو التحليلي', 'أهداف الجولة', 'نشرة الرياضة']
                     if q.get('stream_id', [''])[0] == '101':   # a TV guide in English: the app shows Arabic
                         titles = ["Juventus vs OL Lyonnes - UEFA Women's Champions League", 'Arsenal vs Chelsea - English Premier League 2026/2027 - MD4', 'Game of Thrones', 'Week 10']
-                    if q.get('stream_id', [''])[0] == '111':   # beIN Sports 2: the Arabic title, 6 minutes after the kickoff the feed reports
+                    if q.get('stream_id', [''])[0] in ('111', '113'):   # beIN Sports 2: the Arabic title, 6 minutes after the kickoff the feed reports
                         titles = ['غانا × الصومال — كأس الأمم الأفريقية', 'تحليل المباريات', 'أهداف الجولة', 'نشرة الرياضة']
                     body = {'epg_listings': [{'title': base64.b64encode(t.encode()).decode(), 'start_timestamp': str(now - 1800 + i * 3600), 'stop_timestamp': str(now + 1800 + i * 3600)} for i, t in enumerate(titles)]}
                 else:
@@ -183,7 +249,12 @@ with tempfile.TemporaryDirectory() as temp:
     hero = wait_label('آخر قناة شاهدتها: SSC 1 HD', 'the last-channel card with the saved channel')
     arabic = wait_label('يوفنتوس × ليون — دوري أبطال أوروبا للسيدات', 'the guide title of the last channel in Arabic')
     assert not any('Lyonnes' in l or 'Juventus' in l for l in labels()), 'The English match title must not show: ' + str(labels()[:12])
-    shot('redesign-home.png'); no_crash('Home')
+    img = shot('redesign-home.png'); no_crash('Home')
+    # the last-channel card: dark, #123D5C to #121A3A at 95 %: sample its inside along the top margin (no text there)
+    pts = [img.getpixel((x, 180)) for x in range(700, 1500, 160)]
+    img.crop((600, 150, 1860, 420)).save(OUT / 'hero-card-crop.png')
+    note('HERO card pixels (x=700..1340, y=180): ' + str(pts))
+    assert all(r <= 40 and g <= 75 and b <= 105 for r, g, b in pts), 'The last-channel card is lighter than #123D5C: ' + str(pts)
     note('PASS: the English guide title "Juventus vs OL Lyonnes - UEFA Women\'s Champions League" shows as ' + arabic[0][-60:] + '.')
     assert 'آخر قناة' in focused_label(), 'The last-channel card must hold the first focus: ' + focused_label()
     time.sleep(2)
@@ -197,6 +268,9 @@ with tempfile.TemporaryDirectory() as temp:
     for need in ('البث المباشر', 'المباريات', 'كل التطبيقات', 'الأخيرة', 'التحديثات', 'الإعدادات', 'إضافة تطبيق'):
         assert any(l == need for l in labs), 'Missing control: ' + need
     note('PASS: new home: last-channel card holds the first focus; six shortcuts and the + tile are reachable controls.')
+
+    measure(os.environ.get('PERF_TAG', 'run'))
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.HomeActivity'); wait_label('آخر قناة شاهدتها: SSC 1 HD', 'the home again after the measurement')
 
     # 2. OK on the last-channel card plays it with Media3, full screen
     keys('DPAD_CENTER', pause=1.5); front('PlayerActivity')
@@ -320,14 +394,6 @@ with tempfile.TemporaryDirectory() as temp:
     note('PASS: matches screen: a match found only in the guide shows with its channel; no unconfirmed match names a channel (it says اختر القناة); the league chips come from the day\'s matches between الكل and المفضلة.')
     note('PASS: matches screen loaded the (mock) fixtures and took keys without a crash.')
 
-    # 6b. the reported case: Ghana v Somalia is in beIN Sports 2's guide as "غانا × الصومال" and must carry that channel
-    ghana = wait_label('غانا ضد الصومال', 'the Ghana v Somalia match (mock feed: Somalia at Ghana)', tries=60)
-    assert any('beIN Sports 2' in l for l in ghana) and not any('اختر القناة' in l for l in ghana), 'Ghana v Somalia must show beIN Sports 2 from its guide: ' + str(ghana)
-    shot('redesign-matches-ghana.png')
-    note('PASS: "غانا × الصومال" in beIN Sports 2\'s guide linked to the feed\'s "Somalia at Ghana": the card reads ' + ghana[0][-70:] + '.')
-    eri = wait_label('سورينام ضد إريتريا', 'the Suriname v Eritrea match (in no guide)')
-    assert any('اختر القناة' in l for l in eri) and not any('beIN' in l or 'SSC' in l for l in eri), 'An unconfirmed match must ask for a channel: ' + str(eri)
-    # OK on the unconfirmed match opens the sports section of the live screen on its first beIN/SSC channel
     def focus_card(part):
         """Walk the 2-column grid with the remote: the card's place is its place in the screen's own card list (row = index // 2; the second column is LEFT)."""
         adb('shell', 'am', 'start', '-W', '-n', PKG + '/.MatchesScreenActivity'); time.sleep(3)
@@ -340,6 +406,31 @@ with tempfile.TemporaryDirectory() as temp:
         for _ in range(at[0] // 2): keys('DPAD_DOWN', pause=1)
         if at[0] % 2: keys('DPAD_LEFT', pause=1)
         assert part in focused_label(), 'Wrong card focused: ' + focused_label() + ' | wanted index ' + str(at[0]) + ' of ' + str(cards)
+    # 6b. the reported case: Ghana v Somalia is in beIN Sports 2's guide as "غانا × الصومال" and must carry that channel
+    ghana = wait_label('غانا ضد الصومال', 'the Ghana v Somalia match (mock feed: Somalia at Ghana)', tries=60)
+    assert any('beIN Sports 2' in l for l in ghana) and not any('اختر القناة' in l for l in ghana), 'Ghana v Somalia must show beIN Sports 2 from its guide: ' + str(ghana)
+    shot('redesign-matches-ghana.png')
+    note('PASS: "غانا × الصومال" in beIN Sports 2\'s guide linked to the feed\'s "Somalia at Ghana": the card reads ' + ghana[0][-70:] + '.')
+    eri = wait_label('سورينام ضد إريتريا', 'the Suriname v Eritrea match (in no guide)')
+    for _ in range(40):
+        eri = [l for l in labels() if 'سورينام ضد إريتريا' in l]
+        if any('اختر القناة' in l for l in eri): break
+        time.sleep(1)
+    assert any('اختر القناة' in l for l in eri) and not any('beIN' in l or 'SSC' in l for l in eri), 'An unconfirmed match must ask for a channel: ' + str(eri)
+    # one card for Ghana v Somalia although two channels carry it; the live counter equals the live cards; nothing says مباشر twice
+    allc = [l for l in labels() if ' ضد ' in l and not l.startswith('تفاصيل')]
+    assert len([l for l in allc if 'غانا ضد الصومال' in l]) == 1, 'The same match must show once: ' + str(allc)
+    head = [l for l in labels() if l.startswith('المباريات ·')]
+    liven = len({l for l in allc if ' مباشر ' in l})
+    assert head and re.search(r'(\d+) مباشر', head[0]) and int(re.search(r'(\d+) مباشر', head[0])[1]) == liven, 'The live counter must equal the live matches: ' + str(head) + ' vs ' + str(liven)
+    assert not any('مباشر مباشر' in l for l in labels()), 'A repeated مباشر: ' + str([l for l in labels() if 'مباشر مباشر' in l])
+    opts = labels()
+    focus_card('غانا ضد الصومال')
+    opts = labels()
+    assert any(l.startswith('شاهد على beIN SPORTS 4') for l in opts) and not any('H.265' in l or 'FR|' in l for l in opts), 'The other channel must be an option, cleaned of prefix and H.265: ' + str([l for l in opts if 'شاهد' in l])
+    shot('redesign-matches-options.png')
+    note('PASS: Ghana v Somalia shows once (beIN Sports 2 chosen over the H.265 channel, which is listed as an option named beIN SPORTS 4); the live counter is ' + str(liven) + ' = the live cards.')
+    # OK on the unconfirmed match opens the sports section of the live screen on its first beIN/SSC channel
     focus_card('سورينام ضد إريتريا')
     keys('DPAD_CENTER', pause=2); front('LiveActivity')
     wait_label('SSC 2 HD', 'the sports section of the live screen')
@@ -357,7 +448,7 @@ with tempfile.TemporaryDirectory() as temp:
         again = [l for l in labels() if 'سورينام ضد إريتريا' in l]
         if any('SSC' in l or 'beIN' in l for l in again): break
         time.sleep(1)
-    assert any('SSC 2 HD' in l for l in again), 'The channel played for the match must be its channel now: ' + str(again)
+    assert any('SSC 2' in l for l in again), 'The channel played for the match must be its channel now: ' + str(again)
     note('PASS: the channel played from the sports list was saved for that match and the card names it: ' + again[0][-60:] + '.')
     (OUT / 'redesign-logcat.txt').write_text(adb('logcat', '-d', '-t', '800', check=False))
 
@@ -386,4 +477,5 @@ with tempfile.TemporaryDirectory() as temp:
     note('PASS: reset restored the default order and showed the hidden section again.')
     shot('redesign-live-after-reset.png')
     no_crash('Sections')
+    if os.environ.get('STABILITY_SECONDS', '300') != '0': stability(int(os.environ.get('STABILITY_SECONDS', '300')))
     server.shutdown()

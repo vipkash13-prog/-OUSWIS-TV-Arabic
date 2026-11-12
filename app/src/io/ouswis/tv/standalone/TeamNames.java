@@ -74,7 +74,7 @@ final class TeamNames {
             "Sunderland|سندرلاند","Ipswich Town|إيبسويتش","Sheffield United|شيفيلد يونايتد");
         // Spain
         add("Real Madrid|ريال مدريد","Barcelona|برشلونة","FC Barcelona|برشلونة","Atletico Madrid|أتلتيكو مدريد","Atlético Madrid|أتلتيكو مدريد",
-            "Sevilla|إشبيلية","Real Sociedad|ريال سوسيداد","Real Betis|ريال بيتيس","Villarreal|فياريال","Athletic Club|أتلتيك بلباو",
+            "Sevilla|إشبيلية","Real Sociedad|ريال سوسيداد","Real Betis|ريال بيتيس","Villarreal|فياريال","Villareal|فياريال","Villarreal CF|فياريال","Athletic Club|أتلتيك بلباو",
             "Athletic Bilbao|أتلتيك بلباو","Valencia|فالنسيا","Girona|جيرونا","Osasuna|أوساسونا","Celta Vigo|سيلتا فيغو","Getafe|خيتافي",
             "Mallorca|مايوركا","Rayo Vallecano|رايو فاييكانو","Alaves|ألافيس","Las Palmas|لاس بالماس","Espanyol|إسبانيول","Elche|إلتشي",
             "Levante|ليفانتي","Real Oviedo|ريال أوفييدو");

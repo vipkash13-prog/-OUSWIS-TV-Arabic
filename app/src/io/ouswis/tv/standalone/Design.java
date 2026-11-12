@@ -53,6 +53,17 @@ final class Design {
     static void left(Canvas c,String s,float x,float y,Paint p){
         p.setTextAlign(Paint.Align.LEFT);c.drawText(s,x,y,p);
     }
+    /** A name that is too wide is drawn smaller (down to 70 %) rather than cut; only then is it cut with an ellipsis. The paint is left as it was. */
+    static String fitShrink(String s,Paint p,float width){
+        if(s==null)return "";
+        float size=p.getTextSize(),w=p.measureText(s);
+        if(w<=width)return s;
+        float scaled=Math.max(size*0.7f,size*width/w);
+        p.setTextSize(scaled);
+        String out=p.measureText(s)<=width?s:fit(s,p,width);
+        p.setTextSize(size);
+        return out;
+    }
     /** Shrinks the text a little rather than cutting it, then cuts with an ellipsis if still too wide. */
     static String fit(String s,Paint p,float width){
         if(s==null)return "";
@@ -102,12 +113,11 @@ final class Design {
     }
     /** A coloured disc with a letter, for a crest or logo that is missing or still loading. */
     static void initial(Canvas c,String name,float cx,float cy,float radius,Paint p,Paint t){
-        int hash=name==null?0:name.hashCode();
-        float[] hsv={Math.abs(hash)%360,0.62f,0.62f};
-        p.setStyle(Paint.Style.FILL);p.setShader(null);p.setColor(android.graphics.Color.HSVToColor(hsv));
+        if(name!=null)name=name.replace("\u2068","").replace("\u2069","");
+        p.setStyle(Paint.Style.FILL);p.setShader(null);p.setColor(0xFF1A1F3A);   // a dark disc and the first letter, never a loud colour
         c.drawCircle(cx,cy,radius,p);
         String ch=name==null||name.isEmpty()?"?":name.substring(0,name.offsetByCodePoints(0,1));
-        t.setTextSize(radius*0.95f);t.setColor(0xFFFFFFFF);
+        t.setTextSize(radius*0.95f);t.setColor(TEXT);
         center(c,ch,cx,cy+radius*0.33f,t);
     }
     static final java.util.Locale AR=java.util.Locale.forLanguageTag("ar-u-nu-latn");
@@ -126,8 +136,13 @@ final class Design {
         if(code>=95)return "عواصف رعدية";
         return "مطر";
     }
+    private static final ThreadLocal<java.util.Map<String,java.text.SimpleDateFormat>> FORMATS=new ThreadLocal<java.util.Map<String,java.text.SimpleDateFormat>>(){
+        @Override protected java.util.Map<String,java.text.SimpleDateFormat> initialValue(){return new java.util.HashMap<>();}
+    };
     static String clock(long at,String pattern){
-        java.text.SimpleDateFormat f=new java.text.SimpleDateFormat(pattern,AR);
-        f.setTimeZone(java.util.TimeZone.getTimeZone("Asia/Riyadh"));return f.format(new java.util.Date(at));
+        java.util.Map<String,java.text.SimpleDateFormat> m=FORMATS.get();   // one formatter per pattern and thread, not one per frame
+        java.text.SimpleDateFormat f=m.get(pattern);
+        if(f==null){f=new java.text.SimpleDateFormat(pattern,AR);f.setTimeZone(java.util.TimeZone.getTimeZone("Asia/Riyadh"));m.put(pattern,f);}
+        return f.format(new java.util.Date(at));
     }
 }
