@@ -304,7 +304,8 @@ final class RedesignHomeView extends View {
             p.setColor(Design.GOLD);c.drawArc(arc,-90,360*f,false,p);p.setStrokeCap(Paint.Cap.BUTT);
             Design.center(c,String.format(Locale.US,"%d:%02d",minutes/60,minutes%60),cx,cy+10,Design.text(Design.TEXT,44,Design.bold()));
             Design.center(c,"متبقي",cx,cy+36,Design.text(Design.MUTED,15,Design.regular()));
-            Design.right(c,"الصلاة القادمة",385,226,Design.text(Design.MUTED,21,Design.regular()));
+            boolean tomorrow=!Design.clock(next.at,"yyyyMMdd").equals(Design.clock(now,"yyyyMMdd"));
+            Design.right(c,tomorrow?"الصلاة القادمة · غدًا":"الصلاة القادمة",385,226,Design.text(Design.MUTED,21,Design.regular()));
             Paint nameP=Design.text(Design.TEXT,52,Design.bold());
             String name=Design.prayer(next.index);
             Design.right(c,name,385,284,nameP);
@@ -314,7 +315,8 @@ final class RedesignHomeView extends View {
             Paint line=Design.text(Design.MUTED,21,Design.regular());
             Design.right(c,others.get(0)+" · "+others.get(1),385,328,line);
             Design.right(c,others.get(2)+" · "+others.get(3),385,362,line);
-            StringBuilder all=new StringBuilder("الصلاة القادمة: "+name+" "+Design.clock(next.at,"h:mm a")+" · متبقي "+String.format(Locale.US,"%d:%02d",minutes/60,minutes%60));
+            String left=minutes<60?minutes+" دقيقة":(minutes/60)+" س "+(minutes%60)+" د";
+            StringBuilder all=new StringBuilder("مواقيت الصلاة · الصلاة القادمة: "+name+(tomorrow?" · غدًا":"")+" "+Design.clock(next.at,"h:mm a")+" · المتبقي "+left);
             for(int i=0;i<5;i++)if(i!=next.index)all.append(" · ").append(Design.prayer(i)).append(" ").append(Design.clock(day.time(i),"h:mm"));
             a11y.add(box,all.toString(),focus(1,1),true);
         }

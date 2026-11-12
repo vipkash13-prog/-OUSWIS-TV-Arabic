@@ -74,7 +74,7 @@ public final class UpcomingMatches {
             {"AC Milan","ميلان"},{"Napoli","نابولي"},{"Roma","روما"},{"Benfica","بنفيكا"},{"Porto","بورتو"},{"Al Sadd","السد"},{"Al Ain","العين"}};
         for(String[] x:t)AR.put(x[0],x[1]);
     }
-    static String arabic(String name){String v=AR.get(name);return v==null?name:v;}
+    static String arabic(String name){String v=AR.get(name);return v!=null?v:TeamNames.arabic(name);}
 
     public static List<MatchCarouselView.Match> fetch(String[] selected) { return fetch(selected, "upcoming"); }
     public static List<MatchCarouselView.Match> fetch(String[] selected, String section) { return load(selected, section).matches; }

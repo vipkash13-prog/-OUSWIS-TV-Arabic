@@ -69,11 +69,63 @@ assert 'Xtream Codes' in ET.tostring(xml(), encoding='unicode')
 screenshot('xtream-login.png')
 note('PASS: remote LEFT + OK opens the built-in Xtream account/player screen.')
 
+def nodes():
+    return [n for n in xml().iter('node') if n.get('package') == 'io.ouswis.tv.standalone']
+
+def label(n):
+    return n.get('text', '') + ' ' + n.get('content-desc', '')
+
+def key(name):
+    adb('shell','input','keyevent','KEYCODE_DPAD_'+name)
+
+# The redesigned Matches screen (Settings -> Matches): reached with the remote, drawn on one canvas and exposed to
+# accessibility, so the nodes below are what TalkBack reads.
 settings()
 adb('shell', 'input', 'keyevent', 'KEYCODE_DPAD_RIGHT')
 adb('shell', 'input', 'keyevent', 'KEYCODE_DPAD_LEFT')
 adb('shell', 'input', 'keyevent', 'KEYCODE_DPAD_DOWN')
 adb('shell', 'input', 'keyevent', 'KEYCODE_DPAD_CENTER')
+activity('MatchesScreenActivity')
+for _ in range(40):
+    found = nodes()
+    cards = [n for n in found if ' ضد ' in label(n) and n.get('clickable') == 'true']
+    empty_day = any('لا توجد مباريات' in label(n) for n in found)
+    if cards or empty_day:
+        break
+    time.sleep(1)
+else:
+    screenshot('matches-feed-failure.png')
+    (OUT / 'matches-feed-logcat.txt').write_text(adb('logcat','-d','-t','600'))
+    raise AssertionError('The new Matches screen drew neither match cards nor an empty-day message')
+note('PASS: the new Matches screen opened from Settings and showed ' + (str(len(cards)) + ' match cards' if cards else 'an honest empty day') + '.')
+texts = ' | '.join(label(n) for n in nodes())
+for chip in ('أمس', 'اليوم', 'غداً', 'الكل', 'دوري روشن', 'أبطال آسيا', 'أبطال أوروبا', 'الدوري الإسباني', 'المفضلة'):
+    assert chip in texts, chip
+screenshot('matches-screen.png')
+note('PASS: all day and league filters are present and readable.')
+# remote: UP from the first card reaches the day chips (focus on "اليوم"), RIGHT goes to "أمس", LEFT x2 to "غداً"
+key('UP')
+def focused_text():
+    f = [label(n) for n in nodes() if n.get('focused') == 'true']
+    return f[0] if f else ''
+for _ in range(3):
+    if 'اليوم' in focused_text():
+        break
+    key('UP'); time.sleep(0.3)
+assert 'اليوم' in focused_text(), focused_text()
+key('RIGHT'); assert 'أمس' in focused_text(), focused_text()
+key('LEFT'); key('LEFT'); assert 'غداً' in focused_text(), focused_text()
+key('CENTER'); time.sleep(1)
+key('DOWN')
+screenshot('matches-details.png')
+note('PASS: remote arrows move across the RTL filter chips; OK selects tomorrow; DOWN returns to the grid.')
+adb('shell','input','keyevent','KEYCODE_BACK')
+activity('SettingsActivity')
+note('PASS: Back from the new Matches screen returns to Settings.')
+
+# The previous Matches window is still in the app and still passes its own checks, launched directly.
+result = adb('shell', 'am', 'start', '-W', '-n', 'io.ouswis.tv.standalone/io.ouswis.tv.standalone.MatchesActivity')
+assert 'Status: ok' in result
 activity('MatchesActivity')
 def wait_fixtures():
     for _ in range(20):
@@ -90,8 +142,8 @@ wait_fixtures()
 ui = ET.tostring(xml(), encoding='unicode')
 for title in ('مباريات قادمة', 'مباشر الآن', 'نتائج اليوم', 'نتائج أمس'):
     assert title in ui, title
-screenshot('matches-screen.png')
-note('PASS: remote LEFT + DOWN + OK opens Matches with all four tabs.')
+screenshot('matches-screen-legacy.png')
+note('PASS: the previous Matches window opens with all four tabs.')
 def key(name):
     adb('shell','input','keyevent','KEYCODE_DPAD_'+name)
 
@@ -121,7 +173,7 @@ key('LEFT')
 key('LEFT')
 key('CENTER')
 wait_fixtures()
-screenshot('matches-details.png')
+screenshot('matches-details-legacy.png')
 from PIL import Image
 pixel=Image.open(OUT / 'matches-details.png').convert('RGB')
 rgb=pixel.getpixel((int(pixel.width*0.20),int(pixel.height*0.28)))
@@ -133,6 +185,7 @@ result = adb('shell', 'am', 'start', '-W', '-n', 'io.ouswis.tv.standalone/io.ous
 assert 'Status: ok' in result
 activity('HomeActivity')
 assert not any(n.get('resource-id') == 'io.ouswis.tv.standalone:id/home_matches' for n in xml().iter('node'))
+assert sum(1 for n in nodes() if n.get('text') in ('البث المباشر','المباريات','كل التطبيقات','الأخيرة','التحديثات','الإعدادات') and n.get('clickable') == 'true') == 6, 'The six shortcuts of the new home'
 screenshot('home-features.png')
 note('PASS: no floating matches card covers the home screen or drawer.')
 note('No provider credentials were entered. Live stream playback and availability of fixtures require the user/provider network.')
