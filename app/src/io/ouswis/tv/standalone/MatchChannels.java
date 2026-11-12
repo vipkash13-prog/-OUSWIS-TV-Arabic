@@ -135,7 +135,7 @@ final class MatchChannels {
         worker.execute(()->{
             try{
                 java.util.List<LiveData.Channel> list=sportChannels(app,a);
-                java.util.concurrent.ExecutorService pool=java.util.concurrent.Executors.newFixedThreadPool(4)   // never more than four requests at a time;
+                java.util.concurrent.ExecutorService pool=java.util.concurrent.Executors.newFixedThreadPool(4);   // never more than four requests at a time
                 java.util.List<java.util.concurrent.Future<?>> jobs=new ArrayList<>();
                 for(LiveData.Channel ch:list)jobs.add(pool.submit(()->{
                     try{guides.put(ch.id,LiveData.fetchGuide(a,ch.id,GUIDE_PROGRAMMES));guideChannels.put(ch.id,ch);}catch(Exception ignored){}
