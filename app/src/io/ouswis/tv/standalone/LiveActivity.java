@@ -231,7 +231,7 @@ public final class LiveActivity extends Activity {
         private void ensureLoaded(){
             List<LiveData.Category> s=sections();
             if(cat>=0&&cat<s.size())data.loadChannels(s.get(cat).id,()->{
-                if(pendingFocus&&!shown().isEmpty()){pendingFocus=false;sel=MatchChannels.firstSports(shown());top=Math.max(0,sel-2);}   // the first beIN or SSC channel
+                if(pendingFocus&&cat==sportsSection()&&!shown().isEmpty()){pendingFocus=false;sel=MatchChannels.firstSports(shown());top=Math.max(0,sel-2);}   // the first beIN or SSC channel
                 invalidate();wantGuide();schedulePreview();});
         }
         /** Programme lines under visible rows and the guide card of the selected channel. */

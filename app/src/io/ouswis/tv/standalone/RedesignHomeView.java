@@ -278,6 +278,17 @@ final class RedesignHomeView extends View {
     private boolean focus(int rw,int cl){return hasFocus()&&row==rw&&col[rw]==cl;}
     private RectF ring(RectF src,boolean on){if(on){Design.grown(src,g);return g;}return src;}
 
+    // perf probe: how long drawing the home screen takes on the UI thread (logged every 5 s, read by tools/test-redesign.py)
+    private long pfFrames,pfOver16,pfOver32,pfMax,pfSum,pfLog;
+    @Override public void draw(Canvas canvas){
+        long t=System.nanoTime();
+        super.draw(canvas);
+        long us=(System.nanoTime()-t)/1000;
+        pfFrames++;pfSum+=us;if(us>16000)pfOver16++;if(us>32000)pfOver32++;if(us>pfMax)pfMax=us;
+        long now=android.os.SystemClock.uptimeMillis();
+        if(now-pfLog>5000){pfLog=now;android.util.Log.i("FreeMyTV","perf-draw: frames="+pfFrames+" sumUs="+pfSum+" maxUs="+pfMax+" over16ms="+pfOver16+" over32ms="+pfOver32);}
+    }
+
     @Override protected void onDraw(Canvas c){
         int w=getWidth(),h=getHeight();
         if(wallpaper!=null){cropDst.set(0,0,w,h);c.drawBitmap(wallpaper,null,cropDst,wallPaint);}   // already cropped to the screen's shape
