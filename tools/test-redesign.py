@@ -130,7 +130,7 @@ with tempfile.TemporaryDirectory() as temp:
     folder = '/data/user/0/%s/shared_prefs' % PKG
     adb('shell', 'mkdir', '-p', folder)
     adb('shell', 'rm', '-f', folder + '/xtream-vault.xml', folder + '/ouswis-live.xml')
-    adb('shell', 'sh', '-c', 'rm -f /data/user/0/%s/files/live-*.json' % PKG)
+    adb('shell', 'sh', '-c', 'rm -f /data/user/0/%s/files/live-*.json' % PKG, check=False)
     # An older version's plain-text login: the app must seal it and erase this copy on first read.
     xml = ('<?xml version="1.0" encoding="utf-8"?><map><string name="server">http://127.0.0.1:%d</string>'
            '<string name="user">demo</string><string name="pass">demo</string><string name="lastChannel">101</string>'
