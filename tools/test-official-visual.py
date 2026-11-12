@@ -40,7 +40,7 @@ def capture(name,redesigned=False):
     nodes=[(n.get('class'),n.get('text',''),n.get('content-desc',''),n.get('bounds')) for n in tree.iter('node') if n.get('package')==PKG and n.get('clickable')=='true']
     assert len(nodes)>=10,nodes
     if redesigned:
-        labels=[n[1]+' '+n[2] for n in nodes]
+        labels=[(n[1] or n[2]).strip() for n in nodes]
         for shortcut in ('البث المباشر','المباريات','كل التطبيقات','الأخيرة','التحديثات','الإعدادات'):
             assert any(l.strip()==shortcut for l in labels),('Missing shortcut',shortcut)
         assert any('مواقيت الصلاة' in l for l in labels),'The prayer card must be a control on the new home'
