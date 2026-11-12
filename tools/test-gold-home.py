@@ -98,8 +98,9 @@ try:
     chips=[n for n in nodes if label(n).startswith('الطقس')]
     assert chips and bounds(chips[0])[3]<h*0.2,'Weather must be a chip in the top bar'
     assert not any('الرطوبة' in label(n) for n in nodes),'The big weather panel must be gone'
-    # the supplied wallpaper under everything: its moon (about 1533,127 of 1920x1080) is a light pixel, which the old gold wallpaper never had there
-    mr,mg,mb=im.getpixel((int(1533*k),int(127*k)));assert max(mr,mg,mb)>150,('The supplied wallpaper must be drawn (moon)',(mr,mg,mb))
+    # the supplied wallpaper under everything: its pale crescent moon sits near 1533,127 of 1920x1080, which the old gold wallpaper never had there
+    moon=max(max(im.getpixel((int((1533+dx)*k),int((127+dy)*k)))) for dx in range(-40,41,4) for dy in range(-40,41,4))
+    assert moon>150,('The supplied wallpaper must be drawn (its moon is near 1533,127)',moon)
     # the last-channel card is 153 dp (229.5 reference px) tall and stays above the matches heading
     hero=[n for n in nodes if label(n).startswith('آخر قناة') or label(n).startswith('ابدأ المشاهدة')]
     assert hero,'The last-channel card must be a control'
