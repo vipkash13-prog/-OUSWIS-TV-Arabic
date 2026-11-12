@@ -1,0 +1,54 @@
+name: Redesign preview
+on:
+  push:
+    branches: ['feature/redesign-live-matches']
+    paths: ['app/**', 'build.sh', 'tools/test-redesign.py', '.github/workflows/redesign-preview.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - name: Android SDK
+        shell: bash
+        run: |
+          set +o pipefail
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$RUNNER_TEMP/sdk" "build-tools;34.0.0" "platforms;android-34" > /dev/null
+          echo "ANDROID_HOME=$RUNNER_TEMP/sdk" >> "$GITHUB_ENV"
+      - name: Build the preview APK (debug key, never an official release)
+        run: ./build.sh --generic
+      - name: Tools
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y ffmpeg > /dev/null
+          sudo chmod 666 /dev/kvm
+      - name: Emulator run, 1920x1080
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: default
+          arch: x86_64
+          profile: tv_1080p
+          avd-name: ouswis-1080
+          ram-size: 4096M
+          heap-size: 512M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -skin 1920x1080
+          script: |
+            adb install -r FreeMyTV.apk
+            adb shell appops set io.ouswis.tv.standalone SYSTEM_ALERT_WINDOW allow || true
+            python3 tools/test-redesign.py redesign-evidence
+      - name: Publish the preview with its screenshots
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          shopt -s nullglob
+          cp FreeMyTV.apk OUSWIS-TV-redesign-preview.apk
+          gh release create "redesign-${GITHUB_RUN_ID}" --prerelease --target "$GITHUB_SHA" --title "OUSWIS TV redesign preview (not an official release)" \
+            --notes "Branch preview for home, live TV and matches. Debug-signed: it cannot update an installed official build." \
+            OUSWIS-TV-redesign-preview.apk redesign-evidence/*.png redesign-evidence/*.log redesign-evidence/*.txt
