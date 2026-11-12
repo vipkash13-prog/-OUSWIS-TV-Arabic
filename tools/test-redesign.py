@@ -228,7 +228,7 @@ with tempfile.TemporaryDirectory() as temp:
     assert any('SSC 2 HD' in l and 'دوري روشن' in l for l in wait_label('SSC 2 HD', 'the table row with the chosen channel')), 'The pick must show in the table'
     assert 'name="picks"' in adb('shell', 'cat', folder + '/ouswis-live.xml')
     note('PASS: a channel picked by hand for a league is saved and shown in the table.')
-    keys('DPAD_CENTER', pause=2); wait_label('اختر القسم', 'the section list again')
+    tap('دوري روشن السعودي'); wait_label('اختر القسم', 'the section list again')
     tap('القناة الافتراضية')
     wait_label('الافتراضي: SSC', 'the table back on its default')
     note('PASS: choosing the default put the league back on the SSC family.')
