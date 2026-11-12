@@ -71,7 +71,8 @@ public final class PlayerActivity extends Activity {
             // Opened from a match: find the section the channel belongs to, so CH+/CH- have a list to move through.
             new Thread(()->{
                 final String found=MatchChannels.sectionOf(this,account,first.id);
-                if(!found.isEmpty())main.post(()->{if(!isFinishing())loadSection(found,first);});
+                // not in any downloaded section (e.g. a channel from "Recent"): the recents list is its section
+                main.post(()->{if(!isFinishing())loadSection(found.isEmpty()?LiveData.RECENT:found,first);});
             }).start();
         }else loadSection(given,first);
     }

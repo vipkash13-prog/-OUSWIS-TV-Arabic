@@ -58,11 +58,12 @@ if baseline_code=='10149':assert hashlib.sha256(OLD.read_bytes()).hexdigest()==P
 subprocess.run([sys.executable,'tools/verify-release-apk.py',str(OLD)],check=True)
 with zipfile.ZipFile(OLD) as old,zipfile.ZipFile(NEW) as new:
     names={n for n in old.namelist() if n.startswith('assets/')}
-    ADDED={'assets/themes/gold-frame.png','assets/fonts/Tajawal-OFL.txt'}
-    assert names|ADDED=={n for n in new.namelist() if n.startswith('assets/')}
-    # The owner approved a new wallpaper (Nov 11); every other asset must stay byte-identical.
-    WALLPAPER={'assets/themes/gold-sunset.png'}
-    for n in names-WALLPAPER:assert old.read(n)==new.read(n),'Asset changed: '+n
+    # The owner replaced the wallpaper (Nov 12: ouswis_bg_1080p.webp, with a 4K copy) and asked for the old flag/gold wallpaper
+    # and the gold frame to go; every other asset must stay byte-identical.
+    ADDED={'assets/fonts/Tajawal-OFL.txt','assets/backgrounds/ouswis_bg_1080p.webp','assets/backgrounds/ouswis_bg_4k.webp'}
+    REMOVED={'assets/themes/gold-sunset.png'}
+    assert (names-REMOVED)|ADDED=={n for n in new.namelist() if n.startswith('assets/')},sorted(names^{n for n in new.namelist() if n.startswith('assets/')})
+    for n in names-REMOVED:assert old.read(n)==new.read(n),'Asset changed: '+n
     assert not any(n.startswith('lib/') and n.endswith('.so') for n in new.namelist()),'Recheck native ABI coverage'
 note('PASS: all official assets, wallpaper and icons are byte-identical. No native .so/ABI restriction: Java/Dex APK supports armeabi-v7a without a separate native build.')
 assert adb('shell','getprop','ro.kernel.qemu').strip()=='1'

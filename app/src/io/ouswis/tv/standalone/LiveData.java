@@ -216,11 +216,12 @@ final class LiveData {
         try{
             SharedPreferences s=c.getSharedPreferences("ouswis-live",Context.MODE_PRIVATE);
             Channel last=Channel.from(new JSONObject(s.getString("last","{}")));
-            if(last!=null)return last;
+            if(last!=null&&!last.name.trim().isEmpty())return last;
         }catch(Exception ignored){}
         SharedPreferences x=XtreamAccount.prefs(c);
         String id=x.getString("lastChannel","");
-        return id.isEmpty()?null:new Channel(id,x.getString("lastChannelName",""),"","","ts");
+        String name=x.getString("lastChannelName","");
+        return id.isEmpty()||name.trim().isEmpty()?null:new Channel(id,name,"","","ts");
     }
 
     // MARK: guide

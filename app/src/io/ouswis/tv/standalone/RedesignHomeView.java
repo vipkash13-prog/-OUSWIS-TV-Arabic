@@ -44,6 +44,7 @@ final class RedesignHomeView extends View {
     private final Paint p=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
     private final Paint title=Design.text(Design.TEXT,30,Design.bold()),sub=Design.text(Design.MUTED,18,Design.regular()),
             chip=Design.text(Design.TEXT,20,Design.regular()),section=Design.text(Design.MUTED,24,Design.regular()),
+            dateLine=Design.text(0xCCF4EFE4,21,Design.regular()),   // 14sp, 80 % opaque, a light shadow for legibility
             clock=Design.text(Design.TEXT,100,Design.light()),ampm=Design.text(Design.MUTED,36,Design.light()),
             bold=Design.text(Design.TEXT,27,Design.bold()),goldText=Design.text(Design.GOLD,18,Design.regular()),
             badge=Design.text(0xFFFFFFFF,16,Design.bold()),muted=Design.text(Design.MUTED,19,Design.regular()),
@@ -52,7 +53,10 @@ final class RedesignHomeView extends View {
     private final Path path=new Path();
     private final A11y a11y=new A11y(this);
     @Override public android.view.accessibility.AccessibilityNodeProvider getAccessibilityNodeProvider(){return a11y.provider(null,null);}
-    private Bitmap backdrop,wallpaper;
+    private Bitmap wallpaper;
+    private final RectF cropDst=new RectF();
+    private final android.graphics.Rect cropRect=new android.graphics.Rect();
+    private final Paint wallPaint=new Paint(Paint.FILTER_BITMAP_FLAG);
     private float k=1;
     private int row=1;
     private final int[] col=new int[5];
@@ -73,9 +77,9 @@ final class RedesignHomeView extends View {
     RedesignHomeView(Context c,Host host){
         super(c);this.host=host;
         setFocusable(true);setFocusableInTouchMode(true);
+        dateLine.setShadowLayer(3f,0,1.5f,0x99000000);
         account=XtreamAccount.read(c);
         if(account!=null)live=new LiveData(c,account);
-        try(InputStream in=c.getAssets().open("themes/gold-sunset.png")){wallpaper=BitmapFactory.decodeStream(in);}catch(Exception ignored){}
     }
 
     @Override protected void onAttachedToWindow(){super.onAttachedToWindow();MatchChannels.listen(prayerChanged);}
@@ -149,19 +153,10 @@ final class RedesignHomeView extends View {
 
     @Override protected void onSizeChanged(int w,int h,int ow,int oh){
         k=w/1920f;
-        backdrop=Bitmap.createBitmap(Math.max(1,w/2),Math.max(1,h/2),Bitmap.Config.ARGB_8888);
-        Canvas c=new Canvas(backdrop);c.scale(0.5f,0.5f);
-        Design.background(c,w,h,new Paint(Paint.ANTI_ALIAS_FLAG),k);
-        if(wallpaper!=null){
-            // the old horizon, kept in the top third at ~40 %, melting into the background
-            Paint wp=new Paint(Paint.FILTER_BITMAP_FLAG);wp.setAlpha(102);
-            c.save();c.clipRect(0,0,w,h*0.34f);
-            c.drawBitmap(wallpaper,null,new RectF(0,0,w,h),wp);
-            c.restore();
-            Paint fade=new Paint();
-            fade.setShader(new LinearGradient(0,h*0.14f,0,h*0.34f,0x000B0D1A,Design.BG,Shader.TileMode.CLAMP));
-            c.drawRect(0,h*0.14f,w,h*0.34f,fade);
-        }
+        // the supplied wallpaper, nothing laid over it; the 4K file only on a 4K panel with memory to spare
+        boolean big=w>=3000&&!HomeApps.lowRam(getContext());
+        String name=big?"backgrounds/ouswis_bg_4k.webp":"backgrounds/ouswis_bg_1080p.webp";
+        try(InputStream in=getContext().getAssets().open(name)){wallpaper=BitmapFactory.decodeStream(in);}catch(Exception ignored){wallpaper=null;}
     }
     private String clockText(){return fmt("h:mm");}
     private String fmt(String pattern){
@@ -180,7 +175,12 @@ final class RedesignHomeView extends View {
 
     @Override protected void onDraw(Canvas c){
         int w=getWidth(),h=getHeight();
-        if(backdrop!=null)c.drawBitmap(backdrop,null,new RectF(0,0,w,h),null);
+        if(wallpaper!=null){   // centerCrop
+            float s=Math.max(w/(float)wallpaper.getWidth(),h/(float)wallpaper.getHeight());
+            float sw=w/s,sh=h/s;
+            android.graphics.Rect src=cropRect;src.set((int)((wallpaper.getWidth()-sw)/2),(int)((wallpaper.getHeight()-sh)/2),(int)((wallpaper.getWidth()+sw)/2),(int)((wallpaper.getHeight()+sh)/2));
+            cropDst.set(0,0,w,h);c.drawBitmap(wallpaper,src,cropDst,wallPaint);
+        }else c.drawColor(Design.BG);
         a11y.begin(k);
         c.save();c.scale(k,k);
         drawTop(c);drawHero(c);drawPrayer(c);
@@ -205,8 +205,10 @@ final class RedesignHomeView extends View {
         Design.right(c,fmt("a"),1050-tw/2-10,112,ampm);
         SaudiDates dates=new SaudiDates();dates.update(System.currentTimeMillis(),new Locale("ar"));
         SimpleDateFormat g2=new SimpleDateFormat("d MMMM yyyy",Design.AR);g2.setTimeZone(TimeZone.getTimeZone("Asia/Riyadh"));
-        Design.center(c,g2.format(new Date())+" · "+dates.hijri,1015,148,Design.text(Design.MUTED,21,Design.regular()));
-        a11y.add(760,30,1340,160,"الساعة "+time+" "+fmt("a")+" · "+g2.format(new Date())+" · "+dates.hijri,false,false);
+        // the date sits under the clock's own descent with a 6dp (9 reference px) gap: the two lines never touch
+        float dateBase=112+clock.descent()+9-dateLine.ascent();
+        Design.center(c,g2.format(new Date())+" · "+dates.hijri,1015,dateBase,dateLine);
+        a11y.add(760,30,1340,dateBase+dateLine.descent(),"الساعة "+time+" "+fmt("a")+" · "+g2.format(new Date())+" · "+dates.hijri,false,false);
         // chips: weather, connection, settings
         HomeData.Weather wx=HomeData.get(getContext()).weather;
         r.set(272,60,436,116);RectF box=ring(r,focus(0,0));Design.card(c,box,28,1,p,Design.SURFACE);
@@ -230,45 +232,55 @@ final class RedesignHomeView extends View {
         return s.length()>8?s.substring(0,8):s;
     }
 
+    /** dp of the reference design: 1920 reference px across 1280 dp. */
+    private static final float DP=1.5f;
+    private final Paint heroPaint=new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Path heroClip=new Path();
+
+    /** The last-channel card: 153 dp tall, always, and everything inside it is clipped to it, so it can't cover the row below. */
     private void drawHero(Canvas c){
-        r.set(611,163,1850,397);RectF box=ring(r,focus(1,0));
-        p.setStyle(Paint.Style.FILL);
-        p.setColor(0xFFFFFFFF);
-        p.setShader(new LinearGradient(box.left,box.top,box.right,box.bottom,0xFF0F4B33,0xFF11172E,Shader.TileMode.CLAMP));
-        c.drawRoundRect(box,30,30,p);p.setShader(null);
-        p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(1);p.setColor(Design.STROKE);c.drawRoundRect(box,30,30,p);
+        r.set(611,163,1850,163+153*DP);RectF box=ring(r,focus(1,0));
+        heroPaint.setStyle(Paint.Style.FILL);
+        heroPaint.setShader(new LinearGradient(box.left,box.top,box.right,box.bottom,0xFF0F4B33,0xFF11172E,Shader.TileMode.CLAMP));
+        c.drawRoundRect(box,30,30,heroPaint);heroPaint.setShader(null);
+        heroPaint.setStyle(Paint.Style.STROKE);heroPaint.setStrokeWidth(1);heroPaint.setColor(Design.STROKE);c.drawRoundRect(box,30,30,heroPaint);
         LiveData.Channel ch=LiveData.lastWatched(getContext());
-        // 200x113 thumbnail (the channel logo on a pitch-green tile), with the "live" badge
-        r.set(box.right-300,box.top+32,box.right-28,box.top+185);
-        Design.fill(c,r,18,p,0xFF1E7A4B);
+        c.save();c.clipRect(box.left+2,box.top+2,box.right-2,box.bottom-2);
+        // 200x113 dp thumbnail carrying the channel's logo (stream_icon), with the "live" badge
+        float tw=200*DP,th=113*DP;
+        float pad=(box.height()-th)/2;
+        RectF thumb=new RectF(box.right-pad-tw,box.top+pad,box.right-pad,box.top+pad+th);
+        Design.fill(c,thumb,18,p,0xFF1E7A4B);
+        float x=thumb.left-30;
         if(ch!=null){
-            Bitmap logo=ImageCache.get(ch.icon,this::postInvalidate);
+            Bitmap logo=ch.icon.isEmpty()?null:ImageCache.get(ch.icon,this::postInvalidate);
             if(logo!=null){
-                float s=Math.min(180f/logo.getWidth(),90f/logo.getHeight());
-                float lw=logo.getWidth()*s,lh=logo.getHeight()*s;
-                bm.set(r.centerX()-lw/2,r.centerY()-lh/2,r.centerX()+lw/2,r.centerY()+lh/2);c.drawBitmap(logo,null,bm,p);
-            }else Design.initial(c,ch.name,r.centerX(),r.centerY(),36,p,badge);
-            Design.liveBadge(c,r.right-52,r.top+26,"مباشر",15,p,badge);
+                float sc=Math.min(tw*0.72f/logo.getWidth(),th*0.62f/logo.getHeight());
+                float lw=logo.getWidth()*sc,lh=logo.getHeight()*sc;
+                bm.set(thumb.centerX()-lw/2,thumb.centerY()-lh/2,thumb.centerX()+lw/2,thumb.centerY()+lh/2);p.setColor(0xFFFFFFFF);c.drawBitmap(logo,null,bm,p);
+            }else Design.initial(c,ch.name,thumb.centerX(),thumb.centerY(),34,p,badge);
+            Design.liveBadge(c,thumb.right-52,thumb.top+26,"مباشر",15,p,badge);
         }
-        float x=box.right-330;
         if(ch==null){
-            Design.right(c,"ابدأ المشاهدة",x,box.top+110,Design.text(Design.TEXT,40,Design.bold()));
-            Design.right(c,"افتح البث المباشر واختر قناة",x,box.top+150,Design.text(Design.MUTED,22,Design.regular()));
+            Design.right(c,"ابدأ المشاهدة",x,box.top+box.height()*0.5f,Design.text(Design.TEXT,40,Design.bold()));
+            Design.right(c,"افتح البث المباشر واختر قناة",x,box.top+box.height()*0.5f+40,Design.text(Design.MUTED,22,Design.regular()));
         }else{
-            Design.right(c,"آخر قناة شاهدتها",x,box.top+56,Design.text(Design.GOLD,22,Design.regular()));
-            Design.right(c,Design.fit(ch.name.isEmpty()?"القناة":ch.name,Design.text(Design.TEXT,50,Design.bold()),700),x,box.top+112,Design.text(Design.TEXT,50,Design.bold()));
+            Design.right(c,"آخر قناة شاهدتها",x,box.top+50,Design.text(Design.GOLD,22,Design.regular()));
+            Paint nameP=Design.text(Design.TEXT,44,Design.bold());
+            Design.right(c,Design.fit(ch.name,nameP,x-box.left-40),x,box.top+104,nameP);
             long now=System.currentTimeMillis();
             List<LiveData.Program> guide=live==null?null:live.guide(ch.id);
             LiveData.Program cur=LiveData.current(guide,now),nxt=LiveData.following(guide,now);
-            Paint line=Design.text(Design.MUTED,23,Design.regular());
+            Paint line=Design.text(Design.MUTED,22,Design.regular());
             if(cur!=null){
-                Design.right(c,Design.fit("الآن: "+cur.title,line,700),x,box.top+150,line);
+                Design.right(c,Design.fit("الآن: "+cur.title,line,x-box.left-40),x,box.top+142,line);
                 float f=Math.max(0,Math.min(1,(now-cur.start)/(float)Math.max(1,cur.end-cur.start)));
-                r.set(box.left+86,box.bottom-34,x,box.bottom-30);Design.fill(c,r,2,p,0x1FFFFFFF);
-                r.set(x-(x-box.left-86)*f,box.bottom-34,x,box.bottom-30);Design.fill(c,r,2,p,Design.GOLD);
+                r.set(box.left+40,box.bottom-24,x,box.bottom-20);Design.fill(c,r,2,p,0x1FFFFFFF);
+                r.set(x-(x-box.left-40)*f,box.bottom-24,x,box.bottom-20);Design.fill(c,r,2,p,Design.GOLD);
             }
-            if(nxt!=null)Design.right(c,Design.fit("التالي "+fmt("h:mm a",nxt.start)+": "+nxt.title,line,700),x,box.top+186,line);
+            if(nxt!=null)Design.right(c,Design.fit("التالي "+fmt("h:mm a",nxt.start)+": "+nxt.title,line,x-box.left-40),x,box.top+178,line);
         }
+        c.restore();
         a11y.add(box,heroLabel(ch),focus(1,0),true);
         if(focus(1,0))Design.focusRing(c,box,30,1,p);
     }
@@ -475,7 +487,7 @@ final class RedesignHomeView extends View {
             case 1:
                 if(cl==0){
                     LiveData.Channel ch=LiveData.lastWatched(ctx);
-                    if(ch!=null&&account!=null)start(PlayerActivity.intent(ctx,ch,LiveData.RECENT));
+                    if(ch!=null&&account!=null)start(PlayerActivity.intent(ctx,ch,""));   // the player finds the channel's own section
                     else start(new Intent(ctx,LiveActivity.class));
                 }else prayerDetails();
                 break;

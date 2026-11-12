@@ -39,13 +39,12 @@ final class GoldenHomeSkin {
     private int generation=-1;
     GoldenHomeSkin(){line.setStyle(Paint.Style.STROKE);cardRim.setStyle(Paint.Style.STROKE);}
     void load(Context context){
-        wallpaper=decode(context,"themes/gold-sunset.png");
+        wallpaper=decode(context,"backgrounds/ouswis_bg_1080p.webp");
         prayerArt=decode(context,"themes/gold-prayers.png");
         prayerBackdrop=CardBackdrop.load(context,"themes/card-prayer.jpg",true,0);
         weatherPhoto=decode(context,"themes/gold-weather.png");
         calendarIcon=decode(context,"themes/gold-calendar.png");
         mosqueIcon=decode(context,"themes/gold-mosque.png");
-        frameArt=decode(context,"themes/gold-frame.png");
     }
     private static Bitmap decode(Context context,String path){
         try(InputStream in=context.getAssets().open(path)){return BitmapFactory.decodeStream(in);}

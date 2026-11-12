@@ -183,8 +183,18 @@ with tempfile.TemporaryDirectory() as temp:
     # 3. the live browser: sections, channels, EPG, a muted preview, favourites, zapping
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.LiveActivity')
     wait_label('قسم رياضة', 'the server categories on the live screen')
-    keys('DPAD_LEFT')    # RTL: next section, "رياضة" (after favourites and recents)
+    # remote columns: the screen opens on the channels; RIGHT -> sections, DOWN inside them, LEFT -> channels, LEFT -> preview
+    assert 'SSC 1 HD' in focused_label() or '101' in focused_label(), 'The channels column must hold the first focus: ' + focused_label()
+    keys('DPAD_RIGHT'); assert focused_label().startswith('قسم') and 'الأخيرة' in focused_label(), 'RIGHT must move to the sections column: ' + focused_label()
+    keys('DPAD_DOWN'); assert focused_label().startswith('قسم رياضة'), 'DOWN in the sections must go to the next section: ' + focused_label()
+    keys('DPAD_UP'); assert focused_label().startswith('قسم') and 'الأخيرة' in focused_label(), 'UP in the sections must go back: ' + focused_label()
+    keys('DPAD_DOWN'); keys('DPAD_LEFT')
     wait_label('SSC 2 HD', 'the sport channels')
+    assert 'SSC 1 HD' in focused_label(), 'LEFT from the sections must focus the channels: ' + focused_label()
+    keys('DPAD_RIGHT'); assert focused_label().startswith('قسم رياضة'), 'Back from the channels the focus must be on the section I was in: ' + focused_label()
+    keys('DPAD_LEFT', 'DPAD_LEFT'); assert focused_label().startswith('معاينة'), 'The preview is the third column: ' + focused_label()
+    keys('DPAD_RIGHT')
+    note('PASS: live screen remote columns: RIGHT/LEFT move sections <-> channels <-> preview, UP/DOWN stay inside the list, and the section is kept when coming back.')
     keys('DPAD_DOWN')
     time.sleep(5); img = shot('redesign-live-preview.png')
     assert colourful(img, (0.06, 0.18, 0.44, 0.52)) > 0.2, 'The muted preview did not show a picture'

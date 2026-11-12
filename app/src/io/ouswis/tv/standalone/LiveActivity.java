@@ -162,6 +162,7 @@ public final class LiveActivity extends Activity {
         private Bitmap backdrop;
         private float k;
         private int cat,sel,top,catTop,headerFocus=-1;   // headerFocus: -1 none, 0 search, 1 refresh
+        private int column=1;   // 0 sections, 1 channels, 2 preview: left/right move between them, up/down inside one
         private String search="";
         private boolean previewOn;
         private final Runnable startPreviewLater=()->{
@@ -276,7 +277,9 @@ public final class LiveActivity extends Activity {
                     r.set(1563,y-30,1833,y+26);Design.fill(c,r,16,p,0x29E9C46A);
                     r.set(1826,y-26,1833,y+22);Design.fill(c,r,4,p,Design.GOLD);
                 }
-                a11y.add(1563,y-30,1833,y+26,"قسم "+s.name+(s.count>=0?" ("+s.count+")":"")+(i==cat?" — محدد":""),false,false);
+                boolean secFocus=i==cat&&column==0&&headerFocus<0;
+                if(secFocus){r.set(1563,y-30,1833,y+26);Design.grown(r,g);Design.focusRing(c,g,16,1,p);}
+                a11y.add(1563,y-30,1833,y+26,"قسم "+s.name+(s.count>=0?" ("+s.count+")":"")+(i==cat?" — محدد":""),secFocus,true);
                 small.setColor(i==cat?Design.TEXT:Design.MUTED);
                 Design.right(c,Design.fit(s.name,small,190),1812,y+7,small);
                 if(s.count>=0){Design.left(c,String.valueOf(s.count),1583,y+2,muted);}
@@ -295,9 +298,9 @@ public final class LiveActivity extends Activity {
                 LiveData.Channel ch=list.get(i);
                 float y=170+(i-top)*87;
                 r.set(917,y,1511,y+80);
-                boolean focused=i==sel&&headerFocus<0;
+                boolean focused=i==sel&&headerFocus<0&&column==1;
                 if(focused){Design.grown(r,g);Design.fill(c,g,18,p,0x1FE9C46A);}
-                else Design.fill(c,r,18,p,0x08FFFFFF);
+                else Design.fill(c,r,18,p,i==sel?0x14FFFFFF:0x08FFFFFF);
                 num.setTextSize(19);Design.right(c,ch.num.isEmpty()?String.valueOf(i+1):ch.num,1493,y+47,num);
                 r.set(1367,y+14,1439,y+66);Design.fill(c,r,10,p,0x14FFFFFF);
                 Bitmap logo=ImageCache.get(ch.icon,()->invalidate());
@@ -340,10 +343,11 @@ public final class LiveActivity extends Activity {
                         bm.set(476-lw/2,330-lh/2,476+lw/2,330+lh/2);p.setColor(0xFFFFFFFF);c.drawBitmap(logo,null,bm,p);
                     }
                     Design.center(c,ch.name,476,450,name);
-                    a11y.add(72,163,880,582,"معاينة "+ch.name,false,false);
+                    a11y.add(72,163,880,582,"معاينة "+ch.name,column==2&&headerFocus<0,true);
                     Design.center(c,"اضغط OK لملء الشاشة",476,490,muted);
                 }
             }
+            if(column==2&&headerFocus<0){r.set(72,163,880,582);Design.grown(r,g);Design.focusRing(c,g,26,1,p);}
             // guide card
             r.set(72,603,880,981);Design.card(c,r,26,1,p,Design.SURFACE);
             if(sel>=0&&sel<list.size()){
@@ -365,7 +369,7 @@ public final class LiveActivity extends Activity {
                 }
             }
             // footer
-            Design.right(c,"OK تشغيل · ▲▼ القنوات · ◀▶ الأقسام · ضغطة مطوّلة = مفضلة · CH+/CH- أثناء التشغيل",1848,1054,muted);
+            Design.right(c,"OK تشغيل · ▲▼ داخل القائمة · ◀▶ بين الأقسام والقنوات والمعاينة · ضغطة مطوّلة = مفضلة · CH+/CH-",1848,1054,muted);
             Design.left(c,"البث المباشر",72,1054,muted);
             c.restore();
         }
@@ -374,22 +378,33 @@ public final class LiveActivity extends Activity {
             List<LiveData.Channel> list=shown();
             int secs=sections().size();
             switch(key){
-                case KeyEvent.KEYCODE_DPAD_DOWN:case KeyEvent.KEYCODE_CHANNEL_DOWN:
+                case KeyEvent.KEYCODE_CHANNEL_DOWN:case KeyEvent.KEYCODE_CHANNEL_UP:{
+                    int d=key==KeyEvent.KEYCODE_CHANNEL_DOWN?1:-1;   // the channel keys always move through the channels
+                    if(headerFocus>=0)headerFocus=-1;
+                    if(sel+d>=0&&sel+d<list.size()){sel+=d;wantGuide();schedulePreview();}
+                    invalidate();return true;}
+                case KeyEvent.KEYCODE_DPAD_DOWN:
                     if(headerFocus>=0){headerFocus=-1;schedulePreview();}
-                    else if(sel<list.size()-1){sel++;wantGuide();schedulePreview();}
+                    else if(column==0){if(cat<secs-1){cat++;sel=0;top=0;switched();}}
+                    else if(column==1){if(sel<list.size()-1){sel++;wantGuide();schedulePreview();}}
                     invalidate();return true;
-                case KeyEvent.KEYCODE_DPAD_UP:case KeyEvent.KEYCODE_CHANNEL_UP:
+                case KeyEvent.KEYCODE_DPAD_UP:
                     if(headerFocus>=0)return true;
-                    if(sel>0){sel--;wantGuide();schedulePreview();}
-                    else{headerFocus=0;main.removeCallbacks(startPreviewLater);stopPreview();}
+                    if(column==0){
+                        if(cat>0){cat--;sel=0;top=0;switched();}
+                        else{headerFocus=0;main.removeCallbacks(startPreviewLater);stopPreview();}
+                    }else if(column==1){
+                        if(sel>0){sel--;wantGuide();schedulePreview();}
+                        else{headerFocus=0;main.removeCallbacks(startPreviewLater);stopPreview();}
+                    }
                     invalidate();return true;
-                case KeyEvent.KEYCODE_DPAD_RIGHT:   // RTL: the sections are on the right
+                case KeyEvent.KEYCODE_DPAD_RIGHT:   // RTL: the sections are on the right, then the channels, then the preview
                     if(headerFocus>=0){headerFocus=0;invalidate();return true;}
-                    if(cat>0){cat--;sel=0;top=0;switched();}
+                    if(column>0){column--;invalidate();}
                     return true;
                 case KeyEvent.KEYCODE_DPAD_LEFT:
                     if(headerFocus>=0){headerFocus=1;invalidate();return true;}
-                    if(cat<secs-1){cat++;sel=0;top=0;switched();}
+                    if(column<2){column++;invalidate();}
                     return true;
                 case KeyEvent.KEYCODE_DPAD_CENTER:case KeyEvent.KEYCODE_ENTER:
                     if(e.getRepeatCount()==0)e.startTracking();
@@ -403,7 +418,7 @@ public final class LiveActivity extends Activity {
         @Override public boolean onKeyLongPress(int key,KeyEvent e){
             if(key!=KeyEvent.KEYCODE_DPAD_CENTER&&key!=KeyEvent.KEYCODE_ENTER)return super.onKeyLongPress(key,e);
             List<LiveData.Channel> list=shown();
-            if(headerFocus<0&&sel>=0&&sel<list.size()){
+            if(headerFocus<0&&column!=0&&sel>=0&&sel<list.size()){
                 boolean now=data.toggleFavorite(list.get(sel));
                 android.widget.Toast.makeText(getContext(),now?"أُضيفت إلى المفضلة":"أُزيلت من المفضلة",android.widget.Toast.LENGTH_SHORT).show();
                 invalidate();
@@ -416,6 +431,8 @@ public final class LiveActivity extends Activity {
                     askSearch(search,q->{search=q;sel=0;top=0;invalidate();schedulePreview();});
                 }else if(headerFocus==1){
                     data.refresh(()->{invalidate();ensureLoaded();});
+                }else if(column==0){
+                    column=1;invalidate();   // OK on a section: go to its channels
                 }else{
                     List<LiveData.Channel> list=shown();
                     if(sel>=0&&sel<list.size()){List<LiveData.Category> ss=sections();play(list.get(sel),cat>=0&&cat<ss.size()?ss.get(cat).id:"");}

@@ -98,6 +98,14 @@ try:
     chips=[n for n in nodes if label(n).startswith('الطقس')]
     assert chips and bounds(chips[0])[3]<h*0.2,'Weather must be a chip in the top bar'
     assert not any('الرطوبة' in label(n) for n in nodes),'The big weather panel must be gone'
+    # the supplied wallpaper under everything: its moon (about 1533,127 of 1920x1080) is a light pixel, which the old gold wallpaper never had there
+    mr,mg,mb=im.getpixel((int(1533*k),int(127*k)));assert max(mr,mg,mb)>150,('The supplied wallpaper must be drawn (moon)',(mr,mg,mb))
+    # the last-channel card is 153 dp (229.5 reference px) tall and stays above the matches heading
+    hero=[n for n in nodes if label(n).startswith('آخر قناة') or label(n).startswith('ابدأ المشاهدة')]
+    assert hero,'The last-channel card must be a control'
+    hb=bounds(hero[0]);assert (hb[3]-hb[1])<=(229.5+16)*k+2,('The hero card must be 153 dp tall',hb)
+    heading=[n for n in nodes if n.get('text')=='مباريات اليوم']
+    if heading:assert hb[3]<=bounds(heading[0])[1]+2,('The hero card must not reach the matches row',hb,bounds(heading[0]))
     # the first focus is the last-channel card
     first=focused(tree);assert first is not None and ('آخر قناة' in label(first) or 'ابدأ المشاهدة' in label(first)),label(first) if first is not None else None
     # the row of apps: what we put there, then the "+ add" tile
