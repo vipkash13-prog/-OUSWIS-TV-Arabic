@@ -328,9 +328,18 @@ with tempfile.TemporaryDirectory() as temp:
     eri = wait_label('سورينام ضد إريتريا', 'the Suriname v Eritrea match (in no guide)')
     assert any('اختر القناة' in l for l in eri) and not any('beIN' in l or 'SSC' in l for l in eri), 'An unconfirmed match must ask for a channel: ' + str(eri)
     # OK on the unconfirmed match opens the sports section of the live screen on its first beIN/SSC channel
-    tap('سورينام ضد إريتريا')
-    try: front('LiveActivity', tries=6)
-    except AssertionError: tap('سورينام ضد إريتريا'); front('LiveActivity')
+    def focus_card(part):
+        """Walk the 2-column grid with the remote (a fresh screen starts on the chips): row by row until the card holds the focus."""
+        adb('shell', 'am', 'start', '-W', '-n', PKG + '/.MatchesScreenActivity'); time.sleep(2)
+        keys('DPAD_DOWN')
+        for _ in range(8):
+            if part in focused_label(): return
+            keys('DPAD_LEFT')
+            if part in focused_label(): return
+            keys('DPAD_RIGHT', 'DPAD_DOWN')
+        raise AssertionError('Could not focus ' + part + ' | focused: ' + focused_label())
+    focus_card('سورينام ضد إريتريا')
+    keys('DPAD_CENTER', pause=2); front('LiveActivity')
     wait_label('SSC 2 HD', 'the sports section of the live screen')
     fl = focused_label()
     assert 'SSC 1 HD' in fl, 'The focus must be on the first beIN/SSC channel: ' + fl
