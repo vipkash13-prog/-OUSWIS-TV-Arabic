@@ -288,7 +288,7 @@ with tempfile.TemporaryDirectory() as temp:
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.SectionOrderActivity')
     wait_label('FR|TF1 HD', 'the sections list in Settings')
     tap('FR|TF1 HD'); tap('إلى أول القائمة'); time.sleep(1)
-    note('am start Live -> ' + adb('shell', 'am', 'start', '-W', '-n', PKG + '/.LiveActivity', check=False)[-300:] + ' | front ' + adb('shell', 'dumpsys', 'activity', 'activities', check=False).split('topResumedActivity')[-1][:120])
+    note('am start Live -> ' + adb('shell', 'am', 'start', '-W', '-f', '0x04000000', '-n', PKG + '/.LiveActivity', check=False)[-300:] + ' | front ' + adb('shell', 'dumpsys', 'activity', 'activities', check=False).split('topResumedActivity')[-1][:120])
     time.sleep(2)
     wait_label('قسم FR|TF1 HD', 'the live sections after reordering')
     firsts = [l for l in labels() if l.strip().startswith('قسم ')]
@@ -297,13 +297,13 @@ with tempfile.TemporaryDirectory() as temp:
     keys('BACK', pause=1.5)
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.SectionOrderActivity'); wait_label('أخبار', 'the sections list')
     tap('أخبار'); tap('إخفاء القسم')
-    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.LiveActivity'); wait_label('قسم FR|TF1 HD', 'the live screen after hiding')
+    adb('shell', 'am', 'start', '-W', '-f', '0x04000000', '-n', PKG + '/.LiveActivity'); wait_label('قسم FR|TF1 HD', 'the live screen after hiding')
     assert not any('قسم أخبار' in l for l in labels()), 'A hidden section must leave the live screen'
     note('PASS: a hidden section no longer shows on the live screen.')
     keys('BACK', pause=1.5)
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.SectionOrderActivity'); wait_label('الترتيب الافتراضي', 'the reset row')
     tap('الترتيب الافتراضي')
-    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.LiveActivity'); wait_label('قسم رياضة', 'the live screen after the reset')
+    adb('shell', 'am', 'start', '-W', '-f', '0x04000000', '-n', PKG + '/.LiveActivity'); wait_label('قسم رياضة', 'the live screen after the reset')
     firsts = [l for l in labels() if l.strip().startswith('قسم ')]
     assert firsts and 'FR|TF1 HD' not in firsts[0], 'After the reset the foreign section must not lead: ' + str(firsts[:4])
     note('PASS: reset restored the default order and showed the hidden section again.')
