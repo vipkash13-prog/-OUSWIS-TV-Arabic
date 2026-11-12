@@ -228,8 +228,8 @@ with tempfile.TemporaryDirectory() as temp:
     # 3b. "last channel" follows what was watched full screen for 10 s, from anywhere; the small preview never counts
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.HomeActivity'); wait_label('آخر قناة شاهدتها', 'the home screen')
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.PlayerActivity', '-e', 'id', '110', '-e', 'name', 'beIN Sports 1 HD', '-e', 'ext', 'ts', '-e', 'num', '110')
-    time.sleep(14)    # channel A, longer than 10 s
-    keys('CHANNEL_UP', pause=14)    # channel B, the next one in its section, longer than 10 s
+    time.sleep(20)    # channel A: more than 10 s of picture (the emulator takes a few seconds to start it)
+    keys('CHANNEL_UP', pause=20)    # channel B, the next one in its section, also more than 10 s
     keys('BACK', pause=2); to_home()
     got = wait_label('آخر قناة شاهدتها', 'the last-channel card after coming back')
     assert any('beIN Sports 2' in l for l in got), 'Home must read the last channel again on return: ' + str(got)
@@ -238,7 +238,7 @@ with tempfile.TemporaryDirectory() as temp:
     assert recent.index('111') < recent.index('110'), 'Recent must list B before A: ' + recent[:900]
     note('PASS: watched A (beIN 1) then B (beIN 2), 14 s each: coming back, the home card shows B and Recent lists B before A.')
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.LiveActivity'); wait_label('قسم', 'the live screen')
-    keys('DPAD_DOWN', pause=14)    # the preview plays another channel for 14 s
+    keys('DPAD_DOWN', pause=20)    # the preview plays another channel for 20 s
     keys('BACK', pause=2); to_home()
     assert any('beIN Sports 2' in l for l in wait_label('آخر قناة شاهدتها', 'the card after a long preview')), 'The small preview must not change the last channel'
     note('PASS: 14 s on the small preview in the live screen left the last channel unchanged.')
