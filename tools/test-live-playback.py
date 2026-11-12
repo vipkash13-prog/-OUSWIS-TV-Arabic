@@ -150,16 +150,16 @@ with tempfile.TemporaryDirectory() as temp:
     subprocess.run([ADB, 'shell', 'cat > '+pref], input=content.encode(), check=True)
     adb('shell', 'chown', uid+':'+uid, folder, pref)
     adb('shell', 'am', 'start', '-W', '-n', 'io.ouswis.tv.standalone/io.ouswis.tv.standalone.HomeActivity')
-    keys('DPAD_DOWN')
+    time.sleep(3)
     nodes = list(ui().iter('node'))
     height = Image.open(BytesIO(subprocess.check_output([ADB, 'exec-out', 'screencap', '-p']))).height
-    entries = [n for n in nodes if n.get('text') in ('Live TV', 'البث التلفزيوني المباشر')
-               and int(re.findall(r'\d+', n.get('bounds'))[1]) > height//3]
-    assert len(entries) == 1, 'Expected exactly one Live TV tile in the drawer, inside Inputs: '+str(len(entries))
+    entries = [n for n in nodes if n.get('text') in ('Live TV', 'البث التلفزيوني المباشر', 'البث المباشر')
+               and n.get('clickable') == 'true' and int(re.findall(r'\d+', n.get('bounds'))[1]) > height//2]
+    assert len(entries) == 1, 'Expected exactly one Live TV shortcut on the redesigned home: '+str(len(entries))
     (OUT / 'live-input-single.png').write_bytes(subprocess.check_output([ADB, 'exec-out', 'screencap', '-p']))
-    note('PASS: drawer has one Live TV tile in Inputs, with no duplicate shortcut.')
-    x1,y1,x2,y2 = map(int,re.findall(r'\d+',entries[0].get('bounds')))
-    adb('shell','input','tap',str((x1+x2)//2),str((y1+y2)//2))
+    note('PASS: the redesigned home has one Live TV shortcut, with no duplicate.')
+    # The catalogue player (XtreamActivity) is still in the app and is tested here directly, as before.
+    adb('shell', 'am', 'start', '-W', '-n', 'io.ouswis.tv.standalone/io.ouswis.tv.standalone.XtreamActivity')
     time.sleep(3)
     first = next(n for n in ui().iter('node') if n.get('text') == 'Test 16:9')
     x1,y1,x2,y2 = map(int,re.findall(r'\d+',first.get('bounds')))

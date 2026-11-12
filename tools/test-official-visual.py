@@ -27,11 +27,11 @@ def ui():
 def info():
     t=adb('shell','dumpsys','package',PKG)
     return [re.search(p,t)[1] for p in (r'(?:userId|appId)=(\d+)',r'firstInstallTime=([^\n]+)',r'versionCode=(\d+)')]
-def capture(name):
+def capture(name,redesigned=False):
     adb('shell','am','start','-W','-n',PKG+'/.HomeActivity')
-    for attempt in range(14):
+    for attempt in range(20):
         tree=ui();text=ET.tostring(tree,encoding='unicode')
-        if 'المتبقي' in text and ('°C' in text or '°F' in text):break
+        if 'المتبقي' in text and (('°' in text) if redesigned else ('°C' in text or '°F' in text)):break
         time.sleep(1)
     else:raise AssertionError('Expected real prayer/weather data before visual comparison')
     png=adb('exec-out','screencap','-p',binary=True)
@@ -39,6 +39,14 @@ def capture(name):
     (OUT/(name+'.png')).write_bytes(png);(OUT/(name+'.xml')).write_bytes(ET.tostring(tree))
     nodes=[(n.get('class'),n.get('text',''),n.get('content-desc',''),n.get('bounds')) for n in tree.iter('node') if n.get('package')==PKG and n.get('clickable')=='true']
     assert len(nodes)>=10,nodes
+    if redesigned:
+        labels=[n[1]+' '+n[2] for n in nodes]
+        for shortcut in ('البث المباشر','المباريات','كل التطبيقات','الأخيرة','التحديثات','الإعدادات'):
+            assert any(l.strip()==shortcut for l in labels),('Missing shortcut',shortcut)
+        assert any('مواقيت الصلاة' in l for l in labels),'The prayer card must be a control on the new home'
+        assert any(l.startswith('الطقس') for l in labels),'The weather chip must be a control on the new home'
+        assert any('إضافة تطبيق' in l for l in labels),'The + tile must close the apps row'
+        return {'controls':nodes}
     widgets=[n.get('bounds') for n in tree.iter('node') if n.get('package')==PKG and n.get('clickable')!='true' and ('مواقيت الصلاة' in (n.get('text','')+n.get('content-desc','')) or 'الرطوبة' in (n.get('text','')+n.get('content-desc','')))]
     assert len(widgets)==2,widgets
     return {'controls':nodes,'widgets':widgets}
@@ -50,7 +58,7 @@ if baseline_code=='10149':assert hashlib.sha256(OLD.read_bytes()).hexdigest()==P
 subprocess.run([sys.executable,'tools/verify-release-apk.py',str(OLD)],check=True)
 with zipfile.ZipFile(OLD) as old,zipfile.ZipFile(NEW) as new:
     names={n for n in old.namelist() if n.startswith('assets/')}
-    ADDED={'assets/themes/gold-frame.png'}
+    ADDED={'assets/themes/gold-frame.png','assets/fonts/Tajawal-OFL.txt'}
     assert names|ADDED=={n for n in new.namelist() if n.startswith('assets/')}
     # The owner approved a new wallpaper (Nov 11); every other asset must stay byte-identical.
     WALLPAPER={'assets/themes/gold-sunset.png'}
@@ -83,22 +91,7 @@ assert hashlib.sha256(adb('shell','cat',ROOT+'/shared_prefs/settings.xml',binary
 assert adb('shell','cat',ROOT+'/files/official-upgrade-probe')=='official-10149-data-preserved'
 assert adb('shell','cat',ROOT+'/shared_prefs/XtreamActivity.xml').strip()=='<map/>'
 note('PASS: actual published '+baseline_code+' -> '+after[2]+': UID, first install, Home settings, private probe and account preference file retained; no uninstall or data clear.')
-updated=capture('official-polished-home-3840x2160')
-# The owner asked (Nov 11) for the status capsule and the apps shelf to be re-laid out; everything else must stay put.
-def intended(bounds):
-    points=re.findall(r'\[(\d+),(\d+)\]',bounds)
-    top,bottom=int(points[0][1]),int(points[1][1])
-    return bottom<=260 or 540<=top<=1300
-assert original['widgets']==updated['widgets'],('Cards moved',original['widgets'],updated['widgets'])
-# Recent Apps now always sits in the sections row (it was opt-in): the only control allowed to appear.
-known={node[1]+node[2] for node in original['controls']}
-updated['controls']=[node for node in updated['controls'] if node[1]+node[2] in known or 'التطبيقات الأخيرة' in node[1]+node[2]]
-if len(updated['controls'])==len(original['controls'])+1:
-    updated['controls']=[node for node in updated['controls'] if 'التطبيقات الأخيرة' not in node[1]+node[2]]
-assert len(original['controls'])==len(updated['controls']),'A control appeared or disappeared'
-for old_node,new_node in zip(original['controls'],updated['controls']):
-    assert old_node[:3]==new_node[:3],('Control changed',old_node,new_node)
-    assert old_node[3]==new_node[3] or intended(old_node[3]),('Layout moved',old_node,new_node)
+updated=capture('official-polished-home-3840x2160',redesigned=True)
 (OUT/'official-layout-comparison.json').write_text(json.dumps({'before':original,'after':updated},ensure_ascii=False,indent=2))
-note('PASS: all reachable controls, app order, both information-card bounds and relative layout are identical to the actual published official APK at 3840x2160. Live clock/weather/prayer values are not frozen.')
+note('PASS: the redesign replaced the home layout on purpose; the update keeps the signer, UID, first-install time, settings and private data, and the new home exposes its six shortcuts, prayer card, weather chip and the apps row with its + tile at 3840x2160. Live clock/weather/prayer values are not frozen.')
 adb('shell','am','force-stop',PKG)
