@@ -220,7 +220,6 @@ with tempfile.TemporaryDirectory() as temp:
     note('PASS: Back from the player returned to the channel list.')
 
     # 3b. "last channel" follows what was watched full screen for 10 s, from anywhere; the small preview never counts
-    keys('HOME', pause=1.5)
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.HomeActivity'); wait_label('آخر قناة شاهدتها', 'the home screen')
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.PlayerActivity', '-e', 'id', '110', '-e', 'name', 'beIN Sports 1 HD', '-e', 'ext', 'ts', '-e', 'num', '110')
     time.sleep(14)    # channel A, longer than 10 s
