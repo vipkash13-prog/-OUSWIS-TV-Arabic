@@ -53,6 +53,15 @@ def wait_label(part, what, tries=30):
     (OUT / 'redesign-logcat.txt').write_text(adb('logcat', '-d', '-t', '800', check=False))
     raise AssertionError('Never saw: ' + what)
 
+def tap(part, exact=False):
+    """Tap the first node whose text matches (dialog lists are plain views, so uiautomator can click them)."""
+    for n in tree().iter('node'):
+        t = (n.get('text', '') or n.get('content-desc', '')).strip()
+        if n.get('package') == PKG and (t == part if exact else part in t):
+            x1, y1, x2, y2 = [int(v) for v in re.findall(r'\d+', n.get('bounds'))]
+            adb('shell', 'input', 'tap', str((x1 + x2) // 2), str((y1 + y2) // 2)); time.sleep(2); return
+    shot('redesign-failure.png'); raise AssertionError('Nothing to tap: ' + part)
+
 def focused_label():
     for n in tree().iter('node'):
         if n.get('package') == PKG and n.get('focused') == 'true' and (n.get('text', '') + n.get('content-desc', '')).strip():
@@ -213,14 +222,14 @@ with tempfile.TemporaryDirectory() as temp:
     shot('redesign-channel-map.png')
     keys('DPAD_CENTER', pause=2)
     wait_label('اختر القسم', 'the section list')
-    keys('DPAD_DOWN', 'DPAD_DOWN', 'DPAD_DOWN', pause=0.4); keys('DPAD_CENTER', pause=2)    # ↩ default, ★, ↺, then رياضة
+    tap('رياضة', exact=True)
     wait_label('SSC 1 HD', 'the channels of the chosen section')
-    keys('DPAD_DOWN', pause=0.4); keys('DPAD_CENTER', pause=2)    # SSC 2 HD
+    tap('SSC 2 HD')
     assert any('SSC 2 HD' in l and 'دوري روشن' in l for l in wait_label('SSC 2 HD', 'the table row with the chosen channel')), 'The pick must show in the table'
     assert 'name="picks"' in adb('shell', 'cat', folder + '/ouswis-live.xml')
     note('PASS: a channel picked by hand for a league is saved and shown in the table.')
     keys('DPAD_CENTER', pause=2); wait_label('اختر القسم', 'the section list again')
-    keys('DPAD_CENTER', pause=2)    # "↩ القناة الافتراضية"
+    tap('القناة الافتراضية')
     wait_label('الافتراضي: SSC', 'the table back on its default')
     note('PASS: choosing the default put the league back on the SSC family.')
     keys('BACK', pause=1)
