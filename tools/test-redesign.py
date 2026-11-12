@@ -135,9 +135,9 @@ def measure(tag):
     time.sleep(15)
     p0 = perf_draw()
     [adb('shell', 'dumpsys', 'gfxinfo', n, 'reset', check=False) for n in (PKG + ':home', PKG)]
-    cycle = ['DOWN', 'DOWN', 'LEFT', 'RIGHT', 'LEFT', 'UP', 'RIGHT', 'UP']
+    cycle = ['DPAD_DOWN', 'DPAD_DOWN', 'DPAD_LEFT', 'DPAD_RIGHT', 'DPAD_LEFT', 'DPAD_UP', 'DPAD_RIGHT', 'DPAD_UP']
     t1 = time.time(); i = 0
-    while time.time() - t1 < 40: keys(cycle[i % len(cycle)], pause=1.0); i += 1
+    while time.time() - t1 < 40: keys(cycle[i % len(cycle)], pause=0.5); i += 1
     time.sleep(6); p1 = perf_draw()
     g = gfx(); (OUT / ('perf-%s-gfxinfo.txt' % tag)).write_text(g.pop('raw'))
     line = '%s | cold open ms (3 runs): %s | first match card after %ss | channel on the Ghana card after %ss | remote use 40 s (UI-thread draw): %s | gfxinfo frames %s, janky %s, slow UI %s' % (
