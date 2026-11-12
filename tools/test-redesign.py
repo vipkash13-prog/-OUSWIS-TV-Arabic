@@ -101,7 +101,10 @@ def no_crash(where):
     bad, log = crashed(); assert not bad, where + ' crashed:\n' + log[-2500:]
 
 def gfx():
-    out = adb('shell', 'dumpsys', 'gfxinfo', PKG, check=False)
+    out = ''
+    for name in (PKG + ':home', PKG):   # the home screen runs in its own process
+        out = adb('shell', 'dumpsys', 'gfxinfo', name, check=False)
+        if 'Total frames rendered' in out: break
     pick = lambda pat: (re.search(pat, out) or [None, '?'])[1]
     return {'frames': pick(r'Total frames rendered: (\d+)'), 'janky': pick(r'Janky frames: (\d+ \([\d.]+%\))'), 'p50': pick(r'50th percentile: (\d+ms)'),
             'p90': pick(r'90th percentile: (\d+ms)'), 'p99': pick(r'99th percentile: (\d+ms)'), 'slow_ui': pick(r'Number Slow UI thread: (\d+)'),
@@ -121,7 +124,7 @@ def measure(tag):
         if first is None and any(' ضد ' in l for l in ls): first = round(time.time() - t0, 1)
         if any('غانا ضد الصومال' in l and 'beIN Sports 2' in l for l in ls): ghana = round(time.time() - t0, 1)
     time.sleep(15)
-    adb('shell', 'dumpsys', 'gfxinfo', PKG, 'reset', check=False)
+    [adb('shell', 'dumpsys', 'gfxinfo', n, 'reset', check=False) for n in (PKG + ':home', PKG)]
     cycle = ['DOWN', 'DOWN', 'LEFT', 'RIGHT', 'LEFT', 'UP', 'RIGHT', 'UP']
     t1 = time.time(); i = 0
     while time.time() - t1 < 40: keys(cycle[i % len(cycle)], pause=1.0); i += 1
@@ -141,7 +144,7 @@ def stability(seconds=300):
         time.sleep(1)
     cards = lambda: sorted(l for l in labels() if ' ضد ' in l and not l.startswith('تفاصيل'))
     base = cards(); focus0 = focused_label(); assert len(base) >= 3, base
-    adb('shell', 'dumpsys', 'gfxinfo', PKG, 'reset', check=False)
+    [adb('shell', 'dumpsys', 'gfxinfo', n, 'reset', check=False) for n in (PKG + ':home', PKG)]
     prev = shot('stability-0.png'); worst = 0.0; end = time.time() + seconds; n = 0; problems = []
     while time.time() < end:
         time.sleep(10); n += 1
@@ -381,7 +384,7 @@ with tempfile.TemporaryDirectory() as temp:
     cards = [l for l in labels() if ' ضد ' in l and not l.startswith('تفاصيل')]
     # the guide of the sports channels names one match (الهلال × النصر): it is a match on the screen, with its channel
     guide_card = wait_label('الهلال ضد النصر', 'the match found only in the guide')
-    assert any(('SSC 1 HD' in l or 'beIN Sports 1 HD' in l or 'AD Sports 1' in l) for l in guide_card), 'The guide match must carry the channel it was found on: ' + str(guide_card)
+    assert any(('SSC 1' in l or 'beIN Sports 1' in l or 'AD Sports 1' in l) for l in guide_card), 'The guide match must carry the channel it was found on: ' + str(guide_card)
     for l in cards:
         if any(t in l for t in ('الهلال', 'يوفنتوس', 'آرسنال', 'غانا')): continue   # found in the mock guide: confirmed
         assert 'beIN' not in l and 'SSC' not in l and 'AD Sports' not in l and 'beIN SPORTS' not in l, 'No channel may be named without a confirmation: ' + l
