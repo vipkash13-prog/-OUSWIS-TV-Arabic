@@ -155,6 +155,7 @@ final class LiveData {
                 JSONArray slim=new JSONArray();for(Channel c:list)slim.put(c.json());
                 JSONObject o=new JSONObject().put("at",System.currentTimeMillis()).put("items",slim);
                 Files.write(file("cat-"+key()+"-"+category.replaceAll("[^A-Za-z0-9_-]","")).toPath(),o.toString().getBytes(StandardCharsets.UTF_8));
+                MatchChannels.invalidate();
             }catch(Exception e){AppLog.w("live channels failed");}
             main.post(changed);
         });

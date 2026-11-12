@@ -11,8 +11,11 @@ import android.graphics.LinearGradient;
 import android.graphics.Paint;
 import android.graphics.RectF;
 import android.graphics.Shader;
-import android.media.MediaPlayer;
-import android.net.Uri;
+import android.view.SurfaceView;
+import androidx.media3.common.PlaybackException;
+import androidx.media3.common.Player;
+import androidx.media3.common.VideoSize;
+import androidx.media3.exoplayer.ExoPlayer;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -23,7 +26,6 @@ import android.view.WindowManager;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.TextView;
-import android.widget.VideoView;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -36,7 +38,10 @@ import java.util.List;
 public final class LiveActivity extends Activity {
     private LiveData data;
     private LiveView view;
-    private VideoView preview;
+    private SurfaceView preview;
+    private ExoPlayer exo;
+    private RectF previewBox=new RectF();
+    private int previewAttempt;
     private TextView previewLabel;
     private final Handler main=new Handler(Looper.getMainLooper());
     private boolean foreground;
@@ -55,7 +60,7 @@ public final class LiveActivity extends Activity {
         FrameLayout root=new FrameLayout(this);
         view=new LiveView(this);
         root.addView(view,new FrameLayout.LayoutParams(-1,-1));
-        preview=new VideoView(this);
+        preview=new SurfaceView(this);
         preview.setVisibility(View.GONE);
         root.addView(preview,new FrameLayout.LayoutParams(10,10));
         previewLabel=new TextView(this);
@@ -83,42 +88,56 @@ public final class LiveActivity extends Activity {
         previewLabel.setLayoutParams(ll);previewLabel.setText(caption);
         previewLabel.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,rect.height()*0.05f);
         previewLabel.setBackgroundColor(0x99000000);previewLabel.setPadding(24,0,24,0);
-        String ext="m3u8".equalsIgnoreCase(c.ext)?"m3u8":"ts";
-        String url=a.server+"/live/"+XtreamAccount.enc(a.user)+"/"+XtreamAccount.enc(a.pass)+"/"+XtreamAccount.enc(c.id)+"."+ext;
-        // A VideoView that is GONE has no surface and never prepares: show it (black) at once, the label comes with the picture.
+        // The surface is visible at once (a GONE one has no surface to render on); the label comes with the first frame.
         preview.setVisibility(View.VISIBLE);
-        preview.setOnPreparedListener(mp->{
-            if(generation!=previewGeneration)return;
-            mp.setVolume(0f,0f);      // sound only after OK
-            mp.setVideoScalingMode(MediaPlayer.VIDEO_SCALING_MODE_SCALE_TO_FIT);
-            preview.setVisibility(View.VISIBLE);previewLabel.setVisibility(View.VISIBLE);
-            preview.start();
-            view.previewShown(true);
-        });
-        preview.setOnErrorListener((mp,what,extra)->{
-            if(generation==previewGeneration)stopPreview();
-            return true;
-        });
-        preview.setOnCompletionListener(mp->{if(generation==previewGeneration)stopPreview();});
-        preview.setVideoURI(Uri.parse(url));
+        previewBox.set(rect);previewAttempt=0;
+        previewChannel=c;
+        if(exo==null){
+            exo=LivePlayer.create(this);
+            exo.setVideoSurfaceView(preview);
+            exo.setVolume(0f);     // sound only after OK
+            exo.addListener(new Player.Listener(){
+                @Override public void onRenderedFirstFrame(){
+                    previewLabel.setVisibility(View.VISIBLE);view.previewShown(true);
+                }
+                @Override public void onVideoSizeChanged(VideoSize size){
+                    int[] f=VideoFit.size(size.width,size.height,Math.round(previewBox.width()),Math.round(previewBox.height()));
+                    FrameLayout.LayoutParams p=new FrameLayout.LayoutParams(f[0],f[1]);
+                    p.leftMargin=Math.round(previewBox.left+(previewBox.width()-f[0])/2f);p.topMargin=Math.round(previewBox.top+(previewBox.height()-f[1])/2f);
+                    preview.setLayoutParams(p);
+                }
+                @Override public void onPlayerError(PlaybackException e){
+                    // the other format once, then give up quietly: the preview is a nicety
+                    if(previewChannel!=null&&previewAttempt==0){previewAttempt=1;playPreview(previewChannel,generation);}
+                    else stopPreview();
+                }
+            });
+        }
+        playPreview(c,generation);
+    }
+    private LiveData.Channel previewChannel;
+    private void playPreview(LiveData.Channel c,int generation){
+        XtreamAccount a=XtreamAccount.read(this);if(a==null||exo==null)return;
+        exo.setMediaItem(LivePlayer.item(a,c,LivePlayer.extension(c,previewAttempt)));
+        exo.setVolume(0f);
+        exo.prepare();exo.setPlayWhenReady(true);
     }
     void stopPreview(){
         previewGeneration++;
-        if(preview!=null){
-            preview.setOnPreparedListener(null);preview.setOnCompletionListener(null);
-            preview.setOnErrorListener((mp,what,extra)->true);
-            preview.setVisibility(View.GONE);
-            try{preview.stopPlayback();}catch(Exception ignored){}
-        }
+        if(exo!=null){try{exo.stop();exo.clearMediaItems();}catch(Exception ignored){}}
+        if(preview!=null)preview.setVisibility(View.GONE);
         if(previewLabel!=null)previewLabel.setVisibility(View.GONE);
         if(view!=null)view.previewShown(false);
     }
-
-    void play(LiveData.Channel c){
+    /** One player at a time, and none once the screen leaves the front. */
+    private void releasePreview(){
         stopPreview();
-        LiveData.noteWatched(this,c);
-        Intent i=new Intent(this,XtreamActivity.class).putExtra(XtreamActivity.EXTRA_STREAM_ID,c.id);
-        startActivity(i);
+        if(exo!=null){try{exo.release();}catch(Exception ignored){}exo=null;}
+    }
+
+    void play(LiveData.Channel c,String section){
+        releasePreview();     // the full-screen player is the only one now
+        startActivity(PlayerActivity.intent(this,c,section));
     }
     void askSearch(String current,java.util.function.Consumer<String> done){
         EditText input=new EditText(this);input.setSingleLine(true);input.setText(current);
@@ -129,8 +148,8 @@ public final class LiveActivity extends Activity {
     }
 
     @Override protected void onResume(){super.onResume();foreground=true;if(view!=null)view.dataChanged();}
-    @Override protected void onPause(){foreground=false;stopPreview();super.onPause();}
-    @Override protected void onDestroy(){stopPreview();if(data!=null)data.shutdown();super.onDestroy();}
+    @Override protected void onPause(){foreground=false;releasePreview();super.onPause();}
+    @Override protected void onDestroy(){releasePreview();if(data!=null)data.shutdown();super.onDestroy();}
 
     // MARK: the drawn screen
 
@@ -138,6 +157,8 @@ public final class LiveActivity extends Activity {
         private final Paint p=new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint title,sub,muted,name,small,num,chip,badgeText;
         private final RectF r=new RectF(),g=new RectF(),bm=new RectF();
+        private final A11y a11y=new A11y(this);
+        @Override public android.view.accessibility.AccessibilityNodeProvider getAccessibilityNodeProvider(){return a11y.provider(null,null);}
         private Bitmap backdrop;
         private float k;
         private int cat,sel,top,catTop,headerFocus=-1;   // headerFocus: -1 none, 0 search, 1 refresh
@@ -225,6 +246,7 @@ public final class LiveActivity extends Activity {
         @Override protected void onDraw(Canvas c){
             int w=getWidth(),h=getHeight();
             if(backdrop!=null)c.drawBitmap(backdrop,null,new RectF(0,0,w,h),null);
+            a11y.begin(k);
             c.save();c.scale(k,k);
             float kk=1;   // everything below is in 1920x1080 reference units
             List<LiveData.Category> secs=sections();
@@ -233,12 +255,14 @@ public final class LiveActivity extends Activity {
             title.setTextSize(40);Design.right(c,"▣ البث المباشر",1848,76,title);
             String total=data.failed?"تعذّر تحميل الأقسام":"Xtream"+(data.expiry.isEmpty()?"":" · ينتهي "+data.expiry);
             Design.right(c,total,1848,113,sub);
+            a11y.add(1100,40,1848,126,"البث المباشر · "+total,false,false);
             String[] chips={"بحث","↻ تحديث القائمة",clock()};
             float[][] cr={{392,490},{202,380},{72,190}};
             for(int i=0;i<3;i++){
                 r.set(cr[i][0],64,cr[i][1],112);
                 Design.card(c,r,24,1,p,Design.SURFACE);
                 Design.center(c,chips[i],(cr[i][0]+cr[i][1])/2,95,chip);
+                a11y.add(r,chips[i],i<2&&headerFocus==i,i<2);
                 if(i<2&&headerFocus==i){Design.grown(r,g);Design.focusRing(c,g,24,1,p);}
             }
             // sections column
@@ -252,6 +276,7 @@ public final class LiveActivity extends Activity {
                     r.set(1563,y-30,1833,y+26);Design.fill(c,r,16,p,0x29E9C46A);
                     r.set(1826,y-26,1833,y+22);Design.fill(c,r,4,p,Design.GOLD);
                 }
+                a11y.add(1563,y-30,1833,y+26,"قسم "+s.name+(s.count>=0?" ("+s.count+")":"")+(i==cat?" — محدد":""),false,false);
                 small.setColor(i==cat?Design.TEXT:Design.MUTED);
                 Design.right(c,Design.fit(s.name,small,190),1812,y+7,small);
                 if(s.count>=0){Design.left(c,String.valueOf(s.count),1583,y+2,muted);}
@@ -285,6 +310,8 @@ public final class LiveActivity extends Activity {
                     badgeText.setTextSize(15);badgeText.setColor(Design.GOLD);Design.center(c,t.trim(),1403,y+46,badgeText);
                 }
                 Design.right(c,Design.fit(ch.name,name,400),1351,y+36,name);
+                LiveData.Program nowProg=LiveData.current(data.guide(ch.id),now);
+                a11y.add(917,y,1511,y+80,(ch.num.isEmpty()?String.valueOf(i+1):ch.num)+" · "+ch.name+(nowProg!=null?" · "+nowProg.title:"")+(data.isFavorite(ch.id)?" ★":""),focused,true);
                 LiveData.Program prog=LiveData.current(data.guide(ch.id),now);
                 muted.setTextSize(16);
                 if(prog!=null){
@@ -313,6 +340,7 @@ public final class LiveActivity extends Activity {
                         bm.set(476-lw/2,330-lh/2,476+lw/2,330+lh/2);p.setColor(0xFFFFFFFF);c.drawBitmap(logo,null,bm,p);
                     }
                     Design.center(c,ch.name,476,450,name);
+                    a11y.add(72,163,880,582,"معاينة "+ch.name,false,false);
                     Design.center(c,"اضغط OK لملء الشاشة",476,490,muted);
                 }
             }
@@ -331,6 +359,7 @@ public final class LiveActivity extends Activity {
                     Design.right(c,hm(pr.start),851,y,chip);
                     name.setColor(cur?Design.TEXT:Design.MUTED);name.setTextSize(21);
                     Design.right(c,Design.fit(pr.title,name,560),723,y,name);
+                    a11y.add(101,y-28,851,y+8,hm(pr.start)+" "+pr.title,false,false);
                     name.setColor(Design.TEXT);name.setTextSize(23);chip.setColor(Design.TEXT);chip.setTextSize(19);
                     if(i<3){r.set(101,y+14,851,y+15);Design.fill(c,r,0,p,0x14FFFFFF);}
                 }
@@ -389,7 +418,7 @@ public final class LiveActivity extends Activity {
                     data.refresh(()->{invalidate();ensureLoaded();});
                 }else{
                     List<LiveData.Channel> list=shown();
-                    if(sel>=0&&sel<list.size())play(list.get(sel));
+                    if(sel>=0&&sel<list.size()){List<LiveData.Category> ss=sections();play(list.get(sel),cat>=0&&cat<ss.size()?ss.get(cat).id:"");}
                 }
                 return true;
             }

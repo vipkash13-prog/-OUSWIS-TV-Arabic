@@ -50,6 +50,8 @@ final class RedesignHomeView extends View {
             dark=Design.text(0xFF1A1408,22,Design.bold());
     private final RectF r=new RectF(),g=new RectF(),bm=new RectF(),arc=new RectF();
     private final Path path=new Path();
+    private final A11y a11y=new A11y(this);
+    @Override public android.view.accessibility.AccessibilityNodeProvider getAccessibilityNodeProvider(){return a11y.provider(null,null);}
     private Bitmap backdrop,wallpaper;
     private float k=1;
     private int row=1;
@@ -75,6 +77,9 @@ final class RedesignHomeView extends View {
         if(account!=null)live=new LiveData(c,account);
         try(InputStream in=c.getAssets().open("themes/gold-sunset.png")){wallpaper=BitmapFactory.decodeStream(in);}catch(Exception ignored){}
     }
+
+    @Override protected void onAttachedToWindow(){super.onAttachedToWindow();MatchChannels.listen(prayerChanged);}
+    @Override protected void onDetachedFromWindow(){MatchChannels.unlisten(prayerChanged);super.onDetachedFromWindow();}
 
     // MARK: lifecycle
 
@@ -176,6 +181,7 @@ final class RedesignHomeView extends View {
     @Override protected void onDraw(Canvas c){
         int w=getWidth(),h=getHeight();
         if(backdrop!=null)c.drawBitmap(backdrop,null,new RectF(0,0,w,h),null);
+        a11y.begin(k);
         c.save();c.scale(k,k);
         drawTop(c);drawHero(c);drawPrayer(c);
         boolean hasMatches=!today.isEmpty();
@@ -191,6 +197,7 @@ final class RedesignHomeView extends View {
         dark.setTextSize(34);Design.center(c,"ق",1818,100,dark);
         Design.right(c,"OUSWIS TV",1770,84,title);
         Design.right(c,fmt("EEEE")+" · جدة",1770,112,sub);
+        a11y.add(1500,58,1848,118,"OUSWIS TV · "+fmt("EEEE")+" · جدة",false,false);
         String time=clockText();
         clock.setTextAlign(Paint.Align.CENTER);
         float tw=clock.measureText(time);
@@ -199,6 +206,7 @@ final class RedesignHomeView extends View {
         SaudiDates dates=new SaudiDates();dates.update(System.currentTimeMillis(),new Locale("ar"));
         SimpleDateFormat g2=new SimpleDateFormat("d MMMM yyyy",Design.AR);g2.setTimeZone(TimeZone.getTimeZone("Asia/Riyadh"));
         Design.center(c,g2.format(new Date())+" · "+dates.hijri,1015,148,Design.text(Design.MUTED,21,Design.regular()));
+        a11y.add(760,30,1340,160,"الساعة "+time+" "+fmt("a")+" · "+g2.format(new Date())+" · "+dates.hijri,false,false);
         // chips: weather, connection, settings
         HomeData.Weather wx=HomeData.get(getContext()).weather;
         r.set(272,60,436,116);RectF box=ring(r,focus(0,0));Design.card(c,box,28,1,p,Design.SURFACE);
@@ -206,12 +214,15 @@ final class RedesignHomeView extends View {
         c.drawCircle(box.right-30,box.centerY(),13,p);
         String t=Double.isNaN(wx.temp)?"—":Math.round(wx.temp)+"° "+shortCondition(wx);
         Design.center(c,t,box.left+66,box.centerY()+7,chip);
+        a11y.add(box,"الطقس "+t,focus(0,0),true);
         if(focus(0,0))Design.focusRing(c,box,28,1,p);
         r.set(147,60,260,116);Design.card(c,r,28,1,p,Design.SURFACE);
         p.setStyle(Paint.Style.FILL);p.setColor(online()?Design.OK:Design.LIVE);c.drawCircle(238,88,6,p);
         Design.center(c,online()?"متصل":"غير متصل",190,95,chip);
+        a11y.add(r,online()?"متصل":"غير متصل",false,false);
         r.set(72,60,135,116);box=ring(r,focus(0,1));Design.card(c,box,28,1,p,Design.SURFACE);
         Design.center(c,"⚙",box.centerX(),box.centerY()+8,chip);
+        a11y.add(box,"الإعدادات",focus(0,1),true);
         if(focus(0,1))Design.focusRing(c,box,28,1,p);
     }
     private String shortCondition(HomeData.Weather wx){
@@ -258,7 +269,15 @@ final class RedesignHomeView extends View {
             }
             if(nxt!=null)Design.right(c,Design.fit("التالي "+fmt("h:mm a",nxt.start)+": "+nxt.title,line,700),x,box.top+186,line);
         }
+        a11y.add(box,heroLabel(ch),focus(1,0),true);
         if(focus(1,0))Design.focusRing(c,box,30,1,p);
+    }
+    private String heroLabel(LiveData.Channel ch){
+        if(ch==null)return "ابدأ المشاهدة · افتح البث المباشر واختر قناة";
+        long now=System.currentTimeMillis();
+        List<LiveData.Program> guide=live==null?null:live.guide(ch.id);
+        LiveData.Program cur=LiveData.current(guide,now);
+        return "آخر قناة شاهدتها: "+ch.name+(cur==null?"":" · الآن: "+cur.title);
     }
     private String fmt(String pattern,long at){
         SimpleDateFormat f=new SimpleDateFormat(pattern,Design.AR);
@@ -295,6 +314,9 @@ final class RedesignHomeView extends View {
             Paint line=Design.text(Design.MUTED,21,Design.regular());
             Design.right(c,others.get(0)+" · "+others.get(1),385,328,line);
             Design.right(c,others.get(2)+" · "+others.get(3),385,362,line);
+            StringBuilder all=new StringBuilder("الصلاة القادمة: "+name+" "+Design.clock(next.at,"h:mm a")+" · متبقي "+String.format(Locale.US,"%d:%02d",minutes/60,minutes%60));
+            for(int i=0;i<5;i++)if(i!=next.index)all.append(" · ").append(Design.prayer(i)).append(" ").append(Design.clock(day.time(i),"h:mm"));
+            a11y.add(box,all.toString(),focus(1,1),true);
         }
         if(focus(1,1))Design.focusRing(c,box,30,1,p);
     }
@@ -304,6 +326,8 @@ final class RedesignHomeView extends View {
         goldText.setTextSize(20);
         boolean linkFocus=focus(2,Math.min(today.size(),4));
         Design.left(c,"عرض الكل ←",78,446,linkFocus?Design.text(0xFFFFFFFF,22,Design.bold()):goldText);
+        a11y.add(1500,420,1842,456,"مباريات اليوم",false,false);
+        a11y.add(70,420,200,456,"عرض الكل",linkFocus,true);
         int n=Math.min(4,today.size());
         for(int i=0;i<n;i++){
             MatchCarouselView.Match m=today.get(i);
@@ -328,6 +352,7 @@ final class RedesignHomeView extends View {
             }
             LiveData.Channel ch=channelFor(m);
             if(ch!=null&&!done)Design.center(c,(m.live()?"▶ ":"")+ch.name,cx,575,Design.text(Design.GOLD,15,Design.regular()));
+            a11y.add(box,m.home+" ضد "+m.away+" · "+(m.live()?"مباشر "+m.awayScore+" - "+m.homeScore:done?"انتهت "+m.awayScore+" - "+m.homeScore:fmt("h:mm a",m.kickoffMillis))+(ch!=null&&!done?" · "+ch.name:""),focus(2,i),true);
             if(focus(2,i))Design.focusRing(c,box,22,1,p);
         }
     }
@@ -348,6 +373,7 @@ final class RedesignHomeView extends View {
 
     private void drawApps(Canvas c){
         Design.right(c,"تطبيقاتي",1842,646,section);
+        a11y.add(1600,620,1842,656,"تطبيقاتي",false,false);
         int n=Math.min(7,apps.size());
         for(int i=0;i<n;i++){
             HomeApps.Item it=apps.get(i);
@@ -363,6 +389,7 @@ final class RedesignHomeView extends View {
                 path.reset();path.addRoundRect(box,22,22,Path.Direction.CW);
                 p.setColor(0xFFFFFFFF);c.save();c.clipPath(path);c.drawBitmap(it.tile,null,box,p);c.restore();
             }else Design.card(c,box,22,1,p,Design.SURFACE);
+            a11y.add(box,it.label,focus(3,i),true);
             if(focus(3,i))Design.focusRing(c,box,22,1,p);
             Design.center(c,Design.fit(it.label,Design.text(Design.MUTED,18,Design.regular()),170),right-89,796,Design.text(focus(3,i)?Design.TEXT:Design.MUTED,18,Design.regular()));
         }
@@ -373,6 +400,7 @@ final class RedesignHomeView extends View {
         p.setPathEffect(new android.graphics.DashPathEffect(new float[]{10,8},0));
         c.drawRoundRect(box,22,22,p);p.setPathEffect(null);
         Design.center(c,"+",box.centerX(),box.centerY()+14,Design.text(Design.TEXT,48,Design.light()));
+        a11y.add(box,"إضافة تطبيق",focus(3,n),true);
         if(focus(3,n))Design.focusRing(c,box,22,1,p);
         Design.center(c,"إضافة",right-89,796,Design.text(Design.MUTED,18,Design.regular()));
     }
@@ -388,6 +416,7 @@ final class RedesignHomeView extends View {
             float tw=lab.measureText(SHORTCUT_LABELS[i]);
             Design.center(c,SHORTCUT_LABELS[i],box.centerX()-12,box.centerY()+8,lab);
             Design.center(c,SHORTCUT_ICONS[i],box.centerX()-12+tw/2+30,box.centerY()+9,Design.text(Design.GOLD,26,Design.bold()));
+            a11y.add(box,SHORTCUT_LABELS[i],focus(4,i),true);
             if(focus(4,i))Design.focusRing(c,box,26,1,p);
         }
     }
@@ -433,10 +462,8 @@ final class RedesignHomeView extends View {
             case 1:
                 if(cl==0){
                     LiveData.Channel ch=LiveData.lastWatched(ctx);
-                    if(ch!=null&&account!=null){
-                        LiveData.noteWatched(ctx,ch);
-                        start(new Intent(ctx,XtreamActivity.class).putExtra(XtreamActivity.EXTRA_STREAM_ID,ch.id));
-                    }else start(new Intent(ctx,LiveActivity.class));
+                    if(ch!=null&&account!=null)start(PlayerActivity.intent(ctx,ch,LiveData.RECENT));
+                    else start(new Intent(ctx,LiveActivity.class));
                 }else prayerDetails();
                 break;
             case 2:{
@@ -444,15 +471,13 @@ final class RedesignHomeView extends View {
                 if(cl>=n){start(new Intent(ctx,MatchesScreenActivity.class));break;}
                 MatchCarouselView.Match m=today.get(cl);
                 LiveData.Channel ch=channelFor(m);
-                if(m.live()&&ch!=null){
-                    LiveData.noteWatched(ctx,ch);
-                    start(new Intent(ctx,XtreamActivity.class).putExtra(XtreamActivity.EXTRA_STREAM_ID,ch.id));
-                }else start(new Intent(ctx,MatchesScreenActivity.class));
+                if(m.live()&&ch!=null)start(PlayerActivity.intent(ctx,ch,""));
+                else start(new Intent(ctx,MatchesScreenActivity.class));
                 break;}
             case 3:{
                 int n=Math.min(7,apps.size());
                 if(cl<n&&ctx instanceof android.app.Activity)HomeApps.open((android.app.Activity)ctx,apps.get(cl),this,0,0,0,0);
-                else start(new Intent().setComponent(new ComponentName(ctx,SettingsActivity.class)));
+                else addApp();
                 break;}
             default:
                 switch(cl){
@@ -464,6 +489,34 @@ final class RedesignHomeView extends View {
                     default:start(new Intent().setComponent(new ComponentName(ctx,SettingsActivity.class)));
                 }
         }
+    }
+    /** The "+ إضافة" tile: the installed apps that aren't in the row yet, in a list; the one picked joins the row. */
+    private void addApp(){
+        final Context ctx=getContext();
+        io.execute(()->{
+            final List<String> have=HomeApps.shelfPackages(ctx);
+            final List<String[]> free=new ArrayList<>();
+            try{for(String[] a:HomeApps.shelfCandidates(ctx))if(!have.contains(a[0]))free.add(a);}catch(Throwable ignored){}
+            final int room=Math.min(7,HomeApps.maxShelf(ctx))-apps.size();
+            main.post(()->{
+                if(!resumed)return;
+                if(room<=0){
+                    new AlertDialog.Builder(ctx).setTitle("صف التطبيقات ممتلئ").setMessage("يتّسع الصف لـ "+Math.min(7,HomeApps.maxShelf(ctx))+" تطبيقات. أزل تطبيقًا من الإعدادات ثم أضف غيره.").setPositiveButton("حسناً",null).show();
+                    return;
+                }
+                if(free.isEmpty()){
+                    new AlertDialog.Builder(ctx).setTitle("لا توجد تطبيقات لإضافتها").setMessage("كل التطبيقات المثبّتة في الصف بالفعل.").setPositiveButton("حسناً",null).show();
+                    return;
+                }
+                String[] names=new String[free.size()];
+                for(int i=0;i<names.length;i++)names[i]=free.get(i)[1];
+                new AlertDialog.Builder(ctx).setTitle("اختر تطبيقًا لإضافته").setItems(names,(d,which)->{
+                    List<String> list=new ArrayList<>(have);list.add(free.get(which)[0]);
+                    Prefs.setShelf(list);
+                    loadApps();
+                }).setNegativeButton("إلغاء",null).show();
+            });
+        });
     }
     private void weatherDetails(){
         HomeData.Weather wx=HomeData.get(getContext()).weather;

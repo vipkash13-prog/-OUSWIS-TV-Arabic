@@ -9,21 +9,21 @@ import java.net.URL;
 import java.net.URLEncoder;
 
 /**
- * The viewer's Xtream login, read from where XtreamActivity already keeps it (its private preferences). Nothing is
- * stored in the repository and nothing here writes credentials: the login screen stays XtreamActivity's.
+ * The viewer's Xtream login, read from AccountVault (encrypted at rest). Nothing is stored in the repository and
+ * nothing here writes credentials: the login screen stays XtreamActivity's, which saves through the vault.
  */
 final class XtreamAccount {
     final String server, user, pass;
     private XtreamAccount(String s,String u,String p){server=s;user=u;pass=p;}
-    /** XtreamActivity uses getPreferences(0): a file named after the class. Null when nobody has signed in yet. */
+    /** The sealed login (AccountVault); a plain-text one from an older version is moved there. Null when nobody has signed in. */
     static XtreamAccount read(Context c){
-        SharedPreferences p=c.getSharedPreferences("XtreamActivity",Context.MODE_PRIVATE);
-        String s=p.getString("server",""),u=p.getString("user",""),w=p.getString("pass","");
-        if(s.isEmpty()||u.isEmpty()||w.isEmpty())return null;
-        return new XtreamAccount(s,u,w);
+        String[] v=AccountVault.load(c);
+        return v==null?null:new XtreamAccount(v[0],v[1],v[2]);
     }
     static SharedPreferences prefs(Context c){return c.getSharedPreferences("XtreamActivity",Context.MODE_PRIVATE);}
     static String enc(String s){try{return URLEncoder.encode(s,"UTF-8");}catch(Exception e){return s;}}
+    /** The stream address for a live channel (it holds the password: never log or store it). */
+    String liveUrl(String id,String ext){return server+"/live/"+enc(user)+"/"+enc(pass)+"/"+enc(id)+"."+ext;}
     String api(String action,String extra){
         return server+"/player_api.php?username="+enc(user)+"&password="+enc(pass)
                 +(action==null?"":"&action="+action)+(extra==null?"":"&"+extra);

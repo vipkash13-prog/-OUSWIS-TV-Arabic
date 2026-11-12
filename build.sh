@@ -231,11 +231,19 @@ apksigner() {
   if [ -n "$BAT" ]; then "$JAVA" -jar "$BT/lib/apksigner.jar" "$@"
   else "$BT/apksigner" "$@"; fi
 }
-"$JAVAC" -nowarn -Xlint:-options -source 8 -target 8 -bootclasspath "$AJ$CPSEP$BT/core-lambda-stubs.jar" -classpath "$AJ" \
+# Media3 ExoPlayer (and Guava, which it needs): pure-Java jars fetched once into libs/, each checked against the SHA-1 its
+# repository publishes. No native code, so the same APK runs on 32-bit (armeabi-v7a) and 64-bit CPUs.
+PYTHON="$(command -v python3 || command -v python)"
+"$PYTHON" tools/fetch-libs.py
+LIBJARS="$(ls libs/*.jar | tr '\n' "$CPSEP")"
+LIBFILES="$(ls libs/*.jar)"
+"$JAVAC" -nowarn -Xlint:-options -source 8 -target 8 -bootclasspath "$AJ$CPSEP$BT/core-lambda-stubs.jar" -classpath "$AJ$CPSEP$LIBJARS" \
   -encoding UTF-8 -d out/classes $(find app/src out/gen -name '*.java')
-d8 --release --min-api 26 --lib "$AJ" --output out $(find out/classes -name '*.class')
-if command -v zip >/dev/null; then (cd out && zip -qj base.apk classes.dex)
-else "${JAVA_HOME:+$JAVA_HOME/bin/}jar" -u -M -f out/base.apk -C out classes.dex; fi # Git Bash has no zip
+# d8 splits into classes.dex, classes2.dex… when Guava and Media3 push past one dex's 64K methods.
+rm -f out/classes*.dex
+d8 --release --min-api 26 --lib "$AJ" --output out $(find out/classes -name '*.class') $LIBFILES
+if command -v zip >/dev/null; then (cd out && zip -qj base.apk classes*.dex)
+else for d in out/classes*.dex; do "${JAVA_HOME:+$JAVA_HOME/bin/}jar" -u -M -f out/base.apk -C out "$(basename "$d")"; done; fi # Git Bash has no zip
 "$BT/zipalign" -f -p 4 out/base.apk out/aligned.apk
 
 # --- Sign with your own key (created once; updates need the same key, so keep freemytv.keystore).

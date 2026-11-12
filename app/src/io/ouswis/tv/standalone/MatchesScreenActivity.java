@@ -106,7 +106,12 @@ public final class MatchesScreenActivity extends Activity {
         private final String[] leagues={"الكل","دوري روشن","أبطال آسيا","أبطال أوروبا","الدوري الإسباني","★ المفضلة"};
         private final String[] fragments={"","روشن","أبطال آسيا","أبطال أوروبا","الإسباني",""};
 
+        private final A11y a11y=new A11y(this);
+        private final Runnable lookupDone=this::postInvalidate;
         MatchesView(Context c){super(c);setFocusable(true);setFocusableInTouchMode(true);}
+        @Override public android.view.accessibility.AccessibilityNodeProvider getAccessibilityNodeProvider(){return a11y.provider(null,null);}
+        @Override protected void onAttachedToWindow(){super.onAttachedToWindow();MatchChannels.listen(lookupDone);}
+        @Override protected void onDetachedFromWindow(){MatchChannels.unlisten(lookupDone);super.onDetachedFromWindow();}
         void dataChanged(boolean ok){offline=!ok&&all.isEmpty();invalidate();}
 
         @Override protected void onSizeChanged(int w,int h,int ow,int oh){
@@ -161,6 +166,7 @@ public final class MatchesScreenActivity extends Activity {
         @Override protected void onDraw(Canvas c){
             int w=getWidth(),h=getHeight();
             if(backdrop!=null)c.drawBitmap(backdrop,null,new RectF(0,0,w,h),null);
+            a11y.begin(k);
             c.save();c.scale(k,k);
             List<MatchCarouselView.Match> list=visible();
             if(sel>=list.size())sel=Math.max(0,list.size()-1);
@@ -169,6 +175,7 @@ public final class MatchesScreenActivity extends Activity {
             SimpleDateFormat dayFormat=new SimpleDateFormat("EEEE d MMMM",Design.AR);dayFormat.setTimeZone(TimeZone.getTimeZone("Asia/Riyadh"));
             Design.right(c,dayFormat.format(new Date())+(updatedAt>0?" · آخر تحديث "+timeOf(updatedAt):offline?" · تعذّر التحديث":" · جارٍ التحميل…"),1848,113,sub);
             int liveCount=0;for(MatchCarouselView.Match m:all)if(m.live())liveCount++;
+            a11y.add(1100,40,1848,126,"المباريات · "+dayFormat.format(new Date())+(liveCount>0?" · "+liveCount+" مباشر":""),false,false);
             float chipX=72;
             r.set(202,62,348,114);
             if(liveCount>0){
@@ -218,6 +225,7 @@ public final class MatchesScreenActivity extends Activity {
                 LiveData.Channel ch=channelFor(m);
                 if(done){goldText.setAlpha(alpha);Design.center(c,"ملخص",cx,top+130,goldText);goldText.setAlpha(255);}
                 else if(ch!=null)Design.center(c,(m.live()?"▶ ":"")+ch.name,cx,top+130,goldText);
+                a11y.add(card,m.home+" ضد "+m.away+" · "+m.competition+" · "+(m.live()?"مباشر "+m.awayScore+" - "+m.homeScore:done?"انتهت "+m.awayScore+" - "+m.homeScore:timeOf(m.kickoffMillis))+(ch!=null&&!done?" · "+ch.name:""),focused,true);
                 if(focused)Design.focusRing(c,card,22,1,p);
             }
             panel(c,list);
@@ -236,6 +244,7 @@ public final class MatchesScreenActivity extends Activity {
             RectF box=r;if(focused){Design.grown(r,g);box=g;}
             if(on)Design.gold(c,box,24,p);else Design.card(c,box,24,1,p,Design.SURFACE);
             Design.center(c,label,right-width/2,195,t);
+            a11y.add(box,on?label+" (محدد)":label,focused,true);
             if(focused)Design.focusRing(c,box,24,1,p);
             return right-width-14;
         }
@@ -243,6 +252,7 @@ public final class MatchesScreenActivity extends Activity {
             r.set(72,243,591,881);Design.card(c,r,28,1,p,0x14FFFFFF);
             if(sel<0||sel>=list.size())return;
             MatchCarouselView.Match m=list.get(sel);
+            a11y.add(72,243,591,490,"تفاصيل المباراة: "+m.home+" ضد "+m.away+" · "+m.competition,false,false);
             Design.right(c,Design.fit(m.competition,small,300),561,288,small);
             if(m.live())Design.liveBadge(c,160,283,"مباشر "+minuteOf(m),17,p,badge);
             crest(c,m.homeLogo,m.home,470,378,40);crest(c,m.awayLogo,m.away,158,378,40);
@@ -258,18 +268,27 @@ public final class MatchesScreenActivity extends Activity {
             if(events.isEmpty())Design.right(c,started?"لا توجد تفاصيل أحداث":"تبدأ الساعة "+timeOf(m.kickoffMillis),561,526,line);
             LiveData.Channel ch=channelFor(m);
             if(ch!=null){
-                r.set(103,701,561,777);
+                r.set(103,690,561,758);
                 RectF box=r;boolean f=area==2&&panelFocus==0;if(f){Design.grown(r,g);box=g;}
                 Design.gold(c,box,22,p);
-                Paint t=Design.text(0xFF1A1408,24,Design.bold());Design.center(c,"▶ شاهد على "+ch.name,332,748,t);
+                Paint t=Design.text(0xFF1A1408,24,Design.bold());Design.center(c,"▶ شاهد على "+Design.fit(ch.name,t,300),332,735,t);
+                a11y.add(box,"شاهد على "+ch.name,f,true);
                 if(f)Design.focusRing(c,box,22,1,p);
             }
-            r.set(103,791,561,851);
             int slot=ch!=null?1:0;
+            r.set(103,770,561,820);
             RectF box=r;boolean f=area==2&&panelFocus==slot;if(f){Design.grown(r,g);box=g;}
             Design.card(c,box,22,1,p,0x14FFFFFF);
             boolean fav=saved().contains(m.key);
-            Design.center(c,fav?"★ في المفضلة · ذكّرني":"★ أضف للمفضلة · ذكّرني",332,829,chip);
+            String favLabel=fav?"★ في المفضلة · ذكّرني":"★ أضف للمفضلة · ذكّرني";
+            Design.center(c,favLabel,332,803,chip);
+            a11y.add(box,favLabel,f,true);
+            if(f)Design.focusRing(c,box,22,1,p);
+            r.set(103,830,561,874);
+            box=r;f=area==2&&panelFocus==slot+1;if(f){Design.grown(r,g);box=g;}
+            Design.card(c,box,22,1,p,0x0DFFFFFF);
+            Design.center(c,"اختر القناة لهذا الدوري",332,860,line);
+            a11y.add(box,"اختر القناة لهذا الدوري",f,true);
             if(f)Design.focusRing(c,box,22,1,p);
         }
 
@@ -284,7 +303,7 @@ public final class MatchesScreenActivity extends Activity {
                 case KeyEvent.KEYCODE_DPAD_DOWN:
                     if(area==0){area=1;sel=Math.min(sel,Math.max(0,list.size()-1));}
                     else if(area==1){if(sel+2<list.size())sel+=2;else if(sel+1<list.size()&&sel%2==0)sel++;}
-                    else if(area==2){if(panelFocus<(channelFor(list.get(Math.min(sel,list.size()-1)))!=null?1:0))panelFocus++;}
+                    else if(area==2){if(panelFocus<(channelFor(list.get(Math.min(sel,list.size()-1)))!=null?2:1))panelFocus++;}
                     invalidate();return true;
                 case KeyEvent.KEYCODE_DPAD_RIGHT:   // RTL: the first chip and the first column are on the right
                     if(area==0){if(chipFocus>0)chipFocus--;}
@@ -315,6 +334,7 @@ public final class MatchesScreenActivity extends Activity {
             }
             int favoriteSlot=ch!=null?1:0;
             if(panelFocus==0&&ch!=null){watch(ch);return;}
+            if(panelFocus==favoriteSlot+1){chooseChannel(m);return;}
             if(panelFocus==favoriteSlot){
                 Set<String> s=saved();
                 String message;
@@ -333,8 +353,18 @@ public final class MatchesScreenActivity extends Activity {
             }
         }
         private void watch(LiveData.Channel ch){
-            LiveData.noteWatched(getContext(),ch);
-            getContext().startActivity(new Intent(getContext(),XtreamActivity.class).putExtra(XtreamActivity.EXTRA_STREAM_ID,ch.id));
+            getContext().startActivity(PlayerActivity.intent(getContext(),ch,""));
+        }
+        /** A channel picked by hand is kept for the match's league: every match of it opens that channel from now on. */
+        private void chooseChannel(MatchCarouselView.Match m){
+            XtreamAccount account=XtreamAccount.read(getContext());
+            if(account==null){Toast.makeText(getContext(),"سجّل دخول Xtream أولاً من البث المباشر",Toast.LENGTH_LONG).show();return;}
+            final String key=MatchChannels.leagueKey(m.competition);
+            ChannelPicker.pick(MatchesScreenActivity.this,account,"قناة "+key,ch->{
+                MatchChannels.pick(getContext(),key,ch);
+                Toast.makeText(getContext(),ch==null?"عادت القناة الافتراضية":"سيُفتح "+ch.name+" لمباريات هذا الدوري",Toast.LENGTH_LONG).show();
+                invalidate();
+            });
         }
     }
 }

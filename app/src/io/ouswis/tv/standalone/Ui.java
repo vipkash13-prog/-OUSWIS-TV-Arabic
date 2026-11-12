@@ -83,14 +83,25 @@ final class Ui {
     static synchronized void init(Context c) {
         if (loaded) return;
         loaded = true;
+        // One Arabic family on every screen: Tajawal (OFL), in res/font. Inter stays only as the fallback if a font fails.
         AssetManager a = c.getAssets();
-        thin = font(a, 32, 200);
-        light = font(a, 32, 300);
-        displayMedium = font(a, 32, 500);
-        displaySemibold = font(a, 32, 600);
-        regular = font(a, 14, 400);
-        medium = font(a, 14, 500);
-        semibold = font(a, 14, 600);
+        Typeface tl = res(c, R.font.tajawal_light), tr = res(c, R.font.tajawal_regular),
+                tm = res(c, R.font.tajawal_medium), tb = res(c, R.font.tajawal_bold);
+        thin = tl != null ? tl : font(a, 32, 200);
+        light = tl != null ? tl : font(a, 32, 300);
+        displayMedium = tm != null ? tm : font(a, 32, 500);
+        displaySemibold = tb != null ? tb : font(a, 32, 600);
+        regular = tr != null ? tr : font(a, 14, 400);
+        medium = tm != null ? tm : font(a, 14, 500);
+        semibold = tb != null ? tb : font(a, 14, 600);
+    }
+
+    private static Typeface res(Context c, int id) {
+        try {
+            return c.getResources().getFont(id);
+        } catch (RuntimeException e) {
+            return null;
+        }
     }
 
     /** Inter at an optical size (14 = text, 32 = display) and weight; the system font if the file is missing. */

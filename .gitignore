@@ -17,3 +17,6 @@ __pycache__/
 # macOS
 .DS_Store
 tools/.i18n-cache.json
+
+# Libraries fetched by build.sh (tools/fetch-libs.py)
+libs/

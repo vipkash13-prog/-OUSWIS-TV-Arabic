@@ -75,9 +75,10 @@ public final class XtreamActivity extends Activity {
     @Override public void onCreate(Bundle b) {
         super.onCreate(b);
         getWindow().getDecorView().setSystemUiVisibility(5894);
-        server=getPreferences(0).getString("server","");
-        user=getPreferences(0).getString("user","");
-        pass=getPreferences(0).getString("pass","");
+        String[] sealed=AccountVault.load(this);   // encrypted at rest; an old plain-text login is moved there first
+        server=sealed==null?"":sealed[0];
+        user=sealed==null?"":sealed[1];
+        pass=sealed==null?"":sealed[2];
         picturePercent=Math.max(80,Math.min(100,getPreferences(0).getInt("picturePercent",100)));
         if (server.isEmpty() || user.isEmpty() || pass.isEmpty()) login(); else load();
     }
@@ -123,7 +124,7 @@ public final class XtreamActivity extends Activity {
             if (!h.startsWith("http://")&&!h.startsWith("https://")) { Toast.makeText(this,"Enter http:// or https://",Toast.LENGTH_LONG).show(); return; }
             server=h; user=username.getText().toString().trim(); pass=password.getText().toString();
             if (user.isEmpty()||pass.isEmpty()) return;
-            getPreferences(0).edit().putString("server",server).putString("user",user).putString("pass",pass).apply();
+            AccountVault.save(this,server,user,pass);
             load();
         });
         host.requestFocus();
