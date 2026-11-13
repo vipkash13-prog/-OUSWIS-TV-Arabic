@@ -26,7 +26,7 @@ final class PlayLog {
     /** `sinceMs`: time from the start of this channel's playback, or negative when it doesn't apply. */
     static void add(Context c, long sinceMs, String what) {
         String when = new SimpleDateFormat("HH:mm:ss", Locale.US).format(new Date());
-        String since = sinceMs < 0 ? "  --  " : String.format(Locale.US, "+%d:%02d", sinceMs / 60000, sinceMs / 1000 % 60);
+        String since = sinceMs < 0 ? "  --  " : String.format(Locale.US, "%d:%02d", sinceMs / 60000, sinceMs / 1000 % 60);
         String line = when + " | " + since + " | " + what.replace('\n', ' ');
         AppLog.w("play: " + line);
         synchronized (LOCK) {

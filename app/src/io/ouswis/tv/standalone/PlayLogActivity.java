@@ -117,8 +117,8 @@ public final class PlayLogActivity extends Activity {
         }
         for (String line : all) {
             TextView t = text(line, 19, Design.TEXT, Design.regular());
-            t.setTextDirection(View.TEXT_DIRECTION_LTR);
-            t.setGravity(Gravity.LEFT);
+            t.setTextDirection(View.TEXT_DIRECTION_RTL);   // Arabic sentences with numbers read right to left
+            t.setGravity(Gravity.RIGHT);
             t.setSingleLine(true);
             t.setEllipsize(android.text.TextUtils.TruncateAt.END);
             lines.addView(t);
