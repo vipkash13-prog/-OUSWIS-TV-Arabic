@@ -117,11 +117,11 @@ public class SettingsActivity extends Activity {
         channelMapButton.setNextFocusUpId(updatesButton.getId());
         channelMapButton.setNextFocusDownId(sectionOrderButton.getId());
         sectionOrderButton.setNextFocusUpId(channelMapButton.getId());
-        features.addView(channelsButton, new LinearLayout.LayoutParams(-1, Math.round(76 * scale)));
-        features.addView(matchesButton, new LinearLayout.LayoutParams(-1, Math.round(76 * scale)));
-        features.addView(updatesButton, new LinearLayout.LayoutParams(-1, Math.round(76 * scale)));
-        features.addView(channelMapButton, new LinearLayout.LayoutParams(-1, Math.round(76 * scale)));
-        features.addView(sectionOrderButton, new LinearLayout.LayoutParams(-1, Math.round(76 * scale)));
+        features.addView(channelsButton, buttonParams(scale));
+        features.addView(matchesButton, buttonParams(scale));
+        features.addView(updatesButton, buttonParams(scale));
+        features.addView(channelMapButton, buttonParams(scale));
+        features.addView(sectionOrderButton, buttonParams(scale));
         FrameLayout.LayoutParams position = new FrameLayout.LayoutParams(Math.round(400 * scale), -2, Gravity.LEFT | Gravity.BOTTOM);
         position.leftMargin = Math.round(300 * scale);
         position.bottomMargin = Math.round(44 * scale);
@@ -130,6 +130,12 @@ public class SettingsActivity extends Activity {
         refreshFeatureLabels();
         setContentView(settingsPage);
         view.requestFocus();
+    }
+
+    private static LinearLayout.LayoutParams buttonParams(float scale) {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, Math.round(68 * scale));
+        lp.bottomMargin = Math.round(8 * scale);   // the same 76 pitch as before, with a gap between the dark cards
+        return lp;
     }
 
     /** The side buttons as dark cards (#121A3A) with a white frame when focused: no bright grey buttons on an OLED. */
@@ -390,6 +396,7 @@ public class SettingsActivity extends Activity {
         SettingsView(SettingsActivity a) {
             super(a);
             activity = a;
+            setDefaultFocusHighlightEnabled(false);   // the system's translucent focus highlight would lift every dark colour on this screen
             for (int i = 0; i < pop.length; i++) pop[i] = new Spring(0.28f, 0.85f, 0);
             Shaders.settings(scene.palette);
             scene.setMotion(0.5f, 0.2f);
