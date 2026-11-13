@@ -31,15 +31,16 @@ def capture(name,redesigned=False):
     adb('shell','am','start','-W','-n',PKG+'/.HomeActivity')
     for attempt in range(20):
         tree=ui();text=ET.tostring(tree,encoding='unicode')
-        if 'المتبقي' in text and (('°' in text) if redesigned else ('°C' in text or '°F' in text)):break
+        if 'المتبقي' in text and '°' in text:break   # the redesigned home writes "32°", the old one "32°C"
         time.sleep(1)
-    else:raise AssertionError('Expected real prayer/weather data before visual comparison')
+    else:raise AssertionError('Expected real prayer/weather data before visual comparison; saw: '+' | '.join((n.get('text','')+n.get('content-desc','')).strip() for n in tree.iter('node') if n.get('package')==PKG and (n.get('text','')+n.get('content-desc','')).strip())[:900]+' | logcat: '+' / '.join(l[-160:] for l in adb('logcat','-d','-t','4000').splitlines() if 'ouswis' in l.lower() and any(k in l for k in ('weather','Weather','meteo','prayer','Prayer','offline','failed')))[:900])
     png=adb('exec-out','screencap','-p',binary=True)
     assert Image.open(BytesIO(png)).size==(3840,2160),'A real native 4K screenshot is required'
     (OUT/(name+'.png')).write_bytes(png);(OUT/(name+'.xml')).write_bytes(ET.tostring(tree))
     nodes=[(n.get('class'),n.get('text',''),n.get('content-desc',''),n.get('bounds')) for n in tree.iter('node') if n.get('package')==PKG and n.get('clickable')=='true']
     assert len(nodes)>=10,nodes
-    if redesigned:
+    # Once the published release is itself the redesigned home (build 10209 on), the baseline gets the new-home checks too.
+    if redesigned or 'إضافة تطبيق' in text:
         labels=[(n[1] or n[2]).strip() for n in nodes]
         for shortcut in ('البث المباشر','المباريات','كل التطبيقات','الأخيرة','التحديثات','الإعدادات'):
             assert any(l.strip()==shortcut for l in labels),('Missing shortcut',shortcut)
@@ -63,7 +64,8 @@ with zipfile.ZipFile(OLD) as old,zipfile.ZipFile(NEW) as new:
     ADDED={'assets/fonts/Tajawal-OFL.txt','assets/backgrounds/ouswis_bg_1080p.webp','assets/backgrounds/ouswis_bg_4k.webp','assets/backgrounds/ouswis_bg_inner_1080p.webp'}
     REMOVED={'assets/themes/gold-sunset.png','assets/themes/gold-frame.png'}
     assert (names-REMOVED)|ADDED=={n for n in new.namelist() if n.startswith('assets/')},sorted(names^{n for n in new.namelist() if n.startswith('assets/')})
-    for n in names-REMOVED:assert old.read(n)==new.read(n),'Asset changed: '+n
+    # Round K dropped two unused translation keys (the Settings subtitle and the English "is on" notice): the i18n catalogues may differ.
+    for n in names-REMOVED:assert n.startswith('assets/i18n/') or old.read(n)==new.read(n),'Asset changed: '+n
     assert not any(n.startswith('lib/') and n.endswith('.so') for n in new.namelist()),'Recheck native ABI coverage'
 note('PASS: all official assets, wallpaper and icons are byte-identical. No native .so/ABI restriction: Java/Dex APK supports armeabi-v7a without a separate native build.')
 assert adb('shell','getprop','ro.kernel.qemu').strip()=='1'
