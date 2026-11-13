@@ -42,7 +42,9 @@ public class RecentsActivity extends Activity {
     private static final class Entry {
         String pkg, label;
         boolean stoppable;
+        long goneAt;   // when ▲ closed it: the card rises and fades for CLOSE_MS, then it leaves the list
     }
+    private static final long CLOSE_MS = 260;
 
     // Kept for the life of the process: the last list read (null until the first read ends) and the cards' pictures.
     private static List<Entry> cache;
@@ -99,7 +101,9 @@ public class RecentsActivity extends Activity {
                         if (!loaded) { error = shownError; lastError = shownError; }   // a list already on screen stays
                     } else {
                         error = null; lastError = null;
-                        if (!same(items, found)) {
+                        boolean closing = false;
+                        for (Entry e : items) if (e.goneAt != 0) closing = true;
+                        if (!closing && !same(items, found)) {
                             String keep = view.focusedPackage();
                             items.clear();
                             items.addAll(found);
@@ -177,14 +181,18 @@ public class RecentsActivity extends Activity {
         return slash > 0 ? s.substring(0, slash) : "";
     }
 
-    /** Stops these apps through the TV's ADB (one connection), then drops them from the list. */
+    /** Stops these apps through the TV's ADB (one connection). Each card rises and fades out, then leaves the list: nothing is read again after, so a closed app never comes back on screen. */
     private void closeApps(final List<Entry> which) {
         if (which.isEmpty()) return;
-        items.removeAll(which);   // gone from the screen at once; the read after refreshes the truth
-        cache = new ArrayList<>(items);
-        view.afterRemove();
+        long now = android.os.SystemClock.uptimeMillis();
         final List<String> pkgs = new ArrayList<>();
-        for (Entry e : which) pkgs.add(e.pkg);
+        for (Entry e : which) { e.goneAt = now; pkgs.add(e.pkg); }
+        view.invalidate();
+        main.postDelayed(() -> {
+            items.removeAll(which);
+            cache = new ArrayList<>(items);
+            view.afterRemove();
+        }, CLOSE_MS);
         try {
             io.execute(() -> {
                 try (Adb adb = Adb.connect(getApplicationContext(), 10_000, null)) {
@@ -192,8 +200,6 @@ public class RecentsActivity extends Activity {
                 } catch (IOException | RuntimeException e) {
                     AppLog.w("close app: " + e);
                 }
-                try { Thread.sleep(600); } catch (InterruptedException ignored) { }
-                main.post(() -> { if (!isFinishing()) refresh(); });
             });
         } catch (java.util.concurrent.RejectedExecutionException gone) { }
     }
@@ -201,7 +207,7 @@ public class RecentsActivity extends Activity {
     private void clearAll() {
         List<Entry> which = new ArrayList<>();
         int kept = 0;
-        for (Entry e : items) { if (e.stoppable) which.add(e); else kept++; }
+        for (Entry e : items) { if (e.goneAt != 0) continue; if (e.stoppable) which.add(e); else kept++; }
         notice = which.isEmpty() ? (kept > 0 ? "التطبيقات المفتوحة محمية ولا يمكن إغلاقها" : null)
                 : "تم إغلاق " + which.size() + (which.size() == 1 ? " تطبيق" : " تطبيقات") + (kept > 0 ? " · " + kept + " محمي" : "");
         closeApps(which);
@@ -227,6 +233,7 @@ public class RecentsActivity extends Activity {
         private float k;
         private int sel, first;       // sel: the focused card; first: the first card shown (a window of COLS)
         private boolean onButton;     // focus is on "مسح الكل"
+        private boolean animating;    // a card is on its way out: draw again next frame
 
         RecentsView(Context c) { super(c); setFocusable(true); setFocusableInTouchMode(true); setDefaultFocusHighlightEnabled(false); }
 
@@ -242,8 +249,8 @@ public class RecentsActivity extends Activity {
         }
 
         void afterRemove() {
-            if (sel >= items.size()) sel = Math.max(0, items.size() - 1);
-            if (items.isEmpty()) onButton = false;
+            if (sel >= items.size()) sel = Math.max(0, items.size() - 1);   // the card next to the closed one
+            onButton = false;
             invalidate();
         }
 
@@ -266,6 +273,7 @@ public class RecentsActivity extends Activity {
             int w = getWidth(), h = getHeight();
             if (backdrop != null) c.drawBitmap(backdrop, null, new RectF(0, 0, w, h), null); else c.drawColor(Design.BG);
             a11y.begin(k);
+            animating = false;
             c.save();
             c.scale(k, k);
             int n = items.size();
@@ -287,10 +295,18 @@ public class RecentsActivity extends Activity {
                 boolean focused = !onButton && i == sel;
                 RectF box = r;
                 if (focused) { Design.grown(r, g); box = g; }
+                float gone = e.goneAt == 0 ? 0 : Math.min(1, (android.os.SystemClock.uptimeMillis() - e.goneAt) / (float) CLOSE_MS);
+                if (gone > 0) {
+                    animating = true;
+                    c.save();
+                    c.translate(0, -140 * gone);
+                    c.saveLayerAlpha(box.left - 20, box.top - 20, box.right + 20, box.bottom + 80, Math.round(255 * (1 - gone)));
+                }
                 Bitmap t;
                 synchronized (TILES) { t = TILES.get(e.pkg); }
                 if (t != null) c.drawBitmap(t, null, box, bmp); else Design.card(c, box, 22, 1, p, 0xFF1B1E2B);
                 Design.center(c, Design.fitShrink(e.label, focused ? labelOn : label, CW - 8), (left + right) / 2, TOP + CH + 44, focused ? labelOn : label);
+                if (gone > 0) { c.restore(); c.restore(); }
                 a11y.add(box, e.label + (e.stoppable ? "" : " (محمي)"), focused, true);
                 if (focused) Design.focusRing(c, box, 22, 1, p);
             }
@@ -309,6 +325,7 @@ public class RecentsActivity extends Activity {
             Design.right(c, hint, 1848, 1054, sub);
             Design.left(c, "التطبيقات الأخيرة", 72, 1054, sub);
             c.restore();
+            if (animating) postInvalidateOnAnimation();
         }
 
         private void activate(int a11yIndex) {
@@ -322,21 +339,30 @@ public class RecentsActivity extends Activity {
         @Override public boolean onKeyDown(int key, KeyEvent e) {
             int n = items.size();
             switch (key) {
-                case KeyEvent.KEYCODE_DPAD_RIGHT: if (!onButton && sel > 0) sel--; notice = null; invalidate(); return true;   // RTL: the newest is on the right
-                case KeyEvent.KEYCODE_DPAD_LEFT: if (!onButton && sel + 1 < n) sel++; notice = null; invalidate(); return true;
+                case KeyEvent.KEYCODE_DPAD_RIGHT:   // RTL: the newest is on the right
+                    if (onButton) onButton = false; else if (sel > 0) sel--;
+                    notice = null; invalidate(); return true;
+                case KeyEvent.KEYCODE_DPAD_LEFT:
+                    if (onButton) onButton = false; else if (sel + 1 < n) sel++;
+                    notice = null; invalidate(); return true;
                 case KeyEvent.KEYCODE_DPAD_UP:
-                    if (onButton) onButton = false;
-                    else if (n > 0 && e.getRepeatCount() == 0) {   // one app a press: held, it went on to the next
+                    if (onButton) { onButton = false; invalidate(); return true; }
+                    if (n > 0 && e.getRepeatCount() == 0) {   // one app a press: held, it went on to the next
                         Entry x = items.get(Math.min(sel, n - 1));
-                        if (x.stoppable) { notice = null; List<Entry> one = new ArrayList<>(); one.add(x); closeApps(one); }
-                        else { notice = "هذا التطبيق محمي ولا يمكن إغلاقه"; }
+                        if (x.goneAt != 0) return true;
+                        if (x.stoppable) {
+                            notice = null;
+                            List<Entry> one = new ArrayList<>();
+                            one.add(x);
+                            closeApps(one);   // the focus stays on this place: the next card slides into it
+                        } else notice = "هذا التطبيق محمي ولا يمكن إغلاقه";
                     }
                     invalidate();
                     return true;
                 case KeyEvent.KEYCODE_DPAD_DOWN: if (n > 0) onButton = true; invalidate(); return true;
                 case KeyEvent.KEYCODE_DPAD_CENTER: case KeyEvent.KEYCODE_ENTER: case KeyEvent.KEYCODE_NUMPAD_ENTER:
                     if (e.getRepeatCount() == 0 && n > 0) {
-                        if (onButton) clearAll(); else open(items.get(Math.min(sel, n - 1)));
+                        if (onButton) clearAll(); else { Entry x = items.get(Math.min(sel, n - 1)); if (x.goneAt == 0) open(x); }
                     }
                     return true;
                 case KeyEvent.KEYCODE_APP_SWITCH: finish(); return true;

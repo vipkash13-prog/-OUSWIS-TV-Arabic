@@ -618,6 +618,59 @@ with tempfile.TemporaryDirectory() as temp:
     keys('BACK', pause=1)
     no_crash('Recent Apps')
     note('PASS: الأخيرة opens its own dark screen and Back returns straight to the new home (the old HomeView is never created).')
+
+    # Round K2: Recent Apps with real open apps: focus on the cards, ▲ closes the focused app, the neighbour takes the focus, مسح الكل
+    installed = adb('shell', 'pm', 'list', 'packages')
+    candidates = [p for p in ('com.android.contacts', 'com.android.deskclock', 'com.android.calendar') if 'package:' + p + '\n' in installed]
+    assert len(candidates) >= 2, 'The emulator needs two more apps for the Recent Apps test: ' + str(candidates)
+    for pkg in candidates:   # launched in this order: the last one is the newest card
+        adb('shell', 'monkey', '-p', pkg, '-c', 'android.intent.category.LAUNCHER', '1', check=False); time.sleep(3)
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.HomeActivity'); wait_label('غانا ضد الصومال', 'the home before the open apps test')
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.RecentsActivity'); time.sleep(5)
+    card_labels = lambda: [l for l in labels() if l and not l.startswith('التطبيقات الأخيرة') and 'مسح الكل' not in l and not l.startswith('OK ') and 'تطبيقات مفتوحة' not in l and 'تطبيق مفتوح' not in l and 'من ' not in l]
+    cards = card_labels()
+    note('Recent Apps with open apps: ' + str(cards))
+    assert len(cards) >= 2, 'Recent Apps must list the open apps: ' + str(labels())
+    img = shot('final-recents-cards.png')
+    top = [sum(1 for x in range(int(1920 * 0.2), 1848, 6) for y in range(310, 520, 6) if min(img.getpixel((x, y))) >= 235)]
+    assert top[0] < 400, 'Recent Apps shows white cards: ' + str(top[0])
+    focus0 = focused_label()
+    assert focus0 and 'مسح الكل' not in focus0, 'The focus must start on an app card, not on مسح الكل: ' + focus0
+    keys('DPAD_DOWN', pause=0.8); assert 'مسح الكل' in focused_label(), 'Down must reach مسح الكل: ' + focused_label()
+    keys('DPAD_UP', pause=0.8); assert 'مسح الكل' not in focused_label(), 'Up from the button must go back to the cards: ' + focused_label()
+    keys('DPAD_LEFT', pause=0.6); keys('DPAD_RIGHT', pause=0.6)
+    first = focused_label(); before_n = len(card_labels())
+    keys('DPAD_UP', pause=0.5); time.sleep(1.8)
+    after = card_labels()
+    assert len(after) == before_n - 1 and first not in after, 'UP on a card must remove it from the list: ' + first + ' | ' + str(after)
+    nxt = focused_label()
+    assert nxt and 'مسح الكل' not in nxt and nxt != first, 'After closing, the focus goes to the card next to it: ' + nxt
+    time.sleep(2)
+    assert not any(first.split(' (')[0] == l for l in card_labels()), 'The closed app came back on the list: ' + str(card_labels())
+    shot('final-recents-after-close.png')
+    note('PASS: ▲ on "' + first + '" closed it and removed its card; the focus went to "' + nxt + '"; it did not come back.')
+    gone = [pkg for pkg in candidates if not adb('shell', 'pidof', pkg, check=False).strip()]
+    assert gone, 'Closing a card must stop the app (force-stop): ' + str(candidates)
+    keys('DPAD_DOWN', pause=0.6); keys('DPAD_CENTER', pause=2.5)
+    rest = card_labels()
+    assert not rest or all('محمي' in l for l in rest), 'مسح الكل must close every app that may be closed: ' + str(rest)
+    shot('final-recents-cleared.png')
+    note('PASS: مسح الكل closed the rest (left on screen: ' + str(rest) + ').')
+    keys('BACK', pause=1)
+    # Round K2: every side button of Settings opens with the remote's OK (keyevent 23), and the page is the right one
+    side = [('Live TV', 'LiveActivity'), ('Matches', 'MatchesScreenActivity'), ('Updates', 'UpdatesActivity'),
+            ('ربط القنوات', 'ChannelMapActivity'), ('ترتيب الأقسام', 'SectionOrderActivity'), ('اشتراك IPTV', 'IptvActivity')]
+    for i, (name, activity) in enumerate(side):
+        adb('shell', 'am', 'start', '-W', '-n', PKG + '/.SettingsActivity'); time.sleep(2.5)
+        keys('DPAD_LEFT', pause=0.7)
+        keys(*['DPAD_DOWN'] * i, pause=0.7)
+        assert name in focused_label(), 'The side button ' + name + ' should hold the focus: ' + focused_label()
+        adb('shell', 'input', 'keyevent', '23'); time.sleep(2.5)
+        front(activity)
+        shot('final-side-' + str(i) + '-' + activity + '.png')
+        no_crash('Settings button ' + name)
+        keys('BACK', pause=1.5)
+    note('PASS: all six Settings side buttons opened with OK (keyevent 23): ' + ', '.join(a for _, a in side) + '.')
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.SettingsActivity'); time.sleep(4)
     img = shot('final-settings.png')
     lum = [sum(img.getpixel((x, y))) / 3 for x in range(0, 1920, 40) for y in range(0, 1080, 40)]

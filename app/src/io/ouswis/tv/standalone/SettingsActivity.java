@@ -60,8 +60,12 @@ public class SettingsActivity extends Activity {
     private Button channelsButton, matchesButton, updatesButton, channelMapButton, sectionOrderButton, iptvButton;
     private int featureReturnKey;
 
+    /** Leaving Settings for the home screen is at once: no slide or fade, so the two screens are never seen together. */
+    @Override public void finish() { super.finish(); overridePendingTransition(0, 0); }
+
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        overridePendingTransition(0, 0);
         if (openFireHome(getIntent())) return;
         Watchdog.install(this);
         Updates.schedule(this);   // the week's update check, once (a fresh install has had no boot or update yet)
@@ -245,7 +249,9 @@ public class SettingsActivity extends Activity {
             featureReturnKey = 0;
             return true;
         }
-        boolean featureFocused = channelsButton.hasFocus() || matchesButton.hasFocus() || updatesButton.hasFocus() || iptvButton.hasFocus();
+        // Every side button, so OK / Enter reach the focused one (the settings list took them for the two that were missing)
+        boolean featureFocused = channelsButton.hasFocus() || matchesButton.hasFocus() || updatesButton.hasFocus()
+                || channelMapButton.hasFocus() || sectionOrderButton.hasFocus() || iptvButton.hasFocus();
         if (event.getAction() == KeyEvent.ACTION_DOWN) {
             if (featureFocused && (event.getKeyCode() == KeyEvent.KEYCODE_DPAD_RIGHT || event.getKeyCode() == KeyEvent.KEYCODE_BACK)) {
                 featureReturnKey = event.getKeyCode();
