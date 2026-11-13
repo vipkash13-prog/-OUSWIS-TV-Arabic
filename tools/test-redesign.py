@@ -193,7 +193,7 @@ with tempfile.TemporaryDirectory() as temp:
     CATS = [('18', 'US APPLE TV'), ('10', 'FR|TF1 HD'), ('14', 'FR| BEIN SPORTS'), ('15', 'BE| SPORT'), ('16', 'US| NEWS'), ('11', 'رياضة'), ('12', 'أخبار'), ('13', 'أفلام'), ('17', 'AR| عام')]   # the foreign ones are listed first and two of them say sport: the Arabic ones must still lead
     STREAMS = {'11': [('101', 'SSC 1 HD', 'ts'), ('102', 'SSC 2 HD', 'ts'), ('103', 'SSC 3 HD', 'ts'), ('110', 'beIN Sports 1 HD', 'ts'),
                       ('111', 'beIN Sports 2', 'ts'), ('112', 'beIN Sports 3', 'm3u8'), ('113', 'FR| beIN SPORTS 4 HD (H.265)', 'ts'), ('120', 'AD Sports 1', 'ts'), ('105', 'beIN SPORTS XTRA 1HD', 'ts')],
-               '12': [('201', 'Al Arabiya', 'ts'), ('202', 'Sky News Arabia', 'ts')], '13': [('301', 'Movies One', 'ts')], '10': [('401', 'TF1 HD', 'ts')], '14': [], '18': [('801', 'Apple TV Test', 'ts')], '15': [], '16': [('701', 'US News 1', 'ts')], '17': [('801', 'MBC 1', 'ts')]}
+               '12': [('201', 'Al Arabiya', 'ts'), ('202', 'Sky News Arabia', 'ts')], '13': [('301', 'Movies One', 'ts')], '10': [('401', 'TF1 HD', 'ts')], '14': [], '18': [('811', 'Apple TV Test', 'ts')], '15': [], '16': [('701', 'US News 1', 'ts')], '17': [('801', 'MBC 1', 'ts')]}
     HOUR = 3600
     # guide programmes other than the default four: (title, start offset, stop offset) in seconds from now
     EPGX = {'120': [('(L) الهلال × النصر · دوري روشن', -1800, 1800), ('NBA: Philadelphia 76ers vs Boston Celtics', -1200, 6000), ('NBA Highlights', 6000, 9600)],
