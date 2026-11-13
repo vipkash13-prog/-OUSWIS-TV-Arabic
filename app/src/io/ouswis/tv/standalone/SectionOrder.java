@@ -18,24 +18,15 @@ import org.json.JSONArray;
  */
 final class SectionOrder {
     private SectionOrder(){}
+    private static final int RULE=2;
 
-    private static final Pattern COUNTRY=Pattern.compile("^\\W*(ar|sa|ksa|ae|uae|eg|qa|kw|iq|jo|dz|ma|tn|lb|sy|om|bh|ye|ly|sd|ps)\\s*[|:\\-\\]\\)/]",Pattern.CASE_INSENSITIVE);
-    private static final String[] WORDS={"arab","saudi","ksa","gulf","khaleej","egypt","emirat","qatar","kuwait","iraq","jordan","algeria","morocco","tunis","lebanon",
-            "syria","oman","bahrain","yemen","libya","sudan","palest","ssc","bein","sport","mbc","osn","rotana","shahid","عرب","رياض","سعود","خليج","مصر"};
-
-    /** A prefix of any other country ("FR|", "BE|", "US|"...): such a section is foreign even when it says sport. */
-    private static final Pattern PREFIX=Pattern.compile("^\\W*[a-z]{2,3}\\s*[|:\\-\\]\\)/]",Pattern.CASE_INSENSITIVE);
-    /** 0 Arabic (Arabic script or an Arabic country's prefix), 1 sports or Arabic-network words with no foreign prefix, 2 the rest. */
+    private static final Pattern AR_PREFIX=Pattern.compile("^\\W*ar\\s*[|:\\-\\]\\)/]",Pattern.CASE_INSENSITIVE);
+    /** 0 for a section that starts with "AR|" (or is named in Arabic), 2 for every other one (provider order). */
     static int tier(String name){
         if(name==null)return 2;
         for(int i=0;i<name.length();i++){char ch=name.charAt(i);if(ch>=0x0600&&ch<=0x06FF)return 0;}
-        if(COUNTRY.matcher(name).find())return 0;
-        if(PREFIX.matcher(name).find())return 2;
-        String n=name.toLowerCase(Locale.ROOT);
-        for(String w:WORDS)if(n.contains(w))return 1;
-        return 2;
+        return AR_PREFIX.matcher(name).find()?0:2;
     }
-    /** Arabic or sports, by script, country prefix or a well-known word. */
     static boolean priority(String name){return tier(name)<2;}
 
     private static SharedPreferences store(Context c){return c.getApplicationContext().getSharedPreferences("ouswis-live",Context.MODE_PRIVATE);}
@@ -50,7 +41,11 @@ final class SectionOrder {
     /** The provider's categories in the order the viewer wants them. */
     static List<LiveData.Category> arrange(Context c,List<LiveData.Category> in){
         List<LiveData.Category> byDefault=new ArrayList<>();
-        for(int t=0;t<3;t++)for(LiveData.Category cat:in)if(tier(cat.name)==t)byDefault.add(cat);   // Arabic first, then the sports, then the rest (FR, BE, US...)
+        for(int t=0;t<3;t+=2)for(LiveData.Category cat:in)if(tier(cat.name)==t)byDefault.add(cat);   // AR| first, then the rest in the provider's order
+        SharedPreferences sp=store(c);
+        if(sp.getInt("sectionRule",0)<RULE){   // an order frozen by an older rule (it was saved with the first hide or move) goes: AR| first applies again
+            sp.edit().remove("sectionOrder").putInt("sectionRule",RULE).apply();
+        }
         List<String> saved=read(c,"sectionOrder");
         if(saved.isEmpty())return byDefault;
         List<LiveData.Category> out=new ArrayList<>();
@@ -60,7 +55,7 @@ final class SectionOrder {
         return out;
     }
     static Set<String> hidden(Context c){return new HashSet<>(read(c,"sectionHidden"));}
-    static void saveOrder(Context c,List<String> ids){write(c,"sectionOrder",ids);}
+    static void saveOrder(Context c,List<String> ids){write(c,"sectionOrder",ids);store(c).edit().putInt("sectionRule",RULE).apply();}
     static void saveHidden(Context c,Set<String> ids){write(c,"sectionHidden",new ArrayList<>(ids));}
     static void reset(Context c){store(c).edit().remove("sectionOrder").remove("sectionHidden").apply();}
 }

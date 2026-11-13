@@ -56,10 +56,13 @@ public final class SectionOrderActivity extends Activity {
         hidden=SectionOrder.hidden(this);
         adapter.notifyDataSetChanged();
     }
-    private void save(){
-        List<String> ids=new ArrayList<>();
-        for(LiveData.Category c:rows)ids.add(c.id);
-        SectionOrder.saveOrder(this,ids);SectionOrder.saveHidden(this,hidden);
+    private void save(boolean moved){
+        if(moved){   // hiding a section must not freeze the order: only a move does
+            List<String> ids=new ArrayList<>();
+            for(LiveData.Category c:rows)ids.add(c.id);
+            SectionOrder.saveOrder(this,ids);
+        }
+        SectionOrder.saveHidden(this,hidden);
         adapter.notifyDataSetChanged();
     }
     private void resetDefault(){
@@ -79,7 +82,7 @@ public final class SectionOrderActivity extends Activity {
             else if(which==2)to=0;
             else{if(off)hidden.remove(c.id);else hidden.add(c.id);}
             if(which<3){rows.remove(i);rows.add(to,c);}
-            save();
+            save(which<3);
             list.setSelection(to+1);
         }).show();
     }

@@ -8,6 +8,11 @@ import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.RectF;
+import android.content.pm.ActivityInfo;
+import android.graphics.BitmapShader;
+import android.graphics.LinearGradient;
+import android.graphics.Shader;
+import android.graphics.drawable.AdaptiveIconDrawable;
 import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.os.Handler;
@@ -74,22 +79,133 @@ public class AllAppsActivity extends Activity {
         });}catch(java.util.concurrent.RejectedExecutionException gone){}
     }
 
+    // A card is 16:9 like the home screen's app tiles: the app's TV banner fills it; an app without one shows its icon, 56 dp, in the middle.
+    private static final int TILE_W=330,TILE_H=186,ICON=84;   // reference pixels (1 dp = 1.5 px)
+
+    /** The app's card, made off the UI thread: banner, else icon on a dark card (never a blank white square). */
+    static Bitmap makeTile(Context c,String pkg,String name){
+        PackageManager pm=c.getPackageManager();
+        Bitmap raw=Bitmap.createBitmap(TILE_W,TILE_H,Bitmap.Config.ARGB_8888);
+        Canvas rc=new Canvas(raw);
+        Drawable banner=null;
+        try{
+            Intent launch=HomeApps.launchIntent(pm,pkg);
+            if(launch!=null&&launch.getComponent()!=null){ActivityInfo ai=pm.getActivityInfo(launch.getComponent(),0);banner=ai.loadBanner(pm);}
+            if(banner==null)banner=pm.getApplicationBanner(pkg);
+        }catch(Throwable t){banner=null;}
+        boolean ok=false;
+        if(banner!=null){
+            try{
+                rc.drawColor(0xFF15161C);   // a banner with transparency sits on a dark card
+                banner.setBounds(0,0,TILE_W,TILE_H);banner.draw(rc);
+                ok=!blank(raw);
+            }catch(Throwable t){ok=false;}
+        }
+        String how="banner";
+        if(!ok){
+            how=drawIcon(c,pm,pkg,name,raw,rc);
+        }
+        AppLog.w("all-apps tile "+pkg+": "+how);
+        // rounded corners, anti-aliased
+        Bitmap out=Bitmap.createBitmap(TILE_W,TILE_H,Bitmap.Config.ARGB_8888);
+        Paint pp=new Paint(Paint.ANTI_ALIAS_FLAG);pp.setShader(new BitmapShader(raw,Shader.TileMode.CLAMP,Shader.TileMode.CLAMP));
+        new Canvas(out).drawRoundRect(new RectF(0,0,TILE_W,TILE_H),22,22,pp);
+        raw.recycle();
+        return out;
+    }
+
+    /** The icon, in the middle of a dark card. Tries the icon the launcher shows, then the app's own icon resource, then the glyph layer alone, then the first letter. */
+    private static String drawIcon(Context c,PackageManager pm,String pkg,String name,Bitmap raw,Canvas rc){
+        Paint bg=new Paint();bg.setShader(new LinearGradient(0,0,0,TILE_H,0xFF2B2E3A,0xFF17191F,Shader.TileMode.CLAMP));
+        Drawable[] tries=new Drawable[3];
+        try{
+            Intent launch=HomeApps.launchIntent(pm,pkg);
+            if(launch!=null&&launch.getComponent()!=null)tries[0]=pm.getActivityInfo(launch.getComponent(),0).loadIcon(pm);
+        }catch(Throwable t){}
+        try{tries[1]=pm.getApplicationInfo(pkg,0).loadIcon(pm);}catch(Throwable t){}
+        try{
+            android.content.pm.ApplicationInfo ai=pm.getApplicationInfo(pkg,0);
+            if(ai.icon!=0)tries[2]=pm.getResourcesForApplication(ai).getDrawableForDensity(ai.icon,android.util.DisplayMetrics.DENSITY_XXXHIGH,null);
+        }catch(Throwable t){}
+        String[] names={"icon","app icon","icon resource"};
+        int left=(TILE_W-ICON)/2,top=(TILE_H-ICON)/2;
+        for(int pass=0;pass<2;pass++){   // pass 1: the glyph layer on its own (a white glyph over a white background is a blank square)
+            for(int i=0;i<tries.length;i++){
+                Drawable d=tries[i];if(d==null)continue;
+                Bitmap glyph=null;
+                try{
+                    glyph=Bitmap.createBitmap(ICON,ICON,Bitmap.Config.ARGB_8888);   // drawn alone, so a blank picture can be told from the card behind it
+                    Canvas gc=new Canvas(glyph);
+                    if(d instanceof AdaptiveIconDrawable){
+                        AdaptiveIconDrawable a=(AdaptiveIconDrawable)d;
+                        Bitmap layers=Bitmap.createBitmap(ICON,ICON,Bitmap.Config.ARGB_8888);
+                        Canvas lc=new Canvas(layers);
+                        int pad=ICON/4;
+                        Drawable[] ls=pass==0?new Drawable[]{a.getBackground(),a.getForeground()}:new Drawable[]{a.getForeground()};
+                        for(Drawable layer:ls){if(layer==null)continue;layer.setBounds(-pad,-pad,ICON+pad,ICON+pad);layer.draw(lc);}
+                        Paint sp=new Paint(Paint.ANTI_ALIAS_FLAG);
+                        sp.setShader(new BitmapShader(layers,Shader.TileMode.CLAMP,Shader.TileMode.CLAMP));
+                        gc.drawRoundRect(0,0,ICON,ICON,ICON*0.2237f,ICON*0.2237f,sp);   // the squircle, like the launcher's
+                        layers.recycle();
+                    }else{
+                        if(pass==1)continue;   // a plain icon has no layers: nothing new to try
+                        d.setBounds(0,0,ICON,ICON);d.draw(gc);
+                    }
+                    if(!blank(glyph,0,0,ICON,pass==1)){
+                        rc.drawRect(0,0,TILE_W,TILE_H,bg);
+                        rc.drawBitmap(glyph,left,top,null);
+                        glyph.recycle();
+                        return names[i]+(pass==1?" (glyph layer)":"");
+                    }
+                }catch(Throwable t){}
+                if(glyph!=null)glyph.recycle();
+            }
+        }
+        // nothing drew: the app's first letter on the dark card
+        rc.drawRect(0,0,TILE_W,TILE_H,bg);
+        Paint lp=Design.text(Design.TEXT,64,Design.bold());
+        String n=name==null?"":name.trim();if(n.length()>3&&n.startsWith("ال"))n=n.substring(2);
+        Design.center(rc,n.isEmpty()?"?":n.substring(0,n.offsetByCodePoints(0,1)),TILE_W/2f,TILE_H/2f+22,lp);
+        return "letter";
+    }
+
+    /** True when the picture is one flat colour (a blank white square) or has nothing drawn in it. Samples inside the edge, where a rounded icon is transparent. */
+    private static boolean blank(Bitmap b){return blank(b,0,0,Math.min(b.getWidth(),b.getHeight()),false);}
+    private static boolean blank(Bitmap b,int x0,int y0,int size,boolean glyphOnly){
+        int min=255,max=0,seen=0;
+        for(int i=0;i<12;i++)for(int j=0;j<12;j++){
+            int x=Math.min(b.getWidth()-1,x0+Math.round(size*(0.12f+0.76f*i/11))),y=Math.min(b.getHeight()-1,y0+Math.round(size*(0.12f+0.76f*j/11)));
+            int px=b.getPixel(x,y);
+            if((px>>>24)<8)continue;
+            int lum=((px>>16&255)*3+(px>>8&255)*6+(px&255))/10;
+            seen++;min=Math.min(min,lum);max=Math.max(max,lum);
+        }
+        if(glyphOnly)return seen<2;
+        return seen<6||max-min<10;
+    }
+
     private final class AppsView extends View {
-        private static final int COLS=6,ROWS=4;
+        private static final int COLS=5,ROWS=3;
         private final Paint p=new Paint(Paint.ANTI_ALIAS_FLAG),bmp=new Paint(Paint.FILTER_BITMAP_FLAG|Paint.ANTI_ALIAS_FLAG);
         private final Paint title=Design.text(Design.TEXT,40,Design.bold()),sub=Design.text(Design.MUTED,20,Design.regular()),
-                label=Design.text(Design.TEXT,21,Design.regular()),initial=Design.text(Design.TEXT,40,Design.bold());
-        private final RectF r=new RectF(),g=new RectF(),ir=new RectF();
+                label=Design.text(Design.MUTED,22,Design.regular()),labelOn=Design.text(Design.TEXT,22,Design.bold());
+        private final RectF r=new RectF(),g=new RectF();
         private final A11y a11y=new A11y(this);
-        private final Map<String,Bitmap> icons=new HashMap<>();
         private final java.util.Set<String> asked=new java.util.HashSet<>();
-        private final ExecutorService iconLoader=Executors.newSingleThreadExecutor();
+        // at most 36 cards in memory (about 9 MB): the ones scrolled away are made again when they come back
+        private final Map<String,Bitmap> tiles=new java.util.LinkedHashMap<String,Bitmap>(48,0.75f,true){
+            @Override protected boolean removeEldestEntry(Map.Entry<String,Bitmap> e){
+                if(size()>36){asked.remove(e.getKey());return true;}
+                return false;
+            }
+        };
+        private final ExecutorService tileLoader=Executors.newSingleThreadExecutor();
         private Bitmap backdrop;
         private float k;
         private int sel,scroll;   // sel: index in the list; scroll: first row drawn
         AppsView(Context c){super(c);setFocusable(true);setFocusableInTouchMode(true);}
         @Override public android.view.accessibility.AccessibilityNodeProvider getAccessibilityNodeProvider(){return a11y.provider(null,null);}
-        @Override protected void onDetachedFromWindow(){iconLoader.shutdownNow();super.onDetachedFromWindow();}
+        @Override protected void onDetachedFromWindow(){tileLoader.shutdownNow();super.onDetachedFromWindow();}
         void dataChanged(){if(sel>=apps.size())sel=Math.max(0,apps.size()-1);invalidate();}
 
         @Override protected void onSizeChanged(int w,int h,int ow,int oh){
@@ -100,19 +216,14 @@ public class AllAppsActivity extends Activity {
             }catch(Throwable noRoom){backdrop=null;AppLog.w("backdrop skipped: "+noRoom);}
         }
 
-        /** The icon of an app, drawn once at 96 px on a worker; until it is there the app's first letter shows. */
-        private Bitmap icon(final String pkg){
-            Bitmap b=icons.get(pkg);
+        private Bitmap tile(final String pkg,final String name){
+            Bitmap b=tiles.get(pkg);
             if(b!=null||!asked.add(pkg))return b;
-            try{iconLoader.execute(()->{
+            try{tileLoader.execute(()->{
                 Bitmap made=null;
-                try{
-                    Drawable d=getContext().getPackageManager().getApplicationIcon(pkg);
-                    made=Bitmap.createBitmap(96,96,Bitmap.Config.ARGB_8888);
-                    Canvas c=new Canvas(made);d.setBounds(0,0,96,96);d.draw(c);
-                }catch(Throwable t){made=null;}
+                try{made=makeTile(getContext(),pkg,name);}catch(Throwable t){AppLog.w("all-apps tile failed: "+pkg+" "+t);}
                 final Bitmap done=made;
-                main.post(()->{if(done!=null){icons.put(pkg,done);invalidate();}});
+                main.post(()->{if(done!=null){tiles.put(pkg,done);invalidate();}});
             });}catch(java.util.concurrent.RejectedExecutionException gone){}
             return null;
         }
@@ -129,7 +240,7 @@ public class AllAppsActivity extends Activity {
             Design.right(c,"كل التطبيقات",1848,76,title);
             Design.right(c,loaded?apps.size()+" تطبيق":"جارٍ التحميل…",1848,113,sub);
             a11y.add(1100,40,1848,126,"كل التطبيقات · "+(loaded?apps.size()+" تطبيق":"جارٍ التحميل"),false,false);
-            int tileW=270,tileH=190,gapX=20,gapY=18;
+            int pitchX=359,pitchY=250;
             int row=sel/COLS;
             if(row<scroll)scroll=row;
             if(row>=scroll+ROWS)scroll=row-ROWS+1;
@@ -138,22 +249,17 @@ public class AllAppsActivity extends Activity {
             }
             for(int i=scroll*COLS;i<Math.min(apps.size(),(scroll+ROWS)*COLS);i++){
                 int rr=i/COLS-scroll,cc=i%COLS;
-                float right=1848-cc*(tileW+gapX),left=right-tileW,top=170+rr*(tileH+gapY);
-                r.set(left,top,right,top+tileH);
+                float right=1848-cc*pitchX,left=right-TILE_W,top=170+rr*pitchY;
+                r.set(left,top,right,top+TILE_H);
                 boolean focused=i==sel;
                 RectF box=r;if(focused){Design.grown(r,g);box=g;}
-                Design.card(c,box,24,1,p,0xFF151A2E);
                 String[] app=apps.get(i);
-                float cx=(left+right)/2;
-                Bitmap ic=icon(app[0]);
-                if(ic!=null){ir.set(cx-44,top+22,cx+44,top+110);c.drawBitmap(ic,null,ir,bmp);}
-                else{
-                    p.setStyle(Paint.Style.FILL);p.setShader(null);p.setColor(0x24FFFFFF);c.drawCircle(cx,top+66,40,p);
-                    Design.center(c,app[1].isEmpty()?"?":app[1].substring(0,app[1].offsetByCodePoints(0,1)),cx,top+80,initial);
-                }
-                Design.center(c,Design.fitShrink(app[1],label,tileW-24),cx,top+152,label);
+                Bitmap t=tile(app[0],app[1]);
+                if(t!=null)c.drawBitmap(t,null,box,bmp);
+                else{Design.card(c,box,22,1,p,0xFF1B1E2B);}
+                Design.center(c,Design.fitShrink(app[1],focused?labelOn:label,TILE_W-8),(left+right)/2,top+TILE_H+34,focused?labelOn:label);
                 a11y.add(box,app[1],focused,true);
-                if(focused)Design.focusRing(c,box,24,1,p);
+                if(focused)Design.focusRing(c,box,22,1,p);
             }
             Design.right(c,"OK للفتح · ▲▼◀▶ للتنقل · BACK للرئيسية",1848,1054,sub);
             Design.left(c,"كل التطبيقات",72,1054,sub);

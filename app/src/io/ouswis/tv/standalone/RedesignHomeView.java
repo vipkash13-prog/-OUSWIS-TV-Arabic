@@ -399,11 +399,11 @@ final class RedesignHomeView extends View {
 
     /** The last-channel card: 153 dp tall, always, and everything inside it is clipped to it, so it can't cover the row below. */
     private void drawHero(Canvas c){
-        r.set(611,163,1850,163+153*DP);RectF box=ring(r,focus(1,0));
+        r.set(611,163,1850,163+153*DP);RectF box=r;   // focused or not the card is the same size and colour: only the ring around it appears
         // separate paints, so no later change to one can touch what is already recorded for the other
         if(box.left!=heroL||box.top!=heroT||box.right!=heroR||box.bottom!=heroB){
             heroL=box.left;heroT=box.top;heroR=box.right;heroB=box.bottom;
-            heroFill.setShader(new LinearGradient(heroR,heroT,heroR-(heroR-heroL)*0.5f,heroB,0xF2123D5C,0xF2121A3A,Shader.TileMode.CLAMP));   // #123D5C (at the thumbnail side) to #121A3A at 95 %, reached by the middle of the card, so the text sits on the dark end: the city behind never shows through
+            heroFill.setShader(new LinearGradient(heroR,heroT,heroR-(heroR-heroL)*0.35f,heroB,0xF2123D5C,0xF2121A3A,Shader.TileMode.CLAMP));   // #123D5C (at the thumbnail side) to #121A3A at 95 %, reached by the middle of the card, so the text sits on the dark end: the city behind never shows through
         }
         heroFill.setStyle(Paint.Style.FILL);c.drawRoundRect(box,30,30,heroFill);
         heroStroke.setStyle(Paint.Style.STROKE);heroStroke.setStrokeWidth(1);heroStroke.setColor(Design.STROKE);c.drawRoundRect(box,30,30,heroStroke);
@@ -439,6 +439,9 @@ final class RedesignHomeView extends View {
             long now=System.currentTimeMillis();
             List<LiveData.Program> guide=live==null?null:live.guide(ch.id);
             LiveData.Program cur=LiveData.current(guide,now),nxt=LiveData.following(guide,now);
+            if(cur!=null){guideFor=ch.id;guideCur=cur;guideNext=nxt;}
+            else if(guideFor!=null&&guideFor.equals(ch.id)&&guideCur!=null&&guideCur.end>now){cur=guideCur;nxt=guideNext;}   // the guide is read again in the new view: show what was known meanwhile
+            if(cur==null)programLine(c,"الآن","","بث مباشر",x,box.left+40,box.top+142);   // a channel with no programme guide still says what it is
             if(cur!=null){
                 programLine(c,"الآن","",cur.shown,x,box.left+40,box.top+142);
                 float f=Math.max(0,Math.min(1,(now-cur.start)/(float)Math.max(1,cur.end-cur.start)));
@@ -473,12 +476,14 @@ final class RedesignHomeView extends View {
         n=n.replaceAll("[\\[\\]()]"," ").replaceAll("\\s{2,}"," ").trim();
         return n.isEmpty()?(name==null?"":name.trim()):n;
     }
+    private static String guideFor;   // the last channel's programmes, kept across views so the card never changes text on coming back
+    private static LiveData.Program guideCur,guideNext;
     private String heroLabel(LiveData.Channel ch){
         if(ch==null)return "ابدأ المشاهدة · افتح البث المباشر واختر قناة";
         long now=System.currentTimeMillis();
         List<LiveData.Program> guide=live==null?null:live.guide(ch.id);
         LiveData.Program cur=LiveData.current(guide,now);
-        return "آخر قناة شاهدتها: "+ch.name+(cur==null?"":" · الآن: "+cur.shown);
+        return "آخر قناة شاهدتها: "+ch.name+(cur==null?" · الآن: بث مباشر":" · الآن: "+cur.shown);
     }
     private String fmt(String pattern,long at){
         return Design.clock(at,pattern);

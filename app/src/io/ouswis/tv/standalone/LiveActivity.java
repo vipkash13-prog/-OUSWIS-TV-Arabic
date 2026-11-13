@@ -254,7 +254,7 @@ public final class LiveActivity extends Activity {
         @Override protected void onSizeChanged(int w,int h,int ow,int oh){
             k=w/1920f;
             try{backdrop=Bitmap.createBitmap(Math.max(1,w/2),Math.max(1,h/2),Bitmap.Config.RGB_565);
-            Canvas c=new Canvas(backdrop);c.scale(0.5f,0.5f);Wallpaper.draw(getContext(),c,w,h,0.6f);}catch(Throwable noRoom){backdrop=null;AppLog.w("backdrop skipped: "+noRoom);}   // the home wallpaper under a 60 % dark layer
+            Canvas c=new Canvas(backdrop);c.scale(0.5f,0.5f);Wallpaper.draw(getContext(),c,w,h,0.6f,0x0B0D1A);}catch(Throwable noRoom){backdrop=null;AppLog.w("backdrop skipped: "+noRoom);}   // the inner wallpaper under #0B0D1A at 60 % (was black at 60 %) dark layer
         }
         private String clock(){
             java.text.SimpleDateFormat f=new java.text.SimpleDateFormat("h:mm a",Design.AR);

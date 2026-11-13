@@ -38,8 +38,14 @@ public final class MatchesScreenActivity extends Activity {
     private final ExecutorService io=Executors.newSingleThreadExecutor();
     private MatchesView view;
     private boolean foreground;
-    private final List<MatchCarouselView.Match> all=new ArrayList<>();
-    private long updatedAt;
+    // The matches live in the process, not in the screen: coming back (from the live screen, from Back, after Android
+    // closed the screen) shows them at once; the load only runs in the background and changes the list when it differs.
+    private static final List<MatchCarouselView.Match> all=new ArrayList<>();
+    private static long updatedAt;
+    private static String loadedSig="";
+    // where the viewer was: the same day, league, area and match when the screen comes back
+    private static int keptDay=1,keptArea=1,keptChip=1;
+    private static String keptLeague="",keptKey="";
     private volatile boolean loading;
     private XtreamAccount account;
     private SharedPreferences store;
@@ -58,8 +64,14 @@ public final class MatchesScreenActivity extends Activity {
         view.requestFocus();
         if(account!=null)MatchChannels.prepare(this,account,()->{MatchChannels.scanGuides(this,account);view.postInvalidate();});
     }
-    @Override protected void onResume(){super.onResume();foreground=true;load();}
-    @Override protected void onPause(){foreground=false;main.removeCallbacks(refresh);super.onPause();}
+    private static boolean anyLive(){for(MatchCarouselView.Match m:all)if(m.live())return true;return false;}
+    @Override protected void onResume(){
+        super.onResume();foreground=true;
+        long every=anyLive()?60_000L:30*60_000L,age=System.currentTimeMillis()-updatedAt;
+        if(updatedAt==0||age>=every)load();               // only when stale: coming back does not load again
+        else main.postDelayed(refresh,every-age);
+    }
+    @Override protected void onPause(){foreground=false;main.removeCallbacks(refresh);if(view!=null)view.keep();super.onPause();}
     @Override protected void onDestroy(){io.shutdownNow();super.onDestroy();}
 
     private void load(){
@@ -78,11 +90,15 @@ public final class MatchesScreenActivity extends Activity {
             final boolean ok=any;
             main.post(()->{
                 loading=false;
-                if(ok){all.clear();all.addAll(merged);updatedAt=System.currentTimeMillis();}
+                if(ok){
+                    updatedAt=System.currentTimeMillis();
+                    StringBuilder sig=new StringBuilder();   // only a real change replaces the list (and so redraws the cards)
+                    for(MatchCarouselView.Match m:merged)sig.append(m.key).append('|').append(m.state).append('|').append(m.homeScore).append('-').append(m.awayScore).append('|').append(m.status).append('|').append(m.kickoffMillis).append(';');
+                    if(!sig.toString().equals(loadedSig)){loadedSig=sig.toString();all.clear();all.addAll(merged);}
+                }
                 view.dataChanged(ok);
                 if(foreground){
-                    boolean live=false;for(MatchCarouselView.Match m:all)if(m.live())live=true;
-                    main.postDelayed(refresh,live?60_000L:30*60_000L);
+                    main.postDelayed(refresh,anyLive()?60_000L:30*60_000L);
                 }
             });
         });
@@ -100,11 +116,12 @@ public final class MatchesScreenActivity extends Activity {
         private final RectF r=new RectF(),g=new RectF(),bm=new RectF();
         private Bitmap backdrop;
         private float k;
-        private int day=1;                        // day: 0 yesterday, 1 today, 2 tomorrow
-        private String league="";                 // "" all, FAV the favourites, else the label of a league that is in the day's matches
+        private int day=keptDay;                        // day: 0 yesterday, 1 today, 2 tomorrow
+        private String league=keptLeague;                 // "" all, FAV the favourites, else the label of a league that is in the day's matches
         private static final String FAV="★ المفضلة";
         private int chipScroll;                   // first league chip drawn (the row can be longer than the screen)
-        private int area=1,chipFocus=1,sel,scroll,panelFocus; // area: 0 filter chips, 1 grid, 2 detail panel
+        private int area=keptArea,chipFocus=keptChip,sel,scroll,panelFocus;
+        private String wantKey=keptKey;   // the match that had the focus: found again in the list once it is there // area: 0 filter chips, 1 grid, 2 detail panel
         private boolean offline;
         private final String[] days={"أمس","اليوم","غداً"};
         private final List<String> chips=new ArrayList<>();   // "الكل", then the leagues of the chosen day, then the favourites
@@ -116,6 +133,12 @@ public final class MatchesScreenActivity extends Activity {
         @Override protected void onAttachedToWindow(){super.onAttachedToWindow();MatchChannels.listen(lookupDone);}
         @Override protected void onDetachedFromWindow(){MatchChannels.unlisten(lookupDone);super.onDetachedFromWindow();}
         void dataChanged(boolean ok){offline=!ok&&all.isEmpty();invalidate();}
+        /** Remembers where the viewer is (called when the screen leaves the front). */
+        void keep(){
+            keptDay=day;keptLeague=league;keptArea=area;keptChip=chipFocus;
+            List<MatchCarouselView.Match> list=visible();
+            keptKey=sel>=0&&sel<list.size()?list.get(sel).key:"";
+        }
 
         @Override protected void onSizeChanged(int w,int h,int ow,int oh){
             k=w/1920f;
@@ -201,6 +224,10 @@ public final class MatchesScreenActivity extends Activity {
             a11y.begin(k);
             c.save();c.scale(k,k);
             List<MatchCarouselView.Match> list=visible();
+            if(wantKey!=null&&!wantKey.isEmpty()&&!list.isEmpty()){   // back on the match that was open
+                for(int i=0;i<list.size();i++)if(list.get(i).key.equals(wantKey)){sel=i;break;}
+                wantKey="";
+            }
             if(sel>=list.size())sel=Math.max(0,list.size()-1);
             // header
             Design.right(c,"⚽ المباريات",1848,76,title);
