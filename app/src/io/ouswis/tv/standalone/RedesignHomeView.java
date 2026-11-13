@@ -154,6 +154,7 @@ final class RedesignHomeView extends View {
     RedesignHomeView(Context c,Host host){
         super(c);this.host=host;
         setFocusable(true);setFocusableInTouchMode(true);
+        setDefaultFocusHighlightEnabled(false);   // the system's translucent focus highlight (a veil over the whole view while it holds the focus) would lift the dark cards: the home draws its own ring
         dateLine.setShadowLayer(3f,0,1.5f,0x99000000);
         account=XtreamAccount.read(c);
         if(account!=null)live=new LiveData(c,account);
