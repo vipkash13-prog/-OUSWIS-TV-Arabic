@@ -468,14 +468,15 @@ with tempfile.TemporaryDirectory() as temp:
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.PlayerActivity', '-e', 'id', '999', '-e', 'name', 'Short clip', '-e', 'ext', 'ts', '-e', 'num', '999')
     time.sleep(4)
     frames, blank = 0, 0
-    blank_at = []; t_start = time.time()
+    blank_at = []; t_start = time.time(); seen_picture = False
     loading_seen = []
     t_end = time.time() + 22
     next_dump = time.time() + 2
     while time.time() < t_end:
         img = shot('redesign-reconnect-burst.png'); frames += 1
         c_now = colourful(img, (0.2, 0.2, 0.8, 0.8))
-        if c_now < 0.05:
+        if c_now >= 0.05: seen_picture = True
+        if c_now < 0.05 and seen_picture:   # frames before the very first picture are the channel opening, not a reconnect
             blank += 1; blank_at.append('%d@%.1fs(%.2f)' % (frames, time.time() - t_start, c_now))
             if blank == 1: img.save(OUT / 'redesign-reconnect-blank.png')
         if time.time() >= next_dump:
