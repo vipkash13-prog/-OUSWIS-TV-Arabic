@@ -91,6 +91,9 @@ public class RecentsActivity extends Activity {
         HorizontalScrollView scroll = new HorizontalScrollView(this);
         scroll.setHorizontalScrollBarEnabled(false);
         scroll.setFillViewport(true);
+        scroll.setFocusable(false);   // only the cards take focus: a focused scroll view paints a grey band
+        scroll.setDefaultFocusHighlightEnabled(false);
+        scroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
         scroll.setClipChildren(false);
         scroll.setClipToPadding(false);
         scroll.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
@@ -419,7 +422,7 @@ public class RecentsActivity extends Activity {
         private final Paint title = Design.text(Design.TEXT, 40, Design.bold()), sub = Design.text(Design.MUTED, 20, Design.regular());
         private Bitmap wall;
 
-        BackdropView(Context c) { super(c); setFocusable(false); setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO); }
+        BackdropView(Context c) { super(c); setFocusable(false); setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES); }
 
         @Override protected void onSizeChanged(int w, int h, int ow, int oh) {
             try {
@@ -439,6 +442,7 @@ public class RecentsActivity extends Activity {
                 int n = items.size();
                 Design.right(c, "التطبيقات الأخيرة", 1848, 76, title);
                 String count = !loaded ? (error != null ? "" : "جارٍ البحث…") : n + (n == 1 ? " تطبيق مفتوح" : " تطبيقات مفتوحة");
+                setContentDescription("التطبيقات الأخيرة · " + count);   // read by TalkBack and the tests
                 Design.right(c, count, 1848, 113, sub);
                 if (n == 0) {
                     String msg = !loaded ? (error != null ? error : "جارٍ البحث عن التطبيقات المفتوحة…") : "لا توجد تطبيقات مفتوحة";
