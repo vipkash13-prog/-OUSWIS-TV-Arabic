@@ -57,7 +57,7 @@ public class SettingsActivity extends Activity {
     private SettingsView view;
     private DreamView preview;   // "Screensaver": the screensaver right here, without changing the system setting
     private FrameLayout settingsPage;
-    private Button channelsButton, matchesButton, updatesButton, channelMapButton, sectionOrderButton;
+    private Button channelsButton, matchesButton, updatesButton, channelMapButton, sectionOrderButton, playLogButton;
     private int featureReturnKey;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
@@ -84,6 +84,13 @@ public class SettingsActivity extends Activity {
         sectionOrderButton.setTextColor(0xFFFFFFFF);
         sectionOrderButton.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, 24 * scale);
         sectionOrderButton.setOnClickListener(v -> startActivity(new Intent(this, SectionOrderActivity.class)));
+        playLogButton = new Button(this);
+        playLogButton.setId(View.generateViewId());
+        playLogButton.setAllCaps(false);
+        playLogButton.setPadding(0, 0, 0, 0);
+        playLogButton.setTextColor(0xFFFFFFFF);
+        playLogButton.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, 24 * scale);
+        playLogButton.setOnClickListener(v -> startActivity(new Intent(this, PlayLogActivity.class)));
         channelMapButton = new Button(this);
         channelMapButton.setId(View.generateViewId());
         channelMapButton.setAllCaps(false);
@@ -117,16 +124,19 @@ public class SettingsActivity extends Activity {
         channelMapButton.setNextFocusUpId(updatesButton.getId());
         channelMapButton.setNextFocusDownId(sectionOrderButton.getId());
         sectionOrderButton.setNextFocusUpId(channelMapButton.getId());
+        sectionOrderButton.setNextFocusDownId(playLogButton.getId());
+        playLogButton.setNextFocusUpId(sectionOrderButton.getId());
         features.addView(channelsButton, buttonParams(scale));
         features.addView(matchesButton, buttonParams(scale));
         features.addView(updatesButton, buttonParams(scale));
         features.addView(channelMapButton, buttonParams(scale));
         features.addView(sectionOrderButton, buttonParams(scale));
+        features.addView(playLogButton, buttonParams(scale));
         FrameLayout.LayoutParams position = new FrameLayout.LayoutParams(Math.round(400 * scale), -2, Gravity.LEFT | Gravity.BOTTOM);
         position.leftMargin = Math.round(300 * scale);
         position.bottomMargin = Math.round(44 * scale);
         settingsPage.addView(features, position);
-        for (Button b : new Button[] {channelsButton, matchesButton, updatesButton, channelMapButton, sectionOrderButton}) darkButton(b, scale);
+        for (Button b : new Button[] {channelsButton, matchesButton, updatesButton, channelMapButton, sectionOrderButton, playLogButton}) darkButton(b, scale);
         refreshFeatureLabels();
         setContentView(settingsPage);
         view.requestFocus();
@@ -161,6 +171,7 @@ public class SettingsActivity extends Activity {
         updatesButton.setText(Ui.tr("Updates"));
         channelMapButton.setText("ربط القنوات");
         sectionOrderButton.setText("ترتيب الأقسام");
+        playLogButton.setText("سجل التشغيل");
     }
 
     /**
@@ -234,7 +245,8 @@ public class SettingsActivity extends Activity {
             featureReturnKey = 0;
             return true;
         }
-        boolean featureFocused = channelsButton.hasFocus() || matchesButton.hasFocus() || updatesButton.hasFocus();
+        boolean featureFocused = channelsButton.hasFocus() || matchesButton.hasFocus() || updatesButton.hasFocus()
+                || channelMapButton.hasFocus() || sectionOrderButton.hasFocus() || playLogButton.hasFocus();   // every side button takes OK itself
         if (event.getAction() == KeyEvent.ACTION_DOWN) {
             if (featureFocused && (event.getKeyCode() == KeyEvent.KEYCODE_DPAD_RIGHT || event.getKeyCode() == KeyEvent.KEYCODE_BACK)) {
                 featureReturnKey = event.getKeyCode();

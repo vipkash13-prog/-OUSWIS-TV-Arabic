@@ -15,7 +15,11 @@ import android.widget.TextView;
 import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
 import androidx.media3.common.VideoSize;
+import androidx.media3.datasource.HttpDataSource;
 import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.exoplayer.analytics.AnalyticsListener;
+import androidx.media3.exoplayer.source.LoadEventInfo;
+import androidx.media3.exoplayer.source.MediaLoadData;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -37,6 +41,13 @@ public final class PlayerActivity extends Activity {
     private int index;
     private int attempt,failures,generation;
     private boolean started;
+    // Diagnostics and the freeze watch (see PlayLog): all times are SystemClock.elapsedRealtime
+    private static final long FREEZE_MS=8_000;          // no progress for this long: prepare the same channel again
+    private static final int FREEZE_TRIES=3;            // at most this many restarts ...
+    private static final long FREEZE_WINDOW_MS=120_000; // ... within this time, then a message
+    private long channelStartAt,lastProgressAt,lastPos=-1,lastHeartbeatAt,lastLoadLogAt;
+    private final List<Long> freezes=new ArrayList<>();
+    private boolean gaveUp;
     private final Runnable hideLabel=()->label.setVisibility(View.GONE);
     private long playingSince;   // elapsedRealtime when this channel's picture first came up; 0 until then
     /** "Last channel" and "Recent": only a channel that has played full screen for 10 seconds (the small preview never gets here). */
@@ -117,25 +128,48 @@ public final class PlayerActivity extends Activity {
     @Override protected void onStart(){
         super.onStart();
         if(account==null)return;
-        player=LivePlayer.create(this);
+        player=LivePlayer.create(this,true);   // the only player: the preview's is released first
         player.setVideoSurfaceView(surface);
+        channelStartAt=android.os.SystemClock.elapsedRealtime();freezes.clear();gaveUp=false;
+        log("فتح ملء الشاشة · نوع البث: "+LivePlayer.streamType(this));
+        logAccountInfo();
         player.addListener(new Player.Listener(){
             @Override public void onPlaybackStateChanged(int state){
+                log("الحالة: "+stateName(state)+" · مخزّن "+(player==null?0:player.getTotalBufferedDuration()/1000)+" ث");
                 if(state==Player.STATE_BUFFERING)status.setText("جارٍ التحميل…");
                 if(state==Player.STATE_READY){status.setVisibility(View.GONE);failures=0;}
                 if(state==Player.STATE_BUFFERING)status.setVisibility(View.VISIBLE);
             }
-            @Override public void onRenderedFirstFrame(){status.setVisibility(View.GONE);pictureUp();}
+            @Override public void onRenderedFirstFrame(){status.setVisibility(View.GONE);pictureUp();log("ظهرت أول لقطة");}
+            @Override public void onPlaybackSuppressionReasonChanged(int reason){if(reason!=Player.PLAYBACK_SUPPRESSION_REASON_NONE)log("إيقاف مؤقت من النظام (السبب "+reason+")");}
             @Override public void onIsPlayingChanged(boolean playing){if(playing)pictureUp();}
             @Override public void onVideoSizeChanged(VideoSize size){fit(size);}
-            @Override public void onPlayerError(PlaybackException e){fail();}
+            @Override public void onPlayerError(PlaybackException e){
+                log("توقف: "+describe(e)+" · "+playerState());
+                if(e.errorCode==PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW){   // fell behind the live edge: jump back to it, not a failure
+                    try{player.seekToDefaultPosition();player.prepare();player.setPlayWhenReady(true);lastProgressAt=android.os.SystemClock.elapsedRealtime();log("عودة إلى البث المباشر: seekToDefaultPosition + prepare");return;}
+                    catch(RuntimeException x){log("تعذّر الرجوع للبث المباشر: "+x.getClass().getSimpleName());}
+                }
+                fail();
+            }
+        });
+        player.addAnalyticsListener(new AnalyticsListener(){
+            @Override public void onLoadError(AnalyticsListener.EventTime t,LoadEventInfo info,MediaLoadData data,java.io.IOException error,boolean canceled){
+                long now=android.os.SystemClock.elapsedRealtime();
+                if(now-lastLoadLogAt<3_000)return;   // a bad stretch would fill the log
+                lastLoadLogAt=now;
+                int http=httpCode(error);
+                log("تعذّر تحميل جزء"+(canceled?" (ملغى)":"")+": "+causes(error)+(http>0?" HTTP "+http:"")+" · "+playerState());
+            }
+            @Override public void onVideoCodecError(AnalyticsListener.EventTime t,Exception e){log("خطأ decoder للفيديو: "+e.getClass().getSimpleName());}
+            @Override public void onAudioCodecError(AnalyticsListener.EventTime t,Exception e){log("خطأ decoder للصوت: "+e.getClass().getSimpleName());}
         });
         playCurrent();
     }
     @Override protected void onStop(){
         leaveChannel();
         main.removeCallbacksAndMessages(null);
-        if(player!=null){try{player.release();}catch(Exception ignored){}player=null;}
+        if(player!=null){log("إغلاق المشغّل ("+playerState()+")");try{player.release();}catch(Exception ignored){}LivePlayer.released(player);player=null;}
         started=false;
         if(data!=null)data.shutdown();
         super.onStop();
@@ -146,18 +180,108 @@ public final class PlayerActivity extends Activity {
         surface.setLayoutParams(new FrameLayout.LayoutParams(s[0],s[1],Gravity.CENTER));
     }
 
+    // MARK: diagnostics
+
+    private long since(){return channelStartAt==0?-1:android.os.SystemClock.elapsedRealtime()-channelStartAt;}
+    private void log(String what){PlayLog.add(this,since(),PlayLog.clean(what,account));}
+    private static String stateName(int st){
+        switch(st){case Player.STATE_IDLE:return "IDLE";case Player.STATE_BUFFERING:return "BUFFERING";case Player.STATE_READY:return "READY";case Player.STATE_ENDED:return "ENDED";}
+        return String.valueOf(st);
+    }
+    private String playerState(){
+        if(player==null)return "بلا مشغّل";
+        return stateName(player.getPlaybackState())+(player.getPlayWhenReady()?"":" متوقف")+" · موضع "+player.getCurrentPosition()/1000+" ث · مخزّن "+player.getTotalBufferedDuration()/1000+" ث";
+    }
+    /** The http status inside an error's causes, or 0. */
+    private static int httpCode(Throwable t){
+        for(int i=0;t!=null&&i<8;i++,t=t.getCause())
+            if(t instanceof HttpDataSource.InvalidResponseCodeException)return ((HttpDataSource.InvalidResponseCodeException)t).responseCode;
+        return 0;
+    }
+    private static String causes(Throwable t){
+        StringBuilder b=new StringBuilder();
+        for(int i=0;t!=null&&i<4;i++,t=t.getCause()){if(b.length()>0)b.append(" ← ");b.append(t.getClass().getSimpleName());}
+        return b.toString();
+    }
+    /** What stopped it, in words: network, buffer, decoder, live window, or the server (with its http status). */
+    private static String describe(PlaybackException e){
+        int http=httpCode(e);
+        String kind;
+        switch(e.errorCode){
+            case PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW:kind="تأخر عن البث المباشر (BehindLiveWindow)";break;
+            case PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED:kind="خطأ شبكة: فشل الاتصال";break;
+            case PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT:kind="خطأ شبكة: انتهت المهلة";break;
+            case PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS:kind="انقطاع من السيرفر: رمز HTTP "+http;break;
+            case PlaybackException.ERROR_CODE_IO_UNSPECIFIED:kind="خطأ إدخال/إخراج";break;
+            case PlaybackException.ERROR_CODE_DECODER_INIT_FAILED:case PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED:
+            case PlaybackException.ERROR_CODE_DECODING_FAILED:case PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES:
+            case PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED:kind="خطأ decoder";break;
+            case PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED:case PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED:kind="بث تالف (تحليل)";break;
+            default:kind="خطأ";
+        }
+        return kind+" ["+e.getErrorCodeName()+"] "+causes(e)+(http>0&&e.errorCode!=PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS?" HTTP "+http:"");
+    }
+    /** The provider's own count of connections, read from user_info; never logs the login. */
+    private void logAccountInfo(){
+        final XtreamAccount a=account;
+        new Thread(()->{
+            String text;
+            try{
+                org.json.JSONObject u=new org.json.JSONObject(XtreamAccount.get(a.api(null,null))).getJSONObject("user_info");
+                text="الحساب: max_connections="+u.opt("max_connections")+" active_cons="+u.opt("active_cons")+" status="+u.opt("status");
+            }catch(Exception e){
+                text="تعذّر قراءة user_info: "+e.getClass().getSimpleName()+(String.valueOf(e.getMessage()).startsWith("HTTP ")?" "+e.getMessage():"");
+            }
+            final String line=text;
+            main.post(()->{if(!isFinishing())log(line);});
+        }).start();
+    }
+    private final Runnable watch=new Runnable(){@Override public void run(){
+        if(player==null||isFinishing())return;
+        long now=android.os.SystemClock.elapsedRealtime();
+        long pos=player.getCurrentPosition();
+        if(player.getPlaybackState()==Player.STATE_READY&&player.getPlayWhenReady()&&pos!=lastPos)lastProgressAt=now;
+        lastPos=pos;
+        if(now-lastHeartbeatAt>=15_000){lastHeartbeatAt=now;log("نبض: "+playerState());}
+        if(!gaveUp&&started&&now-lastProgressAt>FREEZE_MS)frozen(now);
+        main.postDelayed(this,1000);
+    }};
+    /** No progress for FREEZE_MS: prepare the same channel again, up to FREEZE_TRIES times in FREEZE_WINDOW_MS, then say so. */
+    private void frozen(long now){
+        for(int i=freezes.size()-1;i>=0;i--)if(now-freezes.get(i)>FREEZE_WINDOW_MS)freezes.remove(i);
+        if(freezes.size()>=FREEZE_TRIES){
+            gaveUp=true;
+            log("تجمّد ولم تنفع "+FREEZE_TRIES+" محاولات: "+playerState());
+            status.setText("توقّف البث. جرّب قناة أخرى أو غيّر نوع البث من الإعدادات > سجل التشغيل");status.setVisibility(View.VISIBLE);
+            return;
+        }
+        freezes.add(now);
+        log("تجمّد "+FREEZE_MS/1000+" ث بلا تقدّم ("+playerState()+") — إعادة تحضير "+freezes.size()+"/"+FREEZE_TRIES);
+        logAccountInfo();
+        playCurrent();
+    }
+
     private void playCurrent(){
         if(player==null||index<0||index>=list.size())return;
         LiveData.Channel ch=list.get(index);
         final int mine=++generation;
         main.removeCallbacks(noteLater);playingSince=0;
-        String ext=LivePlayer.extension(ch,attempt);
-        player.setMediaItem(LivePlayer.item(account,ch,ext));
-        player.setVolume(1f);
-        player.prepare();player.setPlayWhenReady(true);
-        started=true;
+        final String ext=LivePlayer.extension(this,ch,attempt);
         status.setText("جارٍ الاتصال…");status.setVisibility(View.VISIBLE);
         showLabel(ch);
+        started=true;
+        lastProgressAt=android.os.SystemClock.elapsedRealtime();lastPos=-1;
+        long wait=LivePlayer.settleMs();   // the preview's connection was just closed: it ends at the server first
+        Runnable go=()->{
+            if(mine!=generation||player==null)return;
+            log("تشغيل "+ch.name+" ("+ch.id+") · "+ext+(attempt>0?" · محاولة "+(attempt+1):""));
+            player.setMediaItem(LivePlayer.item(account,ch,ext,true));
+            player.setVolume(1f);
+            player.prepare();player.setPlayWhenReady(true);
+            lastProgressAt=android.os.SystemClock.elapsedRealtime();
+        };
+        if(wait>0)main.postDelayed(go,wait);else go.run();
+        main.removeCallbacks(watch);main.postDelayed(watch,1000);
     }
     private void showLabel(LiveData.Channel ch){
         label.setText((ch.num.isEmpty()?String.valueOf(index+1):ch.num)+" · "+ch.name+(list.size()>1?"   ("+(index+1)+"/"+list.size()+")":""));
@@ -176,6 +300,8 @@ public final class PlayerActivity extends Activity {
         leaveChannel();
         index=(index+by+list.size())%list.size();
         attempt=0;failures=0;
+        channelStartAt=android.os.SystemClock.elapsedRealtime();freezes.clear();gaveUp=false;
+        log("تغيير القناة");
         playCurrent();
     }
 

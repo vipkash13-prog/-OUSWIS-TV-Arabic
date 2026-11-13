@@ -143,6 +143,7 @@ public final class LiveActivity extends Activity {
                     preview.setLayoutParams(p);
                 }
                 @Override public void onPlayerError(PlaybackException e){
+                    PlayLog.add(LiveActivity.this,-1,"المعاينة: توقفت ["+e.getErrorCodeName()+"] "+e.getClass().getSimpleName());
                     // the other format once, then give up quietly: the preview is a nicety
                     if(previewChannel!=null&&previewAttempt==0){previewAttempt=1;playPreview(previewChannel,generation);}
                     else stopPreview();
@@ -154,7 +155,7 @@ public final class LiveActivity extends Activity {
     private LiveData.Channel previewChannel;
     private void playPreview(LiveData.Channel c,int generation){
         XtreamAccount a=XtreamAccount.read(this);if(a==null||exo==null)return;
-        exo.setMediaItem(LivePlayer.item(a,c,LivePlayer.extension(c,previewAttempt)));
+        exo.setMediaItem(LivePlayer.item(a,c,LivePlayer.extension(this,c,previewAttempt)));
         exo.setVolume(0f);
         exo.prepare();exo.setPlayWhenReady(true);
     }
@@ -169,7 +170,7 @@ public final class LiveActivity extends Activity {
     /** One player at a time, and none once the screen leaves the front. */
     private void releasePreview(){
         stopPreview();
-        if(exo!=null){try{exo.release();}catch(Exception ignored){}exo=null;}
+        if(exo!=null){try{exo.release();}catch(Exception ignored){}LivePlayer.released(exo);exo=null;}
     }
 
     void play(LiveData.Channel c,String section){

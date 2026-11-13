@@ -255,7 +255,7 @@ with tempfile.TemporaryDirectory() as temp:
                     if sid in EPGX:
                         body = {'epg_listings': [{'title': base64.b64encode(t.encode()).decode(), 'start_timestamp': str(now + a), 'stop_timestamp': str(now + b)} for t, a, b in EPGX[sid]]}
                 else:
-                    body = {'user_info': {'status': 'Active', 'exp_date': str(int(time.time()) + 86400 * 120)}}
+                    body = {'user_info': {'status': 'Active', 'max_connections': '1', 'active_cons': '0', 'exp_date': str(int(time.time()) + 86400 * 120)}}
                 payload = json.dumps(body).encode(); kind = 'application/json'
             elif re.fullmatch(r'/live/demo/demo/[0-9]+\.ts', url.path):
                 payload = data; kind = 'video/mp2t'
@@ -421,6 +421,37 @@ with tempfile.TemporaryDirectory() as temp:
     assert HITS.get('112.m3u8', 0) > before and HITS.get('112.ts', 0) > 0, HITS
     assert colourful(img, (0.2, 0.2, 0.8, 0.8)) > 0.2, 'The .ts fallback did not play'
     note('PASS: the refused .m3u8 was tried first, then the .ts fallback played.')
+    keys('BACK', pause=1)
+
+    # 4b. the playback log (Settings > سجل التشغيل): what the player did, the provider's connection count, no login in it
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.PlayLogActivity'); wait_label('سجل التشغيل', 'the playback log page')
+    time.sleep(1)
+    log_lines = [l for l in labels() if ' | ' in l]
+    shot('redesign-playlog.png')
+    note('Playback log lines: ' + str(len(log_lines)))
+    assert any('فتح ملء الشاشة' in l for l in log_lines), 'The log must say the full screen opened: ' + str(log_lines[:8])
+    assert any('max_connections=1' in l and 'active_cons=0' in l for l in log_lines), 'The log must hold max_connections and active_cons from user_info: ' + str(log_lines[:12])
+    assert any('HTTP 404' in l or 'BAD_HTTP_STATUS' in l for l in log_lines), 'The refused .m3u8 (404) must be logged with its http status: ' + str(log_lines[:12])
+    assert any('الحالة: READY' in l for l in log_lines) and any('ظهرت أول لقطة' in l for l in log_lines), 'State changes and the first frame must be logged: ' + str(log_lines[:12])
+    assert not any('demo' in l.lower() and '/live/' in l for l in log_lines), 'The log must not hold the login or the address'
+    assert len(log_lines) <= 20, 'The page shows the last 20 events only: ' + str(len(log_lines))
+    assert 'نوع البث' in focused_label(), 'The stream type button takes the focus first: ' + focused_label()
+    for expect in ('m3u8 فقط', 'ts فقط', 'تلقائي'):
+        keys('DPAD_CENTER', pause=0.8)
+        assert any(expect in l for l in labels()), 'OK on the stream type must reach ' + expect + ': ' + str([l for l in labels() if 'نوع' in l])
+    note('PASS: the playback log page lists the events (opening, states, http status, connection count) and the stream type cycles auto / m3u8 / ts.')
+    keys('DPAD_CENTER', pause=0.8); keys('DPAD_CENTER', pause=0.8)   # ts only
+    keys('BACK', pause=1)
+    before_m3u8 = HITS.get('112.m3u8', 0)
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.PlayerActivity', '-e', 'id', '112', '-e', 'name', 'beIN Sports 3', '-e', 'ext', 'm3u8', '-e', 'num', '112')
+    time.sleep(8); img = shot('redesign-player-ts-only.png')
+    assert HITS.get('112.m3u8', 0) == before_m3u8, 'With "ts only" the .m3u8 must never be asked for: ' + str(HITS)
+    assert colourful(img, (0.2, 0.2, 0.8, 0.8)) > 0.2, '"ts only" did not play'
+    note('PASS: with the stream type set to ts only, the channel played from .ts and the .m3u8 was never requested.')
+    keys('BACK', pause=1)
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.PlayLogActivity'); wait_label('سجل التشغيل', 'the playback log page again')
+    keys('DPAD_CENTER', pause=0.8)   # back to automatic
+    assert any('تلقائي' in l for l in labels()), 'The stream type must be back on automatic'
     keys('BACK', pause=1)
 
     # 5. the league -> channel table (Settings): pick by hand, then back to the default
