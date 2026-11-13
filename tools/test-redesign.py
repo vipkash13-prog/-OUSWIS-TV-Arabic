@@ -468,18 +468,22 @@ with tempfile.TemporaryDirectory() as temp:
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.PlayerActivity', '-e', 'id', '999', '-e', 'name', 'Short clip', '-e', 'ext', 'ts', '-e', 'num', '999')
     time.sleep(4)
     frames, blank = 0, 0
+    blank_at = []; t_start = time.time()
     loading_seen = []
     t_end = time.time() + 22
     next_dump = time.time() + 2
     while time.time() < t_end:
         img = shot('redesign-reconnect-burst.png'); frames += 1
-        if colourful(img, (0.2, 0.2, 0.8, 0.8)) < 0.05: blank += 1
+        c_now = colourful(img, (0.2, 0.2, 0.8, 0.8))
+        if c_now < 0.05:
+            blank += 1; blank_at.append('%d@%.1fs(%.2f)' % (frames, time.time() - t_start, c_now))
+            if blank == 1: img.save(OUT / 'redesign-reconnect-blank.png')
         if time.time() >= next_dump:
             loading_seen += [l for l in labels() if 'جارٍ' in l or 'إعادة الاتصال' in l]
             next_dump = time.time() + 4
         time.sleep(0.3)
     reconnects = HITS.get('999.ts', 0) - hits999
-    note('Reconnect test: %d connections in 26 s, %d frames sampled, %d blank, loading text seen: %s' % (reconnects, frames, blank, loading_seen))
+    note('Reconnect test: %d connections in 26 s, %d frames sampled, %d blank, loading text seen: %s; blank at %s' % (reconnects, frames, blank, loading_seen, blank_at))
     assert reconnects >= 3, 'The 5 s clip ends again and again: the channel must be joined again each time (connections: %d)' % reconnects
     assert blank <= 1, 'The last picture must stay on screen while reconnecting (%d of %d frames were blank)' % (blank, frames)
     assert not loading_seen, 'No loading text may show for a reconnect that takes under 3 s: ' + str(loading_seen)
