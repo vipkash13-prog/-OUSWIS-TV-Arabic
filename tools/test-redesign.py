@@ -589,7 +589,16 @@ with tempfile.TemporaryDirectory() as temp:
     assert not any('جارٍ التحميل' in l or 'جارٍ تحميل' in l for l in again), 'All Apps opened again must show its kept list at once: ' + str(again[:8])
     assert any('تطبيق' in l and '1' in l for l in again), 'All Apps opened again lost its list: ' + str(again[:8])
     note('PASS: All Apps opened a second time shows the kept list at once (no loading text).')
-    keys('BACK', pause=1.5); to_home()
+    keys('BACK', pause=1.5)
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.SettingsActivity'); time.sleep(4)
+    img = shot('final-settings.png')
+    lum = [sum(img.getpixel((x, y))) / 3 for x in range(0, 1920, 40) for y in range(0, 1080, 40)]
+    mean = sum(lum) / len(lum); bright = sum(1 for v in lum if v > 200) / len(lum)
+    assert mean < 70 and bright < 0.03, 'Settings is too bright for an OLED: mean ' + str(round(mean)) + ', bright share ' + str(round(bright, 3))
+    note('PASS: Settings is dark (mean brightness ' + str(round(mean)) + ', share of bright samples ' + str(round(bright, 3)) + ').')
+    no_crash('Settings')
+    keys('BACK', pause=1.5)
+    to_home()
     for n in range(5):
         keys('BACK', pause=1.0)
         no_crash('Back from the home screen, press ' + str(n + 1))
