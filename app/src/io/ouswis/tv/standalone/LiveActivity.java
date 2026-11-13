@@ -383,8 +383,8 @@ public final class LiveActivity extends Activity {
             g.set(r);
             p.setStyle(Paint.Style.FILL);
             p.setColor(0xFFFFFFFF);
-            p.setShader(new LinearGradient(r.left,r.top,r.right,r.bottom,0xFF14231D,0xFF0A1410,Shader.TileMode.CLAMP));
-            c.drawRoundRect(r,26,26,p);p.setShader(null);
+            p.setShader(null);p.setColor(0xFF0B0D1A);   // the preview's empty place: #0B0D1A, never green
+            c.drawRoundRect(r,26,26,p);
             if(!previewOn){
                 if(sel>=0&&sel<list.size()){
                     LiveData.Channel ch=list.get(sel);

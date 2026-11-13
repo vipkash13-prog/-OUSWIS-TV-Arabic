@@ -38,6 +38,34 @@ public class AllAppsActivity extends Activity {
     private AppsView view;
     private final List<String[]> apps=new ArrayList<>();   // package, label
     private volatile boolean loaded;
+    // Kept for the life of the process: the list after its first load, and the cards. Only an app being installed or removed changes them.
+    private static List<String[]> cache;
+    private static final Map<String,Bitmap> TILES=new java.util.LinkedHashMap<String,Bitmap>(48,0.75f,true){
+        @Override protected boolean removeEldestEntry(Map.Entry<String,Bitmap> e){
+            if(size()>40){ASKED.remove(e.getKey());return true;}   // about 10 MB at most: the ones scrolled far away are made again
+            return false;
+        }
+    };
+    private static final java.util.Set<String> ASKED=new java.util.HashSet<>();
+    private static boolean watching;
+    private static volatile Runnable onPackages;   // the open screen, told to read the list again
+    private static void watchPackages(Context c){
+        if(watching)return;
+        watching=true;
+        android.content.IntentFilter f=new android.content.IntentFilter();
+        f.addAction(Intent.ACTION_PACKAGE_ADDED);f.addAction(Intent.ACTION_PACKAGE_REMOVED);f.addAction(Intent.ACTION_PACKAGE_REPLACED);
+        f.addDataScheme("package");
+        c.getApplicationContext().registerReceiver(new android.content.BroadcastReceiver(){
+            @Override public void onReceive(Context ctx,Intent i){
+                final String pkg=i.getData()==null?null:i.getData().getSchemeSpecificPart();
+                new Handler(Looper.getMainLooper()).post(()->{
+                    cache=null;
+                    if(pkg!=null){TILES.remove(pkg);ASKED.remove(pkg);}else{TILES.clear();ASKED.clear();}
+                    Runnable r=onPackages;if(r!=null)r.run();
+                });
+            }
+        },f);
+    }
 
     @Override public void finish(){super.finish();overridePendingTransition(0,0);}   // and goes at once
     @Override protected void onCreate(Bundle b){
@@ -45,13 +73,16 @@ public class AllAppsActivity extends Activity {
         overridePendingTransition(0,0);   // opens at once: no fade or slide over the screen before
         Ui.init(this);
         getWindow().getDecorView().setSystemUiVisibility(5894);
+        watchPackages(this);
         view=new AppsView(this);
+        if(cache!=null){apps.addAll(cache);loaded=true;}   // the list is already known: no "loading" and no grey squares
         FrameLayout root=new FrameLayout(this);
         root.addView(view,new FrameLayout.LayoutParams(-1,-1));
         setContentView(root);
         view.requestFocus();
     }
-    @Override protected void onResume(){super.onResume();load();}
+    @Override protected void onResume(){super.onResume();onPackages=()->{if(!isFinishing())load();};if(cache==null)load();}
+    @Override protected void onPause(){onPackages=null;super.onPause();}
     @Override protected void onDestroy(){io.shutdownNow();super.onDestroy();}
 
     /** The list is read off the UI thread; it is read again each time the screen comes back (an app may have been installed). */
@@ -77,7 +108,7 @@ public class AllAppsActivity extends Activity {
             }
             final java.text.Collator coll=java.text.Collator.getInstance(java.util.Locale.getDefault());
             java.util.Collections.sort(list,(x,y)->coll.compare(x[1],y[1]));
-            main.post(()->{apps.clear();apps.addAll(list);loaded=true;view.dataChanged();});
+            main.post(()->{cache=list;apps.clear();apps.addAll(list);loaded=true;view.dataChanged();});
         });}catch(java.util.concurrent.RejectedExecutionException gone){}
     }
 
@@ -210,21 +241,15 @@ public class AllAppsActivity extends Activity {
                 label=Design.text(Design.MUTED,22,Design.regular()),labelOn=Design.text(Design.TEXT,22,Design.bold());
         private final RectF r=new RectF(),g=new RectF();
         private final A11y a11y=new A11y(this);
-        private final java.util.Set<String> asked=new java.util.HashSet<>();
-        // at most 36 cards in memory (about 9 MB): the ones scrolled away are made again when they come back
-        private final Map<String,Bitmap> tiles=new java.util.LinkedHashMap<String,Bitmap>(48,0.75f,true){
-            @Override protected boolean removeEldestEntry(Map.Entry<String,Bitmap> e){
-                if(size()>36){asked.remove(e.getKey());return true;}
-                return false;
-            }
-        };
+        private final java.util.Set<String> asked=ASKED;
+        private final Map<String,Bitmap> tiles=TILES;
         private final ExecutorService tileLoader=Executors.newSingleThreadExecutor();
         private Bitmap backdrop;
         private float k;
         private int sel,scroll;   // sel: index in the list; scroll: first row drawn
         AppsView(Context c){super(c);setFocusable(true);setFocusableInTouchMode(true);}
         @Override public android.view.accessibility.AccessibilityNodeProvider getAccessibilityNodeProvider(){return a11y.provider(null,null);}
-        @Override protected void onDetachedFromWindow(){tileLoader.shutdownNow();super.onDetachedFromWindow();}
+        @Override protected void onDetachedFromWindow(){tileLoader.shutdownNow();ASKED.retainAll(TILES.keySet());super.onDetachedFromWindow();}   // a card still being made is asked for again next time
         void dataChanged(){if(sel>=apps.size())sel=Math.max(0,apps.size()-1);invalidate();}
 
         @Override protected void onSizeChanged(int w,int h,int ow,int oh){

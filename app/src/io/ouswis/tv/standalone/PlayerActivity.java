@@ -65,8 +65,10 @@ public final class PlayerActivity extends Activity {
                 .putExtra(EXTRA_ICON,ch.icon).putExtra(EXTRA_NUM,ch.num).putExtra(EXTRA_EXT,ch.ext).putExtra(EXTRA_SECTION,section==null?"":section);
     }
 
+    @Override public void finish(){super.finish();overridePendingTransition(0,0);}   // goes back at once: the home screen is never seen faded over black
     @Override protected void onCreate(Bundle b){
         super.onCreate(b);
+        overridePendingTransition(0,0);
         Ui.init(this);
         getWindow().getDecorView().setSystemUiVisibility(5894);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);

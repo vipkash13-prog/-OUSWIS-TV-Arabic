@@ -288,6 +288,15 @@ with tempfile.TemporaryDirectory() as temp:
     adb('shell', 'chown', '-R', uid + ':' + uid, folder)
     adb('logcat', '-c')
 
+    # 0. no green anywhere in the sources of the preview and the player (the preview's empty place was a dark green gradient)
+    src = Path(__file__).resolve().parent.parent / 'app'
+    hits = []
+    for f in list(src.rglob('*.java')) + list(src.rglob('*.xml')):
+        if f.name in ('LiveActivity.java', 'PlayerActivity.java', 'LivePlayer.java', 'styles.xml', 'brand_colors.xml'):
+            hits += [f.name + ': ' + m for m in re.findall(r'(?i)(14231D|0A1410|2E7D32|4CAF50|Color\.GREEN|holo_green)', f.read_text(encoding='utf-8'))]
+    assert not hits, 'Green found in the preview/player sources: ' + str(hits)
+    note('PASS: no green colour in LiveActivity, PlayerActivity, LivePlayer or the styles.')
+
     # 1. home, and the account sealed at rest
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.HomeActivity')
     shot('redesign-home-loading.png')
@@ -300,8 +309,7 @@ with tempfile.TemporaryDirectory() as temp:
     pts = [img.getpixel((x, 180)) for x in range(700, 1500, 160)]
     img.crop((600, 150, 1860, 420)).save(OUT / 'hero-card-crop.png')
     note('HERO card pixels (x=700..1340, y=180): ' + str(pts))
-    assert all(r <= 40 and g <= 75 and b <= 105 for r, g, b in pts), 'The last-channel card is lighter than #123D5C: ' + str(pts)
-    assert all(g <= 45 and b <= 75 for r, g, b in pts[:4]), 'The text side of the card must be the dark end (#121A3A): ' + str(pts)
+    assert all(r <= 40 and g <= 55 and b <= 80 and b - r <= 45 for r, g, b in pts), 'The last-channel card is not the dark prayer-card colour: ' + str(pts)
     note('PASS: the English guide title "Juventus vs OL Lyonnes - UEFA Women\'s Champions League" shows as ' + arabic[0][-60:] + '.')
     assert 'آخر قناة' in focused_label(), 'The last-channel card must hold the first focus: ' + focused_label()
     # the focus ring belongs round the card (no small ring under it, no stray dash inside it)
@@ -575,6 +583,12 @@ with tempfile.TemporaryDirectory() as temp:
     note('PASS: All Apps shows no white card (' + str(white) + ' near-white samples).')
     no_crash('All Apps')
     note('PASS: كل التطبيقات opens from the home shortcut and lists ' + head[0] + '.')
+    keys('BACK', pause=1.5)
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.AllAppsActivity')
+    again = labels()
+    assert not any('جارٍ التحميل' in l or 'جارٍ تحميل' in l for l in again), 'All Apps opened again must show its kept list at once: ' + str(again[:8])
+    assert any('تطبيق' in l and '1' in l for l in again), 'All Apps opened again lost its list: ' + str(again[:8])
+    note('PASS: All Apps opened a second time shows the kept list at once (no loading text).')
     keys('BACK', pause=1.5); to_home()
     for n in range(5):
         keys('BACK', pause=1.0)

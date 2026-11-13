@@ -391,7 +391,6 @@ final class RedesignHomeView extends View {
     private static final int CARD_DARK=0xBF0B0D1A;   // #0B0D1A at 75 %: the skyline behind never competes with the text
     private final float[] dy=new float[4];   // vertical shift of each block so the rows share the screen evenly
     private final RectF heroBox=new RectF();
-    private android.graphics.drawable.GradientDrawable heroDrawable;
     private final Paint heroFill=new Paint(Paint.ANTI_ALIAS_FLAG),heroStroke=new Paint(Paint.ANTI_ALIAS_FLAG);
     private float heroL,heroT,heroR,heroB;   // the box the gradient was made for
     private final Path heroClip=new Path();
@@ -402,14 +401,7 @@ final class RedesignHomeView extends View {
     /** The last-channel card: 153 dp tall, always, and everything inside it is clipped to it, so it can't cover the row below. */
     private void drawHero(Canvas c){
         heroBox.set(611,163,1850,163+153*DP);RectF box=heroBox;   // its own rectangle: the shared r is changed by the lines drawn inside the card (that moved the ring and drew a stray dash). Focused or not the card is the same size and colour: only the ring appears
-        // the card is a GradientDrawable, #123D5C at the thumbnail side to #121A3A, opaque: nothing behind it shows through
-        if(heroDrawable==null){
-            heroDrawable=new android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.RIGHT_LEFT,new int[]{0xFF123D5C,0xFF121A3A});
-            heroDrawable.setGradientType(android.graphics.drawable.GradientDrawable.LINEAR_GRADIENT);
-            heroDrawable.setCornerRadius(30);
-        }
-        heroDrawable.setBounds(Math.round(box.left),Math.round(box.top),Math.round(box.right),Math.round(box.bottom));
-        heroDrawable.draw(c);
+        Design.card(c,box,30,1,p,CARD_DARK);   // exactly the prayer card's colour, flat: no blue gradient
         heroStroke.setStyle(Paint.Style.STROKE);heroStroke.setStrokeWidth(1);heroStroke.setColor(Design.STROKE);c.drawRoundRect(box,30,30,heroStroke);
         LiveData.Channel ch=lastChannel();
         c.save();c.clipRect(box.left+2,box.top+2,box.right-2,box.bottom-2);

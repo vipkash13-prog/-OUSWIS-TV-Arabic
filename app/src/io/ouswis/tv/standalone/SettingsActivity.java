@@ -250,7 +250,7 @@ public class SettingsActivity extends Activity {
         // The main menu: eight rows, then the comparison, the picks (with the Watchmode credit) and two notices, all on
         // one 1080 px screen: the rows share the 462 px that seven took.
         private static final float MAIN_TOP = 140, ROW_H = 53.75f, MAIN_GAP = 4;
-        private static final int AMBER = 0xFFFFC266, INK = 0xFF1C1C1E;
+        private static final int AMBER = 0xFFFFC266, INK = 0xFFFFFFFF;
 
         private final SettingsActivity activity;
         private final Scene scene = new Scene();
@@ -317,7 +317,7 @@ public class SettingsActivity extends Activity {
         private final boolean phone;   // installed on a phone: the settings say where it goes (HomeMode.phone)
         private int w, h;
         private float k = 1;
-        private Paint title, subtitle, version, rowLabel, rowValue, rowSub, header, cellLabel, cellValue, warn, spinner, white, shadow;
+        private Paint title, subtitle, version, rowLabel, rowValue, rowSub, header, cellLabel, cellValue, warn, spinner, white, shadow, ring;
         private TextPaint notice, rowValueFit;
 
         private final Runnable poll = new Runnable() {
@@ -564,7 +564,8 @@ public class SettingsActivity extends Activity {
             spinner.setStrokeCap(Paint.Cap.ROUND);
             spinner.setStrokeWidth(3.5f * k);
             white = new Paint(Paint.ANTI_ALIAS_FLAG);
-            white.setColor(0xFFF5F5F7);
+            white.setColor(0xFF121A3A);   // the cards: dark, for an OLED
+            ring = new Paint(Paint.ANTI_ALIAS_FLAG);ring.setStyle(Paint.Style.STROKE);ring.setColor(0xFFFFFFFF);
             shadow = new Paint(Paint.ANTI_ALIAS_FLAG);
             shadow.setMaskFilter(new BlurMaskFilter(22 * k, BlurMaskFilter.Blur.NORMAL));
             keyHeading = Ui.text(Ui.displaySemibold, 34 * k, 0xFFFFFFFF);
@@ -656,9 +657,8 @@ public class SettingsActivity extends Activity {
             skySeconds += dt;
             if (up - lastSky >= 100) {
                 lastSky = up;
-                scene.advance(skySeconds);
             }
-            scene.drawBackground(c);
+            c.drawColor(0xFF0B0D1A);   // plain #0B0D1A instead of the sky: bright areas hurt on an OLED
 
             // On the left: big symbol, title, description.
             float cx = 500 * k;
@@ -687,28 +687,28 @@ public class SettingsActivity extends Activity {
                 rowRect.set(LIST_X * k, y, LIST_R * k, y + ROW_H * k);
                 float f = drawRowBackground(c, i);
                 boolean off = unavailable(i) != null;
-                int ink = off ? blend(0x73FFFFFF, 0x731C1C1E, f) : blend(0xF2FFFFFF, INK, f);
+                int ink = off ? blend(0x73FFFFFF, 0x73FFFFFF, f) : blend(0xF2FFFFFF, INK, f);
                 rowLabel.setColor(ink);
                 float base = rowRect.centerY() + Ui.halfCap(rowLabel);
                 c.drawText(labels[i], rowRect.left + 30 * k, base, rowLabel);
                 float right = rowRect.right - 30 * k;
                 if (off) {
-                    rowValue.setColor(blend(0x59FFFFFF, 0x591C1C1E, f));
+                    rowValue.setColor(blend(0x59FFFFFF, 0x59FFFFFF, f));
                     c.drawText(Ui.tr("Unavailable"), right, base, rowValue);
                 } else if (i >= 2) {
                     float cw = Symbols.width(getContext(), "chevron_right", 22 * k);
-                    Symbols.draw(getContext(), c, "chevron_right", right - cw / 2, rowRect.centerY(), 22 * k, blend(0x66FFFFFF, 0x991C1C1E, f));
+                    Symbols.draw(getContext(), c, "chevron_right", right - cw / 2, rowRect.centerY(), 22 * k, blend(0x66FFFFFF, 0x99FFFFFF, f));
                 } else if (i == 0 && working) {
                     // Switching: the current step in place of the value, with the spinning arc.
                     String text = busyText.isEmpty() ? Ui.tr("Starting…") : busyText;
-                    rowValue.setColor(blend(0xB3FFFFFF, 0xB31C1C1E, f));
+                    rowValue.setColor(blend(0xB3FFFFFF, 0xB3FFFFFF, f));
                     String shown = TextUtils.ellipsize(text, new TextPaint(rowValue), 470 * k, TextUtils.TruncateAt.END).toString();
                     c.drawText(shown, right, base, rowValue);
                     float sx = right - rowValue.measureText(shown) - 26 * k;
                     spinner.setColor(blend(0xFFFFFFFF, INK, f));
                     Ui.spinner(c, sx, rowRect.centerY(), 12 * k, seconds * 1.3f, spinner);
                 } else {
-                    rowValue.setColor(blend(0x8CFFFFFF, 0x8C1C1C1E, f));
+                    rowValue.setColor(blend(0x8CFFFFFF, 0x8CFFFFFF, f));
                     c.drawText(values[i], right, base, rowValue);
                 }
             }
@@ -765,19 +765,17 @@ public class SettingsActivity extends Activity {
         /** List row: no background; focused, white with a shadow (the Apple TV focus). Returns how focused it is. */
         private float drawRowBackground(Canvas c, int i) {
             float f = Ui.clamp(pop[i].value);
+            float s = 1 + 0.02f * f;
+            float cx = rowRect.centerX(), cy = rowRect.centerY();
+            tmp.set(cx - rowRect.width() * s / 2, cy - rowRect.height() * s / 2, cx + rowRect.width() * s / 2, cy + rowRect.height() * s / 2);
+            float r = 18 * k * s;
+            c.drawRoundRect(tmp, r, r, white);   // every row is a #121A3A card; the focus only adds a white frame
             if (f > 0.01f) {
-                float s = 1 + 0.02f * f;
-                float cx = rowRect.centerX(), cy = rowRect.centerY();
-                tmp.set(cx - rowRect.width() * s / 2, cy - rowRect.height() * s / 2, cx + rowRect.width() * s / 2, cy + rowRect.height() * s / 2);
-                float r = 18 * k * s;
-                tmp.offset(0, 10 * k * f);
-                shadow.setColor(Ui.alpha(0xFF000000, 0.4f * f));
-                c.drawRoundRect(tmp, r, r, shadow);
-                tmp.offset(0, -10 * k * f);
-                white.setAlpha(Math.round(255 * f));
-                c.drawRoundRect(tmp, r, r, white);
-                rowRect.set(tmp);
+                ring.setAlpha(Math.round(255 * f));
+                ring.setStrokeWidth(3 * k);
+                c.drawRoundRect(tmp, r, r, ring);
             }
+            if (f > 0.01f) rowRect.set(tmp);
             return f;
         }
 
@@ -838,7 +836,7 @@ public class SettingsActivity extends Activity {
                 rowRect.set(LIST_X * k, y, LIST_R * k, y + CHOICE_H * k);
                 float f = drawRowBackground(c, i);
                 rowLabel.setColor(blend(0xF2FFFFFF, INK, f));
-                rowSub.setColor(blend(0x8CFFFFFF, 0x991C1C1E, f));
+                rowSub.setColor(blend(0x8CFFFFFF, 0x99FFFFFF, f));
                 c.drawText(options[i][0], rowRect.left + 30 * k, rowRect.top + 44 * k, rowLabel);
                 c.drawText(options[i][1], rowRect.left + 30 * k, rowRect.top + 80 * k, rowSub);
                 if (i == current) {
@@ -2155,8 +2153,8 @@ public class SettingsActivity extends Activity {
                 float y = (LIST_TOP + 20 + i * (LIST_ROW_H + LIST_ROW_GAP)) * k;
                 rowRect.set(LIST_X * k, y, LIST_R * k, y + LIST_ROW_H * k);
                 float f = drawRowBackground(c, i);
-                rowLabel.setColor(blend(on ? 0xF2FFFFFF : 0x80FFFFFF, on ? INK : 0x801C1C1E, f));
-                rowValue.setColor(blend(0xB3FFFFFF, 0xB31C1C1E, f));
+                rowLabel.setColor(blend(on ? 0xF2FFFFFF : 0x80FFFFFF, on ? INK : 0x80FFFFFF, f));
+                rowValue.setColor(blend(0xB3FFFFFF, 0xB3FFFFFF, f));
                 float base = rowRect.centerY() + Ui.halfCap(rowLabel);
                 String label = hiddenRow ? hiddenLabel() : watchApps.get(at)[1];
                 c.drawText(TextUtils.ellipsize(label, new TextPaint(rowLabel), 560 * k, TextUtils.TruncateAt.END).toString(), rowRect.left + 30 * k, base, rowLabel);
@@ -2240,9 +2238,9 @@ public class SettingsActivity extends Activity {
                 rowRect.set(LIST_X * k, y, LIST_R * k, y + LIST_ROW_H * k);
                 float f = drawRowBackground(c, i);
                 boolean off = unavailable(i) != null;
-                rowLabel.setColor(off ? blend(0x73FFFFFF, 0x731C1C1E, f)
-                        : blend(place >= 0 ? 0xF2FFFFFF : 0x80FFFFFF, place >= 0 ? INK : 0x801C1C1E, f));
-                rowValue.setColor(off ? blend(0x59FFFFFF, 0x591C1C1E, f) : blend(0xB3FFFFFF, 0xB31C1C1E, f));
+                rowLabel.setColor(off ? blend(0x73FFFFFF, 0x73FFFFFF, f)
+                        : blend(place >= 0 ? 0xF2FFFFFF : 0x80FFFFFF, place >= 0 ? INK : 0x80FFFFFF, f));
+                rowValue.setColor(off ? blend(0x59FFFFFF, 0x59FFFFFF, f) : blend(0xB3FFFFFF, 0xB3FFFFFF, f));
                 float base = rowRect.centerY() + Ui.halfCap(rowLabel);
                 c.drawText(TextUtils.ellipsize(app[1], new TextPaint(rowLabel), 520 * k, TextUtils.TruncateAt.END).toString(), rowRect.left + 30 * k, base, rowLabel);
                 float right = rowRect.right - 30 * k;
@@ -2310,12 +2308,12 @@ public class SettingsActivity extends Activity {
                 rowRect.set(LIST_X * k, y, LIST_R * k, y + LIST_ROW_H * k);
                 float f = drawRowBackground(c, i);
                 boolean off = unavailable(i) != null;
-                rowLabel.setColor(off ? blend(0x73FFFFFF, 0x731C1C1E, f) : blend(0xF2FFFFFF, INK, f));
+                rowLabel.setColor(off ? blend(0x73FFFFFF, 0x73FFFFFF, f) : blend(0xF2FFFFFF, INK, f));
                 // A long name (an Immich album) stops short of the check mark.
                 c.drawText(TextUtils.ellipsize(pickLabels.get(at), new TextPaint(rowLabel), rowRect.width() - 130 * k,
                         TextUtils.TruncateAt.END).toString(), rowRect.left + 30 * k, rowRect.centerY() + Ui.halfCap(rowLabel), rowLabel);
                 if (off) {
-                    rowValue.setColor(blend(0x59FFFFFF, 0x591C1C1E, f));
+                    rowValue.setColor(blend(0x59FFFFFF, 0x59FFFFFF, f));
                     c.drawText(Ui.tr("Unavailable"), rowRect.right - 30 * k, rowRect.centerY() + Ui.halfCap(rowLabel), rowValue);
                 } else if (at == pickCurrent) {
                     float cw = Symbols.width(getContext(), "check", 26 * k);
@@ -2351,7 +2349,7 @@ public class SettingsActivity extends Activity {
                 rowRect.set(LIST_X * k, y, LIST_R * k, y + LIST_ROW_H * k);
                 float f = drawRowBackground(c, i);
                 rowLabel.setColor(blend(0xF2FFFFFF, INK, f));
-                rowValue.setColor(blend(0xB3FFFFFF, 0xB31C1C1E, f));
+                rowValue.setColor(blend(0xB3FFFFFF, 0xB3FFFFFF, f));
                 float base = rowRect.centerY() + Ui.halfCap(rowLabel);
                 String[] service = services.get(pickScroll + i);   // the list scrolls past 9 services, like the pickers
                 c.drawText(service[1], rowRect.left + 30 * k, base, rowLabel);
@@ -2380,16 +2378,16 @@ public class SettingsActivity extends Activity {
                 rowLabel.setColor(blend(0xF2FFFFFF, INK, f));
                 boolean locked = unavailable(i) != null, watchOff = !keys && from + i == WATCH_ROW && watchLocked();
                 if (locked) values[from + i] = Ui.tr("Unavailable");
-                rowValue.setColor(blend(locked ? 0x59FFFFFF : 0xB3FFFFFF, locked ? 0x591C1C1E : 0xB31C1C1E, f));
-                if (watchOff) rowValue.setColor(blend(0x59FFFFFF, 0x591C1C1E, f));
-                if (locked || watchOff) rowLabel.setColor(blend(0x73FFFFFF, 0x731C1C1E, f));
+                rowValue.setColor(blend(locked ? 0x59FFFFFF : 0xB3FFFFFF, locked ? 0x59FFFFFF : 0xB3FFFFFF, f));
+                if (watchOff) rowValue.setColor(blend(0x59FFFFFF, 0x59FFFFFF, f));
+                if (locked || watchOff) rowLabel.setColor(blend(0x73FFFFFF, 0x73FFFFFF, f));
                 float base = rowRect.centerY() + Ui.halfCap(rowLabel);
                 c.drawText(labels[from + i], rowRect.left + 30 * k, base, rowLabel);
                 float right = rowRect.right - 30 * k;
                 if (!keys && !locked && from + i == WATCH_ROW) {
                     float cw = Symbols.width(getContext(), "chevron_right", 22 * k);
                     Symbols.draw(getContext(), c, "chevron_right", right - cw / 2, rowRect.centerY(), 22 * k,
-                            blend(watchOff ? 0x33FFFFFF : 0x66FFFFFF, watchOff ? 0x331C1C1E : 0x991C1C1E, f));
+                            blend(watchOff ? 0x33FFFFFF : 0x66FFFFFF, watchOff ? 0x33FFFFFF : 0x99FFFFFF, f));
                     right -= cw + 16 * k;
                 }
                 // A long value (an update that failed, a city) stops short of its label.
