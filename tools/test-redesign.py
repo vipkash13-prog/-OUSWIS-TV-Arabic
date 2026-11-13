@@ -14,6 +14,7 @@ OUT = Path(sys.argv[1]); OUT.mkdir(parents=True, exist_ok=True)
 ADB = os.environ.get('ADB', 'adb')
 PKG = 'io.ouswis.tv.standalone'
 HITS = {}
+FEED_MODE = ['ok']   # 'down': every competition but one answers HTTP 500, that one answers with no matches (what wiped the matches screen)
 ALLOWED = ['m3u8', 'ts']   # what the mock account's user_info says it may stream
 
 def adb(*args, check=True):
@@ -216,6 +217,8 @@ with tempfile.TemporaryDirectory() as temp:
             HITS[url.path.rsplit('/', 1)[-1]] = HITS.get(url.path.rsplit('/', 1)[-1], 0) + 1
             if url.path.startswith('/apis/site/v2/sports/soccer/'):
                 slug = url.path.split('/')[6]
+                if FEED_MODE[0] == 'down' and slug != 'eng.1':
+                    self.send_response(500); self.end_headers(); return
                 utc = time.gmtime()
                 events = []
                 if slug == 'caf.nations_qual' and q.get('dates', [''])[0] == time.strftime('%Y%m', utc):
@@ -226,6 +229,7 @@ with tempfile.TemporaryDirectory() as temp:
                                 'competitions': [{'competitors': [team(home, 'home'), team(away, 'away')], 'broadcasts': []}]}
                     # the match the user reported: it is in beIN SPORTS 2 HD's guide as "غانا × الصومال"; the second one is in no guide
                     events = [ev('9001', 'Ghana', 'Somalia', 10), ev('9002', 'Suriname', 'Eritrea', 50)]
+                    if FEED_MODE[0] == 'ok': events.append(ev('9003', 'Rwanda', 'Malawi', 40))
                 def fx(eid, home, away, state, offset_min, hs='0', as_='0', goals=False):
                     kick = time.strftime('%Y-%m-%dT%H:%MZ', time.gmtime(time.time() + offset_min * 60))
                     team = lambda n, ha, sc: {'homeAway': ha, 'score': sc, 'team': {'id': n[:3], 'displayName': n, 'logo': ''}}
@@ -235,10 +239,10 @@ with tempfile.TemporaryDirectory() as temp:
                                                  {'scoringPlay': True, 'team': {'id': away[:3]}, 'athletesInvolved': [], 'clock': {}, 'type': {'text': 'Own Goal'}}]
                     return {'id': eid, 'date': kick, 'status': {'displayClock': '', 'type': {'state': state, 'name': name, 'shortDetail': 'FT' if state == 'post' else ''}}, 'competitions': [comp]}
                 lname = 'English Premier League'
-                if slug == 'eng.1' and q.get('dates', [''])[0] == time.strftime('%Y%m', utc):
+                if slug == 'eng.1' and FEED_MODE[0] == 'ok' and q.get('dates', [''])[0] == time.strftime('%Y%m', utc):
                     # a finished match with goals (today and yesterday), one tomorrow, one later today; a team name the table lacks
                     events = [fx('8001', 'Liverpool', 'Manchester City', 'post', -240, '2', '1', goals=True), fx('8002', 'Wolverhampton Wanderers', 'Fulham FC XYZ', 'post', -1700, '0', '0'),
-                              fx('8003', 'Arsenal', 'Chelsea', 'pre', 24 * 60 + 5), fx('8004', 'Tottenham Hotspur', 'Everton', 'pre', 150)]
+                              fx('8003', 'Arsenal', 'Chelsea', 'pre', 24 * 60 + 5), fx('8004', 'Tottenham Hotspur', 'Everton', 'pre', 150), fx('8005', 'Orléans', 'Dijon FCO', 'pre', 200)]
                 body = {'leagues': [{'name': lname if slug == 'eng.1' else 'Africa Cup of Nations Qualifying', 'logos': []}], 'events': events}
                 payload = json.dumps(body).encode(); kind = 'application/json'
             elif url.path == '/player_api.php':
@@ -705,6 +709,36 @@ with tempfile.TemporaryDirectory() as temp:
     note('home counters after the loops: ' + (st[-1] if st else 'none'))
     assert not st or 'skeletonAfterData=0' in st[-1], 'Empty cards returned after data: ' + st[-1]
     note('PASS: Back pressed 5 times from the home screen: no crash and the home returned with its matches.')
+
+    # 6d. the matches screen lost its data while the home kept it: every competition but one fails (HTTP 500) and that one
+    # answers with no matches. The shared list must keep the last data, with the "update failed" line, on both screens.
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.MatchesScreenActivity'); time.sleep(3)
+    before = ' | '.join(sorted(l for l in labels() if ' ضد ' in l and not l.startswith('تفاصيل')))
+    assert 'أورليان' in before and 'ديجون' in before and 'رواندا' in before and 'مالاوي' in before, 'The four names must be in Arabic: ' + before
+    assert not re.search(r'Orl|Dijon|Rwanda|Malawi', before), 'No English name left: ' + before
+    keys('BACK', pause=1)
+    FEED_MODE[0] = 'down'
+    hits_before = HITS.get('scoreboard', 0)
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.HomeActivity'); wait_label('غانا ضد الصومال', 'the home before the feed goes down')
+    for _ in range(40):   # the home refreshes every 60 s while a match is live; the 60 s cache of each feed must run out first
+        time.sleep(5)
+        if HITS.get('scoreboard', 0) > hits_before + 3: break
+    note('feed down: %d requests since' % (HITS.get('scoreboard', 0) - hits_before))
+    assert HITS.get('scoreboard', 0) > hits_before + 3, 'The home never asked again while the feed was down'
+    time.sleep(3)
+    assert any('غانا ضد الصومال' in l for l in labels()), 'The home must keep its matches while the feed fails'
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.MatchesScreenActivity'); time.sleep(4)
+    for _ in range(40):
+        if any('تعذّر التحديث' in l for l in labels()): break
+        time.sleep(3)
+    shot('redesign-matches-feed-down.png')
+    after = ' | '.join(sorted(l for l in labels() if ' ضد ' in l and not l.startswith('تفاصيل')))
+    assert 'غانا ضد الصومال' in after and 'ليفربول ضد مانشستر سيتي' in after, 'The matches screen must keep the last data while the update fails: ' + after
+    assert any('تعذّر التحديث' in l for l in labels()), 'The "update failed" line must show: ' + str(labels()[:20])
+    assert not any('لا توجد مباريات' in l for l in labels()), 'The list must not be emptied'
+    note('PASS: with the feed failing, the matches screen and the home kept their matches; the matches screen says تعذّر التحديث.')
+    keys('BACK', pause=1)
+    FEED_MODE[0] = 'ok'
 
     # 7. sections: order and hiding (Settings)
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.SectionOrderActivity')
