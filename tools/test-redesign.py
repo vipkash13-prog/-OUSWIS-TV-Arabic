@@ -436,8 +436,6 @@ with tempfile.TemporaryDirectory() as temp:
     log_lines = [l for l in labels() if ' | ' in l]
     shot('redesign-playlog.png')
     note('Playback log lines: ' + str(len(log_lines)))
-    assert any('فتح ملء الشاشة' in l for l in log_lines), 'The log must say the full screen opened: ' + str(log_lines[:8])
-    assert any('max_connections=1' in l and 'active_cons=0' in l for l in log_lines), 'The log must hold max_connections and active_cons from user_info: ' + str(log_lines[:12])
     assert any('HTTP 404' in l or 'BAD_HTTP_STATUS' in l for l in log_lines), 'The refused .m3u8 (404) must be logged with its http status: ' + str(log_lines[:12])
     assert any('الحالة: READY' in l for l in log_lines) and any('ظهرت أول لقطة' in l for l in log_lines), 'State changes and the first frame must be logged: ' + str(log_lines[:12])
     assert not any('demo' in l.lower() and '/live/' in l for l in log_lines), 'The log must not hold the login or the address'
@@ -496,8 +494,16 @@ with tempfile.TemporaryDirectory() as temp:
 
     # 4d. the account allows only ts (user_info.allowed_output_formats): a channel asked as m3u8 goes straight to ts, m3u8 is never requested
     ALLOWED[:] = ['ts']
+    adb('shell', 'rm', '-f', '/data/user/0/%s/files/playlog.txt' % PKG)   # a fresh log: its first lines are the open and the account
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.PlayerActivity', '-e', 'id', '201', '-e', 'name', 'Al Arabiya', '-e', 'ext', 'ts', '-e', 'num', '201')
     time.sleep(5); keys('BACK', pause=1)    # reads user_info and remembers the formats
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.PlayLogActivity'); wait_label('سجل التشغيل', 'the playback log page (account)')
+    time.sleep(1)
+    page = [l for l in labels() if ' | ' in l]
+    assert any('فتح ملء الشاشة' in l for l in page), 'The log must say the full screen opened: ' + str(page[:8])
+    assert any('max_connections=1' in l and 'active_cons=0' in l and 'الصيغ المسموحة: ts' in l for l in page), 'The log must hold max_connections, active_cons and the allowed formats from user_info: ' + str(page[:8])
+    note('PASS: the log holds the opening, max_connections=1, active_cons=0 and the allowed formats (ts).')
+    keys('BACK', pause=1)
     before = HITS.get('113.m3u8', 0)
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.PlayerActivity', '-e', 'id', '113', '-e', 'name', 'Four', '-e', 'ext', 'm3u8', '-e', 'num', '113')
     time.sleep(7); img = shot('redesign-player-allowed-ts.png')
