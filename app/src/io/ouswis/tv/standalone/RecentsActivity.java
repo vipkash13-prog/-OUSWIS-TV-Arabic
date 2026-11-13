@@ -46,6 +46,7 @@ public class RecentsActivity extends Activity {
 
     // Kept for the life of the process: the last list read (null until the first read ends) and the cards' pictures.
     private static List<Entry> cache;
+    private static String lastError;   // the last read failed and nothing was ever shown: said at once next time, not "searching"
     private static final Map<String, Bitmap> TILES = new HashMap<>();
 
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -65,6 +66,7 @@ public class RecentsActivity extends Activity {
         Ui.init(this);
         getWindow().getDecorView().setSystemUiVisibility(5894);
         if (cache != null) { items.addAll(cache); loaded = true; }   // known already: no "searching" text
+        else error = lastError;
         view = new RecentsView(this);
         FrameLayout root = new FrameLayout(this);
         root.addView(view, new FrameLayout.LayoutParams(-1, -1));
@@ -94,9 +96,9 @@ public class RecentsActivity extends Activity {
                     reading = false;
                     if (isFinishing() || isDestroyed()) return;
                     if (shownError != null) {
-                        if (!loaded) error = shownError;   // a list already on screen stays
+                        if (!loaded) { error = shownError; lastError = shownError; }   // a list already on screen stays
                     } else {
-                        error = null;
+                        error = null; lastError = null;
                         if (!same(items, found)) {
                             String keep = view.focusedPackage();
                             items.clear();

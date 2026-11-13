@@ -254,8 +254,10 @@ with tempfile.TemporaryDirectory() as temp:
                     sid = q.get('stream_id', [''])[0]
                     if sid in EPGX:
                         body = {'epg_listings': [{'title': base64.b64encode(t.encode()).decode(), 'start_timestamp': str(now + a), 'stop_timestamp': str(now + b)} for t, a, b in EPGX[sid]]}
+                elif q.get('username', [''])[0] == 'bad':   # a provider that refuses the login (HTTP 200, auth 0)
+                    body = {'user_info': {'auth': 0, 'status': 'Disabled'}}
                 else:
-                    body = {'user_info': {'status': 'Active', 'exp_date': str(int(time.time()) + 86400 * 120)}}
+                    body = {'user_info': {'auth': 1, 'status': 'Active', 'exp_date': str(int(time.time()) + 86400 * 120)}}
                 payload = json.dumps(body).encode(); kind = 'application/json'
             elif re.fullmatch(r'/live/demo/demo/[0-9]+\.ts', url.path):
                 payload = data; kind = 'video/mp2t'
@@ -590,17 +592,48 @@ with tempfile.TemporaryDirectory() as temp:
     assert any('تطبيق' in l and '1' in l for l in again), 'All Apps opened again lost its list: ' + str(again[:8])
     note('PASS: All Apps opened a second time shows the kept list at once (no loading text).')
     keys('BACK', pause=1.5)
+    # Round K: Recent Apps is a screen of its own; the classic home view is never created
+    classic = [f.name for f in (Path(__file__).resolve().parent.parent / 'app').rglob('*.java') if f.name != 'HomeView.java' and 'new HomeView(' in f.read_text(encoding='utf-8')]
+    assert not classic, 'Something still creates the old HomeView: ' + str(classic)
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.HomeActivity'); wait_label('غانا ضد الصومال', 'the home before Recent Apps')
+    keys('DPAD_DOWN', 'DPAD_DOWN', 'DPAD_DOWN', pause=0.8)
+    keys('DPAD_LEFT', 'DPAD_LEFT', 'DPAD_LEFT', pause=0.8)
+    assert 'الأخيرة' in focused_label(), 'The fourth shortcut must be الأخيرة: ' + focused_label()
+    keys('DPAD_CENTER', pause=0.5); front('RecentsActivity')
+    wait_label('التطبيقات الأخيرة', 'the Recent Apps title')
+    time.sleep(3)
+    img = shot('final-recents.png')
+    lum = [sum(img.getpixel((x, y))) / 3 for x in range(0, 1920, 40) for y in range(0, 1080, 40)]
+    assert max(img.getpixel((60, 60))) <= 60, 'Recent Apps background must be the dark inner one: ' + str(img.getpixel((60, 60)))
+    assert sum(lum) / len(lum) < 90, 'Recent Apps is too bright (a glow or the blurred backdrop?): ' + str(round(sum(lum) / len(lum)))
+    note('Recent Apps labels: ' + str(labels()[:12]))
+    keys('BACK', pause=0.9)
+    quick = labels()   # read at once after Back: this must already be the new home, never the classic one
+    assert any('ضد' in l for l in quick) or any('الأخيرة' in l for l in quick), 'Back from Recent Apps did not land on the new home: ' + str(quick[:15])
+    front('HomeActivity', tries=6)
+    shot('final-after-recents.png')
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.RecentsActivity'); time.sleep(1)
+    keys('BACK', pause=1)
+    no_crash('Recent Apps')
+    note('PASS: الأخيرة opens its own dark screen and Back returns straight to the new home (the old HomeView is never created).')
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.SettingsActivity'); time.sleep(4)
     img = shot('final-settings.png')
     lum = [sum(img.getpixel((x, y))) / 3 for x in range(0, 1920, 40) for y in range(0, 1080, 40)]
     mean = sum(lum) / len(lum); bright = sum(1 for v in lum if v > 200) / len(lum)
-    bg = img.getpixel((60, 60)); card = img.getpixel((1400, 226)); btn = img.getpixel((330, 694))
+    bg = img.getpixel((60, 60)); card = img.getpixel((1400, 226)); btn = img.getpixel((330, 726))
     note('Settings pixels: background ' + str(bg) + ', row ' + str(card) + ', side button ' + str(btn))
     assert max(bg) <= 40 and abs(bg[0] - 11) <= 12, 'Settings background must be #0B0D1A: ' + str(bg)
     assert max(btn) <= 120, 'The side buttons are not dark: ' + str(btn)
     assert mean < 70 and bright < 0.03, 'Settings is too bright for an OLED: mean ' + str(round(mean)) + ', bright share ' + str(round(bright, 3))
     note('PASS: Settings is dark (mean brightness ' + str(round(mean)) + ', share of bright samples ' + str(round(bright, 3)) + ').')
     no_crash('Settings')
+    # Round K: Settings layout (no text over the side buttons, the build number at the bottom, the IPTV button)
+    dark_gap = sum(1 for x in range(300, 700, 4) for y in range(490, 535, 3) if max(img.getpixel((x, y))) >= 150)
+    assert dark_gap == 0, 'Something is drawn between the title and the side buttons (text over the buttons): ' + str(dark_gap)
+    build_px = sum(1 for x in range(300, 700, 2) for y in range(1015, 1056, 2) if min(img.getpixel((x, y))) >= 150)
+    assert build_px >= 60, 'The build number is not drawn at the bottom of Settings: ' + str(build_px)
+    assert any('اشتراك IPTV' in l for l in labels()), 'Settings has no اشتراك IPTV button: ' + str(labels()[:20])
+    note('PASS: Settings: nothing over the side buttons, the build number is at the bottom (' + str(build_px) + ' bright samples), and the اشتراك IPTV button is there.')
     keys('BACK', pause=1.5)
     to_home()
     for n in range(5):
@@ -639,5 +672,59 @@ with tempfile.TemporaryDirectory() as temp:
     note('PASS: reset restored the default order and showed the hidden section again.')
     shot('redesign-live-after-reset.png')
     no_crash('Sections')
+
+    # Round K: Settings > اشتراك IPTV
+    def type_fields(*vals):
+        for v in vals:
+            keys('MOVE_END', pause=0.2)
+            for _ in range(5): keys(*['DEL'] * 12, pause=0.05)
+            adb('shell', 'input', 'text', v); time.sleep(0.5)
+            keys('DPAD_DOWN', pause=0.5)
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.IptvActivity')
+    wait_label('اشتراك IPTV', 'the IPTV page')
+    wait_label('نشط', 'the account status')
+    info = labels(); shot('final-iptv.png')
+    assert any('127.0.0.1:%d' % port in l for l in info), 'The IPTV page must show the server: ' + str(info)
+    assert any(l == 'demo' for l in info) and any('••••' in l for l in info), 'User and hidden password expected: ' + str(info)
+    assert any('نشط' == l for l in info) and any(re.search(r'\d{4}', l) for l in info), 'Status and expiry expected: ' + str(info)
+    note('PASS: the IPTV page shows the server, user, hidden password (••••), expiry and status.')
+    tap('تغيير الاشتراك'); wait_label('اختبار الاتصال', 'the change form')
+    type_fields('http://127.0.0.1', str(port), 'bad', 'bad')
+    tap('اختبار الاتصال'); wait_label('بيانات الدخول غير صحيحة', 'the wrong-login result')
+    shot('final-iptv-wrong.png')
+    keys('DPAD_UP', 'DPAD_UP', 'DPAD_UP', 'DPAD_UP', pause=0.4)   # back to the server field
+    type_fields('http://127.0.0.1', '9', 'demo', 'demo')
+    tap('اختبار الاتصال'); wait_label('السيرفر لا يرد', 'the silent-server result')
+    keys('DPAD_UP', 'DPAD_UP', 'DPAD_UP', 'DPAD_UP', pause=0.4)
+    type_fields('http://127.0.0.1', str(port), 'demo', 'demo')
+    tap('اختبار الاتصال'); wait_label('نجح الاتصال', 'the successful test'); shot('final-iptv-ok.png')
+    note('PASS: the connection test told wrong credentials, silent server and success apart.')
+    # favourites / recents / last channel exist before the save, and are gone after it
+    folder = '/data/user/0/%s/shared_prefs' % PKG
+    before = adb('shell', 'cat', folder + '/ouswis-live.xml', check=False)
+    assert 'name="recent"' in before or 'name="last"' in before or 'name="favorites"' in before, 'Test setup: expected recents/last before the save: ' + before[:200]
+    tap('حفظ', exact=True); wait_label('تم حفظ الاشتراك', 'the saved message')
+    after = adb('shell', 'cat', folder + '/ouswis-live.xml', check=False)
+    assert not any('name="%s"' % k in after for k in ('recent', 'favorites', 'last')), 'Recents/favourites/last channel must be wiped on save: ' + after[:300]
+    assert 'lastChannel' not in adb('shell', 'cat', folder + '/XtreamActivity.xml', check=False), 'The last channel must be wiped on save'
+    vault = adb('shell', 'cat', folder + '/xtream-vault.xml')
+    assert re.search(r'name="blob">[kf]:', vault) and 'demo' not in vault, 'The new login must be sealed: ' + vault
+    note('PASS: saving wiped the recents, favourites and last channel, and the new login is sealed.')
+    # delete: the confirmation first (cancel keeps it), then the delete
+    tap('حذف الاشتراك'); wait_label('تأكيد الحذف', 'the delete confirmation')
+    assert 'إلغاء' in focused_label(), 'The safe choice must hold the focus: ' + focused_label()
+    tap('إلغاء', exact=True); wait_label('تغيير الاشتراك', 'the page after cancelling')
+    assert re.search(r'name="blob"', adb('shell', 'cat', folder + '/xtream-vault.xml')), 'Cancelling must keep the subscription'
+    tap('حذف الاشتراك'); wait_label('تأكيد الحذف', 'the delete confirmation'); tap('تأكيد الحذف')
+    wait_label('لا يوجد اشتراك محفوظ', 'the empty IPTV page')
+    assert 'name="blob"' not in adb('shell', 'cat', folder + '/xtream-vault.xml', check=False), 'Deleting must erase the sealed login'
+    shot('final-iptv-empty.png')
+    note('PASS: delete asks first, cancel keeps the subscription, confirm erases it.')
+    # add it back: Save tests the values first by itself
+    tap('إضافة اشتراك'); wait_label('اختبار الاتصال', 'the form'); type_fields('http://127.0.0.1', str(port), 'demo', 'demo')
+    tap('حفظ', exact=True); wait_label('تم حفظ الاشتراك', 'the saved message after adding')
+    note('PASS: a new subscription was added (tested first, then saved).')
+    keys('BACK', pause=1)
+    no_crash('IPTV')
     if os.environ.get('STABILITY_SECONDS', '300') != '0': stability(int(os.environ.get('STABILITY_SECONDS', '300')))
     server.shutdown()
