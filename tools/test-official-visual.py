@@ -33,7 +33,7 @@ def capture(name,redesigned=False):
         tree=ui();text=ET.tostring(tree,encoding='unicode')
         if 'المتبقي' in text and (('°' in text) if redesigned else ('°C' in text or '°F' in text)):break
         time.sleep(1)
-    else:raise AssertionError('Expected real prayer/weather data before visual comparison')
+    else:raise AssertionError('Expected real prayer/weather data before visual comparison; saw: '+' | '.join((n.get('text','')+n.get('content-desc','')).strip() for n in tree.iter('node') if n.get('package')==PKG and (n.get('text','')+n.get('content-desc','')).strip())[:900]+' | logcat: '+' / '.join(l[-160:] for l in adb('logcat','-d','-t','4000').splitlines() if 'ouswis' in l.lower() and any(k in l for k in ('weather','Weather','meteo','prayer','Prayer','offline','failed')))[:900])
     png=adb('exec-out','screencap','-p',binary=True)
     assert Image.open(BytesIO(png)).size==(3840,2160),'A real native 4K screenshot is required'
     (OUT/(name+'.png')).write_bytes(png);(OUT/(name+'.xml')).write_bytes(ET.tostring(tree))
