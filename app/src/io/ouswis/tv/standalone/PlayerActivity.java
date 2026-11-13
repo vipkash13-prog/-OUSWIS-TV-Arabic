@@ -345,7 +345,7 @@ public final class PlayerActivity extends Activity {
 
     private void openStream(LiveData.Channel ch,String ext){
         currentExt=ext;
-        log("تشغيل "+ch.name+" ("+ch.id+") · "+ext+(hlsForm==1?" (عنوان بديل)":"")+(attempt>0?" · محاولة "+(attempt+1):""));
+        log("تشغيل "+ch.name+" ("+ch.id+") · "+ext+(hlsForm==1?" (عنوان بديل)":"")+(failures>0?" · محاولة "+(failures+1):""));
         player.setMediaItem(LivePlayer.item(account,ch,ext,true,hlsForm==1));
         player.setVolume(1f);
         player.prepare();player.setPlayWhenReady(true);
