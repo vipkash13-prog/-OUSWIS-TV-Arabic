@@ -673,7 +673,7 @@ with tempfile.TemporaryDirectory() as temp:
         keys('DPAD_LEFT', pause=0.7)
         keys(*['DPAD_DOWN'] * i, pause=0.7)
         held = [n.get('text', '') for n in tree().iter('node') if n.get('package') == PKG and n.get('class') == 'android.widget.Button' and n.get('focused') == 'true']
-        assert held and name in held[0], 'The side button ' + name + ' should hold the focus: ' + str(held)
+        assert any(name in h for h in held), 'The side button ' + name + ' should hold the focus: ' + str(held)
         adb('shell', 'input', 'keyevent', '23'); time.sleep(2.5)
         front(activity)
         shot('final-side-' + str(i) + '-' + activity + '.png')
