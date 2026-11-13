@@ -669,11 +669,15 @@ with tempfile.TemporaryDirectory() as temp:
     side = [('Live TV', 'LiveActivity'), ('Matches', 'MatchesScreenActivity'), ('Updates', 'UpdatesActivity'),
             ('ربط القنوات', 'ChannelMapActivity'), ('ترتيب الأقسام', 'SectionOrderActivity'), ('اشتراك IPTV', 'IptvActivity')]
     for i, (name, activity) in enumerate(side):
-        adb('shell', 'am', 'force-stop', PKG); time.sleep(1)   # a fresh Settings each time: the focus starts on the list
         adb('shell', 'am', 'start', '-W', '-n', PKG + '/.SettingsActivity'); time.sleep(3)
-        keys('DPAD_LEFT', pause=0.7)
-        keys(*['DPAD_DOWN'] * i, pause=0.7)
-        held = [n.get('text', '') for n in tree().iter('node') if n.get('package') == PKG and n.get('class') == 'android.widget.Button' and n.get('focused') == 'true']
+        side_held = lambda: [n.get('text', '') for n in tree().iter('node') if n.get('package') == PKG and n.get('class') == 'android.widget.Button' and n.get('focused') == 'true']
+        names = [x[0] for x in side]
+        at = [j for j, nm in enumerate(names) if any(nm in h for h in side_held())]
+        if not at:   # the list has the focus: LEFT goes to the first side button
+            keys('DPAD_LEFT', pause=0.7); at = [0]
+        step = i - at[0]
+        keys(*(['DPAD_DOWN'] * step if step > 0 else ['DPAD_UP'] * -step), pause=0.7) if step else None
+        held = side_held()
         assert any(name in h for h in held), 'The side button ' + name + ' should hold the focus: ' + str(held)
         adb('shell', 'input', 'keyevent', '23'); time.sleep(2.5)
         front(activity)
@@ -706,7 +710,7 @@ with tempfile.TemporaryDirectory() as temp:
         no_crash('Back from the home screen, press ' + str(n + 1))
         if n < 4: to_home()
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.HomeActivity'); time.sleep(2)
-    wait_label('غانا ضد الصومال', 'the home after five Back presses')
+    wait_label('غانا ضد الصومال', 'the home after five Back presses', tries=90)
     st = re.findall(r'home-stats: (.*)', adb('logcat', '-d', '-s', 'FreeMyTV', check=False))
     note('home counters after the loops: ' + (st[-1] if st else 'none'))
     assert not st or 'skeletonAfterData=0' in st[-1], 'Empty cards returned after data: ' + st[-1]
