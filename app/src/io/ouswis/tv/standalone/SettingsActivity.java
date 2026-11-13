@@ -126,9 +126,26 @@ public class SettingsActivity extends Activity {
         position.leftMargin = Math.round(300 * scale);
         position.bottomMargin = Math.round(44 * scale);
         settingsPage.addView(features, position);
+        for (Button b : new Button[] {channelsButton, matchesButton, updatesButton, channelMapButton, sectionOrderButton}) darkButton(b, scale);
         refreshFeatureLabels();
         setContentView(settingsPage);
         view.requestFocus();
+    }
+
+    /** The side buttons as dark cards (#121A3A) with a white frame when focused: no bright grey buttons on an OLED. */
+    private static void darkButton(Button b, float scale) {
+        int radius = Math.round(18 * scale), line = Math.max(2, Math.round(3 * scale));
+        android.graphics.drawable.GradientDrawable rest = new android.graphics.drawable.GradientDrawable();
+        rest.setColor(0xFF121A3A);rest.setCornerRadius(radius);
+        android.graphics.drawable.GradientDrawable on = new android.graphics.drawable.GradientDrawable();
+        on.setColor(0xFF121A3A);on.setCornerRadius(radius);on.setStroke(line, 0xFFFFFFFF);
+        android.graphics.drawable.StateListDrawable states = new android.graphics.drawable.StateListDrawable();
+        states.addState(new int[] {android.R.attr.state_focused}, on);
+        states.addState(new int[] {android.R.attr.state_pressed}, on);
+        states.addState(new int[] {}, rest);
+        b.setBackground(states);
+        b.setStateListAnimator(null);
+        b.setTextColor(0xFFFFFFFF);
     }
 
     private void refreshFeatureLabels() {

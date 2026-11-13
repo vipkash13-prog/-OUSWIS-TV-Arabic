@@ -594,6 +594,10 @@ with tempfile.TemporaryDirectory() as temp:
     img = shot('final-settings.png')
     lum = [sum(img.getpixel((x, y))) / 3 for x in range(0, 1920, 40) for y in range(0, 1080, 40)]
     mean = sum(lum) / len(lum); bright = sum(1 for v in lum if v > 200) / len(lum)
+    bg = img.getpixel((60, 60)); card = img.getpixel((1400, 226)); btn = img.getpixel((330, 694))
+    note('Settings pixels: background ' + str(bg) + ', row ' + str(card) + ', side button ' + str(btn))
+    assert max(bg) <= 40 and abs(bg[0] - 11) <= 12, 'Settings background must be #0B0D1A: ' + str(bg)
+    assert max(btn) <= 120, 'The side buttons are not dark: ' + str(btn)
     assert mean < 70 and bright < 0.03, 'Settings is too bright for an OLED: mean ' + str(round(mean)) + ', bright share ' + str(round(bright, 3))
     note('PASS: Settings is dark (mean brightness ' + str(round(mean)) + ', share of bright samples ' + str(round(bright, 3)) + ').')
     no_crash('Settings')
