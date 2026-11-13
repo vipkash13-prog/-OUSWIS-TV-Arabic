@@ -18,7 +18,7 @@ final class Wallpaper {
     /** The same with the dark layer in the given colour (RGB), e.g. #0B0D1A. */
     static void draw(Context c,Canvas canvas,int w,int h,float dim,int rgb){
         Bitmap bmp=null;
-        try(InputStream in=c.getAssets().open("backgrounds/ouswis_bg_inner_1080p.webp")){BitmapFactory.Options o=new BitmapFactory.Options();o.inPreferredConfig=Bitmap.Config.RGB_565;bmp=BitmapFactory.decodeStream(in,null,o);}catch(Exception ignored){}
+        try(InputStream in=c.getAssets().open("backgrounds/ouswis_bg_inner_1080p.webp")){BitmapFactory.Options o=new BitmapFactory.Options();o.inPreferredConfig=Bitmap.Config.RGB_565;o.inSampleSize=2;bmp=BitmapFactory.decodeStream(in,null,o);}catch(Throwable noRoom){bmp=null;}   // half size (the callers draw into a half-size backdrop): 1 MB, not 4; a TV with no room gets the flat colour, never a crash
         if(bmp==null){canvas.drawColor(Design.BG);return;}
         float s=Math.max(w/(float)bmp.getWidth(),h/(float)bmp.getHeight());
         float sw=w/s,sh=h/s;

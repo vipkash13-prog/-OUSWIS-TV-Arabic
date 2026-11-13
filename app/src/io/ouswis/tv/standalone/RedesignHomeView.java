@@ -76,15 +76,17 @@ final class RedesignHomeView extends View {
     }
     private int row=1;
     private final int[] col=new int[5];
-    private final List<MatchCarouselView.Match> today=new ArrayList<>(),apiToday=new ArrayList<>();   // today: the feed's matches plus the guide's
+    // the matches live in the process, not in the view: coming back from another screen (Back, a new view) shows them at once and only refreshes them
+    private static final List<MatchCarouselView.Match> today=new ArrayList<>(),apiToday=new ArrayList<>();   // today: the feed's matches plus the guide's
     private List<HomeApps.Item> apps=new ArrayList<>();
     private LiveData live;
     private XtreamAccount account;
     private boolean resumed;
-    private long matchesAt,drawnMinute=-1;
-    private final long startedAt=System.currentTimeMillis();
-    private boolean feedDone;       // the feed answered at least once
-    private int feedAnswered;       // how many competitions answered: 0 means it could not be reached, not that there are no matches
+    private static long matchesAt;
+    private long drawnMinute=-1;
+    private static final long startedAt=System.currentTimeMillis();
+    private static boolean feedDone;       // the feed answered at least once
+    private static int feedAnswered;       // how many competitions answered: 0 means it could not be reached, not that there are no matches
     /** True only when it is certain there are no matches today: the feed answered and the guides were read. Until then the row shows empty cards. */
     private boolean confirmedEmpty(){
         if(!today.isEmpty()||everHadData)return false;
@@ -103,17 +105,20 @@ final class RedesignHomeView extends View {
     private final Runnable guideChanged=this::rebuildToday;
     // what the home screen did about its data, for the stability check (logged by logStats)
     private int todayChanges,skeletonAfterData,focusResets,sameDataSkips;
-    private boolean everHadData;
-    private long dataDay;
-    private String todaySig="",apiSig="";
+    private static boolean everHadData;
+    private static long dataDay;
+    private static String todaySig="",apiSig="";
     /**
      * The feed's matches of today plus those found in the sports channels' guides, live first, then by kickoff. Worked out
      * on the background thread; the screen is told only when what it would draw is different (same data: nothing happens).
      */
+    private volatile boolean destroyed;
     private void rebuildToday(){
+        if(destroyed)return;   // Back closed the home screen: its worker is gone and a late callback must not use it
+        if(android.os.Looper.myLooper()!=android.os.Looper.getMainLooper()){main.post(this::rebuildToday);return;}   // the lists belong to the UI thread
         final List<MatchCarouselView.Match> api=new ArrayList<>(apiToday);
         final long start=dayStart();
-        io.execute(()->{
+        try{io.execute(()->{
             long end=start+24L*3600_000;
             List<MatchCarouselView.Match> list=new ArrayList<>();
             for(MatchCarouselView.Match m:MatchChannels.withGuide(api))if(m.live()||(m.kickoffMillis>=start&&m.kickoffMillis<end))list.add(m);
@@ -130,8 +135,8 @@ final class RedesignHomeView extends View {
             }
             sig.append(list.size());
             final String s2=sig.toString();
-            main.post(()->applyToday(list,s2,start));
-        });
+            main.post(()->{if(!destroyed)applyToday(list,s2,start);});
+        });}catch(java.util.concurrent.RejectedExecutionException gone){}
     }
     private void applyToday(List<MatchCarouselView.Match> list,String sig,long start){
         if(list.isEmpty()&&everHadData&&dataDay==start){sameDataSkips++;return;}   // a failed or partial load never empties a row that has shown data
@@ -144,7 +149,7 @@ final class RedesignHomeView extends View {
     }
     /** One line the stability test reads: how often the data really changed, and that nothing relapsed. */
     private void logStats(){AppLog.w("home-stats: todayChanges="+todayChanges+" sameDataSkips="+sameDataSkips+" skeletonAfterData="+skeletonAfterData+" focusResets="+focusResets);}
-    private String scoreText(MatchCarouselView.Match m){return m.awayScore.isEmpty()&&m.homeScore.isEmpty()?(m.live()?"0 - 0":"—"):m.awayScore+" - "+m.homeScore;}   // a live match with no goals is 0 - 0
+    private String scoreText(MatchCarouselView.Match m){return m.awayScore.isEmpty()&&m.homeScore.isEmpty()?"—":m.awayScore+" - "+m.homeScore;}
 
     RedesignHomeView(Context c,Host host){
         super(c);this.host=host;
@@ -168,7 +173,7 @@ final class RedesignHomeView extends View {
         loadApps();
     }
     void pause(){logStats();resumed=false;main.removeCallbacks(tick);PrayerTimes.get(getContext()).removeListener(prayerChanged);}
-    void destroy(){pause();io.shutdownNow();if(live!=null)live.shutdown();}
+    void destroy(){destroyed=true;pause();io.shutdownNow();if(live!=null)live.shutdown();}
     void reset(){row=1;col[1]=0;invalidate();}   // only the Home button asks for this
 
     private void refreshData(){
@@ -179,7 +184,7 @@ final class RedesignHomeView extends View {
         if(live!=null&&last!=null)live.loadGuide(last.id,this::postInvalidate);
         if(now-matchesAt>(anyLive()?60_000L:15*60_000L)){
             matchesAt=now;
-            io.execute(()->{
+            if(!destroyed)try{io.execute(()->{
                 List<MatchCarouselView.Match> found=new ArrayList<>();
                 int answered=0;
                 try{
@@ -206,7 +211,7 @@ final class RedesignHomeView extends View {
                     if(changed){apiToday.clear();apiToday.addAll(shown);apiSig=sigNow;}
                     if(changed||first)rebuildToday();else sameDataSkips++;
                 });
-            });
+            });}catch(java.util.concurrent.RejectedExecutionException gone){matchesAt=0;}
             if(account!=null)MatchChannels.prepare(getContext(),account,()->{MatchChannels.scanGuides(getContext(),account);});
         }
     }
@@ -538,8 +543,7 @@ final class RedesignHomeView extends View {
             float right=1847-i*425,left=right-404;
             r.set(left,466,right,592);RectF box=ring(r,focus(2,i));
             boolean done=!m.live()&&!m.upcoming();
-            Design.card(c,box,22,1,p,CARD_DARK);   // a live card has the same fill as the others: a red 2dp border and the badge say it is live
-            if(m.live()){p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(3);p.setColor(Design.LIVE);c.drawRoundRect(box,22,22,p);}
+            Design.card(c,box,22,1,p,CARD_DARK);   // a live card is the regular card: only the red badge says it is live
             crest(c,m.homeLogo,m.home,right-67,516,26);crest(c,m.awayLogo,m.away,left+67,516,26);
             Paint team=tx(Design.TEXT,17,Design.regular());
             Design.center(c,Design.fitShrink(m.home,team,140),right-67,566,team);

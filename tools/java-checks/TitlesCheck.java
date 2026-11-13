@@ -53,6 +53,12 @@ public final class TitlesCheck {
         is(true,Titles.qualityPenalty("beIN SPORTS 1 HD")<Titles.qualityPenalty("beIN SPORTS 1 4K"),"HD before 4K");
         is(true,Titles.qualityPenalty("beIN SPORTS 1 FHD")<Titles.qualityPenalty("beIN SPORTS 1 H.265"),"FHD before H.265");
         is(true,Titles.qualityPenalty("beIN SPORTS 1 HD")<Titles.qualityPenalty("beIN SPORTS 1"),"HD before unmarked");
+        for(String t1:new String[]{"England vs Croatia - Classic","Brazil vs Chile - Stories","Spain vs Germany - Highlights","Real Madrid vs Barcelona - Replay","ريال مدريد × برشلونة — إعادة","الهلال × النصر ملخص","Liverpool vs Arsenal - Classics"})
+            is(true,Titles.isRerun(t1),"rerun: "+t1);
+        for(String t2:new String[]{"England vs Croatia - International Friendly","الهلال × النصر · دوري روشن","Arsenal vs Chelsea - English Premier League 2026/2027 - MD4","Tottenham Hotspur vs Everton","Saudi Kings Cup: Al Hilal vs Al Nassr"})
+            is(false,Titles.isRerun(t2)||Titles.isOtherSport(t2),"a match: "+t2);
+        for(String t3:new String[]{"NBA: Philadelphia 76ers vs Boston Celtics","Philadelphia 76ers vs Boston Celtics - NBA","Volleyball: Italy vs Poland","Basketball: Lakers vs Bulls","كرة السلة: فيلادلفيا ضد بوسطن","UFC 300","Tennis: Alcaraz vs Sinner"})
+            is(true,Titles.isOtherSport(t3),"other sport: "+t3);
         eq("فياريال",TeamNames.arabic("Villareal"));
         eq("فياريال",TeamNames.arabic("Villarreal"));
         eq("إريتريا",TeamNames.arabic("Eritrea"));

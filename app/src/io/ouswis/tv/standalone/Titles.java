@@ -85,9 +85,16 @@ final class Titles {
     static String teamArabic(String raw){return team(raw);}
     /** True for a programme that is a repeat or a summary, not the match itself. */
     static boolean isRerun(String title){
-        return title!=null&&Pattern.compile("(?i)\\b(replay|rerun|re-run|highlights|re-live|repeat)\\b|إعادة|ملخص|\\(r\\)").matcher(title).find();
+        return title!=null&&RERUN.matcher(title).find();
     }
-
+    private static final Pattern RERUN=Pattern.compile("(?i)\\b(replay|replays|rerun|re-run|highlights|re-live|repeat|classic|classics|stories|story|recap|full match replay)\\b|إعادة|اعادة|ملخص|كلاسيك|قصص|\\(r\\)");
+    /** Other sports than football (the matches are football only): a programme or competition that names one. */
+    static boolean isOtherSport(String title){
+        return title!=null&&OTHER_SPORT.matcher(title).find();
+    }
+    private static final Pattern OTHER_SPORT=Pattern.compile("(?i)\\b(nba|wnba|nfl|nhl|mlb|ncaa|basketball|volleyball|handball|tennis|rugby|cricket|baseball|hockey|boxing|ufc|mma|wwe|f1|formula|motogp|golf|futsal|"
+        +"76ers|sixers|lakers|celtics|knicks|bucks|raptors|clippers|nuggets|mavericks|pelicans|grizzlies|timberwolves|pistons|pacers|cavaliers|trail blazers)\\b"
+        +"|كرة السلة|السلة|الطائرة|كرة اليد|تنس|رجبي|كريكت|بيسبول|هوكي|ملاكمة|مصارعة|فورمولا|الدوري الأمريكي للمحترفين|اتش بي|فيلادلفيا سفنتي");
     /** The chip text of a competition in the matches filter ("تصفيات كأس العالم - آسيا" → "تصفيات كأس العالم"). */
     static String filterLabel(String competition){
         String c=competition==null?"":competition.trim();

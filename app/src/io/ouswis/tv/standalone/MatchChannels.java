@@ -300,7 +300,7 @@ final class MatchChannels {
             if(ch==null)continue;
             for(LiveData.Program p:e.getValue()){
                 long len=p.end-p.start;
-                if(p.end<now||len<60*60_000L||len>240*60_000L||Titles.isRerun(p.title))continue;
+                if(p.end<now||p.start<now-3*3600_000L||len<60*60_000L||len>240*60_000L||Titles.isRerun(p.title)||Titles.isOtherSport(p.title)||Titles.isOtherSport(ch.name))continue;   // not today's match: a repeat, another sport, or one that began over 3 h ago
                 String[] parts=Titles.parseMatch(p.title);
                 if(parts==null)continue;
                 boolean dup=false;
@@ -319,8 +319,7 @@ final class MatchChannels {
                 String home=Titles.teamArabic(parts[0]),away=Titles.teamArabic(parts[1]);
                 MatchCarouselView.Match m=new MatchCarouselView.Match(parts[2],home,away,"",p.start);
                 m.homeEn=parts[0];m.awayEn=parts[1];m.key="epg:"+id;m.epgChannelId=ch.id;
-                m.state=p.start<=now?"in":"pre";
-                if(m.live())m.status="مباشر";
+                m.state="pre";   // the guide only knows when it starts: "live" and the score come from the feed alone
                 found.put(id,m);rank.put(id,r);
             }
         }

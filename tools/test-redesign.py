@@ -99,6 +99,9 @@ def crashed():
 
 def no_crash(where):
     bad, log = crashed(); assert not bad, where + ' crashed:\n' + log[-2500:]
+    # a screen that caught its own exception would hide it: the catch writes the stack to the log, and that fails the test too
+    caught = [l for l in adb('logcat', '-d', '-s', 'FreeMyTV', check=False).splitlines() if 'failed:' in l and ('matches-screen' in l or 'draw' in l)]
+    assert not caught, where + ': an exception was caught inside a screen:\n' + '\n'.join(caught[:12])
 
 def gfx():
     out = ''
@@ -187,10 +190,19 @@ with tempfile.TemporaryDirectory() as temp:
     subprocess.run(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', 'testsrc=s=640x360:r=10', '-t', '90',
                     '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-f', 'mpegts', str(clip)], check=True)
     data = clip.read_bytes()
-    CATS = [('10', 'FR|TF1 HD'), ('11', 'رياضة'), ('12', 'أخبار'), ('13', 'أفلام')]
+    CATS = [('10', 'FR|TF1 HD'), ('14', 'FR| BEIN SPORTS'), ('15', 'BE| SPORT'), ('16', 'US| NEWS'), ('11', 'رياضة'), ('12', 'أخبار'), ('13', 'أفلام'), ('17', 'AR| عام')]   # the foreign ones are listed first and two of them say sport: the Arabic ones must still lead
     STREAMS = {'11': [('101', 'SSC 1 HD', 'ts'), ('102', 'SSC 2 HD', 'ts'), ('103', 'SSC 3 HD', 'ts'), ('110', 'beIN Sports 1 HD', 'ts'),
                       ('111', 'beIN Sports 2', 'ts'), ('112', 'beIN Sports 3', 'm3u8'), ('113', 'FR| beIN SPORTS 4 HD (H.265)', 'ts'), ('120', 'AD Sports 1', 'ts'), ('105', 'beIN SPORTS XTRA 1HD', 'ts')],
-               '12': [('201', 'Al Arabiya', 'ts'), ('202', 'Sky News Arabia', 'ts')], '13': [('301', 'Movies One', 'ts')], '10': [('401', 'TF1 HD', 'ts')]}
+               '12': [('201', 'Al Arabiya', 'ts'), ('202', 'Sky News Arabia', 'ts')], '13': [('301', 'Movies One', 'ts')], '10': [('401', 'TF1 HD', 'ts')], '14': [], '15': [], '16': [('701', 'US News 1', 'ts')], '17': [('801', 'MBC 1', 'ts')]}
+    HOUR = 3600
+    # guide programmes other than the default four: (title, start offset, stop offset) in seconds from now
+    EPGX = {'120': [('NBA: Philadelphia 76ers vs Boston Celtics', -1200, 6000), ('NBA Highlights', 6000, 9600)],
+            '103': [('Philadelphia 76ers vs Boston Celtics - NBA', -900, 6300), ('Volleyball: Italy vs Poland', 6300, 9900)],
+            '110': [('England vs Croatia - International Friendly', -1200, 6000), ('Studio', 6000, 9600)],
+            '112': [('England vs Croatia - Classic', -600, 6600), ('Spain vs Germany - Highlights', 6600, 10200)],
+            '102': [('Real Madrid vs Barcelona - Replay', -600, 6600), ('ريال مدريد × برشلونة — إعادة', 6600, 10200)],
+            '105': [('Egypt vs Algeria - Friendly', -3 * HOUR - 1800, 1800), ('Brazil vs Chile - Stories', -600, 6600)]}   # the last two: began over 3 h ago / a Stories programme
+
 
     class Provider(BaseHTTPRequestHandler):
         def log_message(self, *a): pass
@@ -209,7 +221,20 @@ with tempfile.TemporaryDirectory() as temp:
                                 'competitions': [{'competitors': [team(home, 'home'), team(away, 'away')], 'broadcasts': []}]}
                     # the match the user reported: it is in beIN SPORTS 2 HD's guide as "غانا × الصومال"; the second one is in no guide
                     events = [ev('9001', 'Ghana', 'Somalia', 10), ev('9002', 'Suriname', 'Eritrea', 50)]
-                body = {'leagues': [{'name': 'Africa Cup of Nations Qualifying', 'logos': []}], 'events': events}
+                def fx(eid, home, away, state, offset_min, hs='0', as_='0', goals=False):
+                    kick = time.strftime('%Y-%m-%dT%H:%MZ', time.gmtime(time.time() + offset_min * 60))
+                    team = lambda n, ha, sc: {'homeAway': ha, 'score': sc, 'team': {'id': n[:3], 'displayName': n, 'logo': ''}}
+                    name = {'in': 'STATUS_FIRST_HALF', 'post': 'STATUS_FULL_TIME', 'pre': 'STATUS_SCHEDULED'}[state]
+                    comp = {'competitors': [team(home, 'home', hs), team(away, 'away', as_)], 'broadcasts': [{'names': ['Sky Sports']}]}
+                    if goals: comp['details'] = [{'scoringPlay': True, 'team': {'id': home[:3]}, 'athletesInvolved': [{'displayName': 'Salah'}], 'clock': {'displayValue': "23'"}, 'type': {'text': 'Goal'}},
+                                                 {'scoringPlay': True, 'team': {'id': away[:3]}, 'athletesInvolved': [], 'clock': {}, 'type': {'text': 'Own Goal'}}]
+                    return {'id': eid, 'date': kick, 'status': {'displayClock': '', 'type': {'state': state, 'name': name, 'shortDetail': 'FT' if state == 'post' else ''}}, 'competitions': [comp]}
+                lname = 'English Premier League'
+                if slug == 'eng.1' and q.get('dates', [''])[0] == time.strftime('%Y%m', utc):
+                    # a finished match with goals (today and yesterday), one tomorrow, one later today; a team name the table lacks
+                    events = [fx('8001', 'Liverpool', 'Manchester City', 'post', -240, '2', '1', goals=True), fx('8002', 'Wolverhampton Wanderers', 'Fulham FC XYZ', 'post', -1700, '0', '0'),
+                              fx('8003', 'Arsenal', 'Chelsea', 'pre', 24 * 60 + 5), fx('8004', 'Tottenham Hotspur', 'Everton', 'pre', 150)]
+                body = {'leagues': [{'name': lname if slug == 'eng.1' else 'Africa Cup of Nations Qualifying', 'logos': []}], 'events': events}
                 payload = json.dumps(body).encode(); kind = 'application/json'
             elif url.path == '/player_api.php':
                 action = q.get('action', [''])[0]
@@ -226,6 +251,9 @@ with tempfile.TemporaryDirectory() as temp:
                     if q.get('stream_id', [''])[0] in ('111', '113'):   # beIN Sports 2: the Arabic title, 6 minutes after the kickoff the feed reports
                         titles = ['غانا × الصومال — كأس الأمم الأفريقية', 'تحليل المباريات', 'أهداف الجولة', 'نشرة الرياضة']
                     body = {'epg_listings': [{'title': base64.b64encode(t.encode()).decode(), 'start_timestamp': str(now - 1800 + i * 3600), 'stop_timestamp': str(now + 1800 + i * 3600)} for i, t in enumerate(titles)]}
+                    sid = q.get('stream_id', [''])[0]
+                    if sid in EPGX:
+                        body = {'epg_listings': [{'title': base64.b64encode(t.encode()).decode(), 'start_timestamp': str(now + a), 'stop_timestamp': str(now + b)} for t, a, b in EPGX[sid]]}
                 else:
                     body = {'user_info': {'status': 'Active', 'exp_date': str(int(time.time()) + 86400 * 120)}}
                 payload = json.dumps(body).encode(); kind = 'application/json'
@@ -252,7 +280,10 @@ with tempfile.TemporaryDirectory() as temp:
            '<string name="lastChannelName">SSC 1 HD</string></map>') % port
     subprocess.run([ADB, 'shell', 'cat > %s/XtreamActivity.xml' % folder], input=xml.encode(), check=True)
     last = json.dumps({'id': '101', 'name': 'SSC 1 HD', 'icon': '', 'num': '101', 'ext': 'ts'}).replace('"', '&quot;')
-    live = '<?xml version="1.0" encoding="utf-8"?><map><string name="last">%s</string><string name="espnBase">http://127.0.0.1:%d</string></map>' % (last, port)
+    # the recents hold the real channel and two broken entries (no name; no id): they must never reach the screen
+    recent = json.dumps([{'id': '101', 'name': 'SSC 1 HD', 'icon': '', 'num': '101', 'ext': 'ts'}, {'id': '900', 'name': '', 'icon': '', 'num': '9', 'ext': 'ts'},
+                         {'id': '', 'name': 'Ghost', 'icon': '', 'num': '8', 'ext': 'ts'}, {'id': '901', 'name': '   ', 'icon': '', 'num': '7', 'ext': 'ts'}]).replace('"', '&quot;')
+    live = '<?xml version="1.0" encoding="utf-8"?><map><string name="last">%s</string><string name="recent">%s</string><string name="espnBase">http://127.0.0.1:%d</string></map>' % (last, recent, port)
     subprocess.run([ADB, 'shell', 'cat > %s/ouswis-live.xml' % folder], input=live.encode(), check=True)
     adb('shell', 'chown', '-R', uid + ':' + uid, folder)
     adb('logcat', '-c')
@@ -306,6 +337,17 @@ with tempfile.TemporaryDirectory() as temp:
     ls = labels()
     assert [i for i, l in enumerate(ls) if 'قسم رياضة' in l][0] < [i for i, l in enumerate(ls) if 'قسم FR|TF1 HD' in l][0], 'Arabic and sports sections must come before the foreign ones by default'
     note('PASS: by default the Arabic/sports sections come before the foreign one (FR|TF1 HD), after favourites and recents.')
+    secs = [l for l in ls if l.startswith('قسم ')]
+    pos = lambda part: next((i for i, l in enumerate(secs) if part in l), None)
+    arabic_at = [pos(x) for x in ('رياضة', 'AR| عام') if pos(x) is not None]
+    foreign_at = [pos(x) for x in ('FR|TF1 HD', 'FR| BEIN SPORTS', 'BE| SPORT', 'US| NEWS') if pos(x) is not None]
+    assert arabic_at and (not foreign_at or max(arabic_at) < min(foreign_at)), 'Arabic and Arabic sports sections first, then FR / BE / US (even those that say sport): ' + str(secs)
+    note('PASS: section order on the live screen: ' + ' > '.join(x[4:30] for x in secs))
+    rec = [l for l in ls if 'الأخيرة' in l and l.startswith('قسم')]
+    assert rec and '(1)' in rec[0], 'The recents must hold the one real channel (the entries without name or id are dropped when read): ' + str(rec)
+    noname = [l for l in ls if re.fullmatch(r'\d* ?· ?', l) or l.endswith('· ') or '· Ghost' in l]
+    assert not noname, 'An empty item on the live screen: ' + str(noname)
+    note('PASS: the recents hold 1 channel; the 3 stored entries without a name or an id never reach the screen.')
     # remote columns: the screen opens on the channels; RIGHT -> sections, DOWN inside them, LEFT -> channels, LEFT -> preview
     assert 'SSC 1 HD' in focused_label() or '101' in focused_label(), 'The channels column must hold the first focus: ' + focused_label()
     keys('DPAD_RIGHT'); assert focused_label().startswith('قسم') and 'الأخيرة' in focused_label(), 'RIGHT must move to the sections column: ' + focused_label()
@@ -399,7 +441,7 @@ with tempfile.TemporaryDirectory() as temp:
     guide_card = wait_label('الهلال ضد النصر', 'the match found only in the guide')
     assert any(('SSC 1' in l or 'beIN Sports 1' in l or 'AD Sports 1' in l) for l in guide_card), 'The guide match must carry the channel it was found on: ' + str(guide_card)
     for l in cards:
-        if any(t in l for t in ('الهلال', 'يوفنتوس', 'آرسنال', 'غانا')): continue   # found in the mock guide: confirmed
+        if any(t in l for t in ('الهلال', 'يوفنتوس', 'آرسنال', 'غانا', 'إنجلترا')): continue   # found in the mock guide: confirmed
         assert 'beIN' not in l and 'SSC' not in l and 'AD Sports' not in l and 'beIN SPORTS' not in l, 'No channel may be named without a confirmation: ' + l
         if 'انتهت' not in l: assert 'اختر القناة' in l, 'An unconfirmed match must ask to pick the channel: ' + l
     labs = labels(); i_all = [i for i, l in enumerate(labs) if l.startswith('الكل')][0]
@@ -440,6 +482,19 @@ with tempfile.TemporaryDirectory() as temp:
     liven = len({l for l in allc if ' مباشر ' in l})
     assert head and re.search(r'(\d+) مباشر', head[0]) and int(re.search(r'(\d+) مباشر', head[0])[1]) == liven, 'The live counter must equal the live matches: ' + str(head) + ' vs ' + str(liven)
     assert not any('مباشر مباشر' in l for l in labels()), 'A repeated مباشر: ' + str([l for l in labels() if 'مباشر مباشر' in l])
+    # false "live": the guide only knows a start time. Only the feed's two matches are live; the guide's "England v Croatia" shows its time
+    texts = ' | '.join(allc)
+    for bad in ('76ers', 'فيلادلفيا', 'Philadelphia', 'Celtics', 'سيلتيكس', 'NBA', 'Volleyball', 'إيطاليا ضد بولندا', 'مدريد ضد برشلونة', 'Classic', 'مصر ضد الجزائر', 'البرازيل ضد تشيلي'):
+        assert bad not in texts, 'Not a football match of today: ' + bad + ' | ' + texts
+    eng = [l for l in allc if 'إنجلترا' in l and 'كرواتيا' in l]
+    assert len(eng) == 1 and ' مباشر' not in eng[0] and '0 - 0' not in eng[0], 'A guide-only match is never live and has no score: ' + str(eng)
+    guide_only = [l for l in allc if 'الهلال' in l or 'يوفنتوس' in l or 'آرسنال ضد' in l]
+    assert guide_only and not any(' مباشر' in l for l in guide_only), 'Guide-only matches must not say مباشر: ' + str(guide_only)
+    live_cards = [l for l in allc if ' مباشر' in l]
+    assert len(live_cards) == 2 and all(('غانا' in l or 'سورينام' in l) for l in live_cards), 'Only the feed\'s two matches are live: ' + str(live_cards)
+    pairs = [frozenset(re.findall(r'^(.+?) ضد (.+?) ·', l)[0]) for l in allc if re.findall(r'^(.+?) ضد (.+?) ·', l)]
+    assert len(pairs) == len(set(pairs)), 'The same two teams twice: ' + str(allc)
+    note('PASS: matches: ' + str(len(allc)) + ' cards; only the feed\'s 2 are live; guide-only matches (including England v Croatia) show their start time with no score; no NBA/volleyball/replay/classic/old programme; no pair twice.')
     opts = labels()
     focus_card('غانا ضد الصومال')
     opts = labels()
@@ -467,6 +522,35 @@ with tempfile.TemporaryDirectory() as temp:
     assert any('SSC 2' in l for l in again), 'The channel played for the match must be its channel now: ' + str(again)
     note('PASS: the channel played from the sports list was saved for that match and the card names it: ' + again[0][-60:] + '.')
     (OUT / 'redesign-logcat.txt').write_text(adb('logcat', '-d', '-t', '800', check=False))
+
+    # 6c. every screen in and out five times, Back from the home screen five times: no crash, and the home never shows empty cards again
+    adb('logcat', '-c')
+    home_cards = lambda: [l for l in labels() if ' ضد ' in l and not l.startswith('تفاصيل')]
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.HomeActivity'); wait_label('غانا ضد الصومال', 'the home matches before the loops')
+    shot('final-home.png')
+    for screen, ready in (('MatchesScreenActivity', 'المباريات'), ('LiveActivity', 'البث المباشر'), ('ChannelMapActivity', None), ('SectionOrderActivity', None), ('MatchesActivity', None)):
+        for n in range(5):
+            adb('shell', 'am', 'start', '-W', '-n', PKG + '/.' + screen); time.sleep(2.2)
+            if n == 0 and screen == 'MatchesScreenActivity': shot('final-matches.png')
+            if n == 0 and screen == 'LiveActivity': shot('final-live.png')
+            keys('DPAD_DOWN', 'DPAD_LEFT', 'DPAD_UP', pause=0.4)
+            no_crash(screen + ' pass ' + str(n + 1))
+            keys('BACK', pause=1.2)
+            to_home()
+            now_cards = home_cards()   # read at once: the data must already be there, no empty cards on the way back
+            assert len(now_cards) >= 3, 'The home matches row came back without its cards after ' + screen + ' (pass ' + str(n + 1) + '): ' + str(now_cards)
+            no_crash('Back to home after ' + screen + ' pass ' + str(n + 1))
+        note('PASS: ' + screen + ' opened and left 5 times: no crash, the home kept its ' + str(len(now_cards)) + ' match cards each time.')
+    for n in range(5):
+        keys('BACK', pause=1.0)
+        no_crash('Back from the home screen, press ' + str(n + 1))
+        if n < 4: to_home()
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.HomeActivity'); time.sleep(2)
+    wait_label('غانا ضد الصومال', 'the home after five Back presses')
+    st = re.findall(r'home-stats: (.*)', adb('logcat', '-d', '-s', 'FreeMyTV', check=False))
+    note('home counters after the loops: ' + (st[-1] if st else 'none'))
+    assert not st or 'skeletonAfterData=0' in st[-1], 'Empty cards returned after data: ' + st[-1]
+    note('PASS: Back pressed 5 times from the home screen: no crash and the home returned with its matches.')
 
     # 7. sections: order and hiding (Settings)
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.SectionOrderActivity')

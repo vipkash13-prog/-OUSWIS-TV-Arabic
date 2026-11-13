@@ -31,7 +31,8 @@ final class LiveData {
             catch(Exception e){return new JSONObject();}
         }
         static Channel from(JSONObject o){
-            if(o==null)return null;String id=o.optString("id");if(id.isEmpty())return null;
+            if(o==null)return null;String id=o.optString("id").trim();if(id.isEmpty())return null;
+            if(o.optString("name").trim().isEmpty())return null;   // no name, no stream: never shown, read from storage or from the server
             return new Channel(id,o.optString("name"),o.optString("icon"),o.optString("num"),o.optString("ext","ts"));
         }
     }
@@ -207,7 +208,7 @@ final class LiveData {
             JSONArray a=new JSONArray(s.getString("recent","[]"));
             JSONArray out=new JSONArray();out.put(channel.json());
             for(int i=0;i<a.length()&&out.length()<20;i++){
-                JSONObject o=a.optJSONObject(i);if(o!=null&&!channel.id.equals(o.optString("id")))out.put(o);
+                JSONObject o=a.optJSONObject(i);if(o!=null&&!channel.id.equals(o.optString("id"))&&Channel.from(o)!=null)out.put(o);   // an entry without a name or an id is dropped, not carried on
             }
             s.edit().putString("recent",out.toString()).putString("last",channel.json().toString()).apply();
         }catch(Exception ignored){}

@@ -23,15 +23,20 @@ final class SectionOrder {
     private static final String[] WORDS={"arab","saudi","ksa","gulf","khaleej","egypt","emirat","qatar","kuwait","iraq","jordan","algeria","morocco","tunis","lebanon",
             "syria","oman","bahrain","yemen","libya","sudan","palest","ssc","bein","sport","mbc","osn","rotana","shahid","عرب","رياض","سعود","خليج","مصر"};
 
-    /** Arabic or sports, by script, country prefix or a well-known word. */
-    static boolean priority(String name){
-        if(name==null)return false;
-        for(int i=0;i<name.length();i++){char ch=name.charAt(i);if(ch>=0x0600&&ch<=0x06FF)return true;}
-        if(COUNTRY.matcher(name).find())return true;
+    /** A prefix of any other country ("FR|", "BE|", "US|"...): such a section is foreign even when it says sport. */
+    private static final Pattern PREFIX=Pattern.compile("^\\W*[a-z]{2,3}\\s*[|:\\-\\]\\)/]",Pattern.CASE_INSENSITIVE);
+    /** 0 Arabic (Arabic script or an Arabic country's prefix), 1 sports or Arabic-network words with no foreign prefix, 2 the rest. */
+    static int tier(String name){
+        if(name==null)return 2;
+        for(int i=0;i<name.length();i++){char ch=name.charAt(i);if(ch>=0x0600&&ch<=0x06FF)return 0;}
+        if(COUNTRY.matcher(name).find())return 0;
+        if(PREFIX.matcher(name).find())return 2;
         String n=name.toLowerCase(Locale.ROOT);
-        for(String w:WORDS)if(n.contains(w))return true;
-        return false;
+        for(String w:WORDS)if(n.contains(w))return 1;
+        return 2;
     }
+    /** Arabic or sports, by script, country prefix or a well-known word. */
+    static boolean priority(String name){return tier(name)<2;}
 
     private static SharedPreferences store(Context c){return c.getApplicationContext().getSharedPreferences("ouswis-live",Context.MODE_PRIVATE);}
 
@@ -45,8 +50,7 @@ final class SectionOrder {
     /** The provider's categories in the order the viewer wants them. */
     static List<LiveData.Category> arrange(Context c,List<LiveData.Category> in){
         List<LiveData.Category> byDefault=new ArrayList<>();
-        for(LiveData.Category cat:in)if(priority(cat.name))byDefault.add(cat);
-        for(LiveData.Category cat:in)if(!priority(cat.name))byDefault.add(cat);
+        for(int t=0;t<3;t++)for(LiveData.Category cat:in)if(tier(cat.name)==t)byDefault.add(cat);   // Arabic first, then the sports, then the rest (FR, BE, US...)
         List<String> saved=read(c,"sectionOrder");
         if(saved.isEmpty())return byDefault;
         List<LiveData.Category> out=new ArrayList<>();

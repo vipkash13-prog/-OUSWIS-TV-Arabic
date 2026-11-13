@@ -11,6 +11,7 @@ import android.graphics.RectF;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.Log;
 import android.view.KeyEvent;
 import android.view.View;
 import android.widget.FrameLayout;
@@ -118,8 +119,8 @@ public final class MatchesScreenActivity extends Activity {
 
         @Override protected void onSizeChanged(int w,int h,int ow,int oh){
             k=w/1920f;
-            backdrop=Bitmap.createBitmap(Math.max(1,w/2),Math.max(1,h/2),Bitmap.Config.RGB_565);
-            Canvas c=new Canvas(backdrop);c.scale(0.5f,0.5f);Wallpaper.draw(getContext(),c,w,h,0.6f,0x0B0D1A);   // the home wallpaper under #0B0D1A at 60 %
+            try{backdrop=Bitmap.createBitmap(Math.max(1,w/2),Math.max(1,h/2),Bitmap.Config.RGB_565);
+            Canvas c=new Canvas(backdrop);c.scale(0.5f,0.5f);Wallpaper.draw(getContext(),c,w,h,0.6f,0x0B0D1A);}catch(Throwable noRoom){backdrop=null;AppLog.w("backdrop skipped: "+noRoom);}   // the home wallpaper under #0B0D1A at 60 %
         }
         private long riyadhDayStart(int offset){
             java.util.Calendar cal=java.util.Calendar.getInstance(TimeZone.getTimeZone("Asia/Riyadh"));
@@ -191,6 +192,10 @@ public final class MatchesScreenActivity extends Activity {
         }
 
         @Override protected void onDraw(Canvas c){
+            try{drawScreen(c);}
+            catch(RuntimeException e){AppLog.w("matches-screen draw failed: "+Log.getStackTraceString(e));}   // one bad match never closes the screen
+        }
+        private void drawScreen(Canvas c){
             int w=getWidth(),h=getHeight();
             if(backdrop!=null)c.drawBitmap(backdrop,null,new RectF(0,0,w,h),null);
             a11y.begin(k);
@@ -246,8 +251,7 @@ public final class MatchesScreenActivity extends Activity {
                 boolean focused=area==1&&i==sel;
                 RectF card=r;
                 if(focused){Design.grown(r,g);card=g;}
-                Design.card(c,card,22,1,p,0xFF151A2E);   // opaque: the wallpaper never shows through a result; a live card differs only by its red 2dp border and the badge
-                if(m.live()){p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(3);p.setColor(Design.LIVE);c.drawRoundRect(card,22,22,p);}
+                Design.card(c,card,22,1,p,0xFF151A2E);   // opaque: the wallpaper never shows through a result; a live card differs only by the red badge
                 int alpha=done?153:255;
                 crest(c,m.homeLogo,m.home,right-81,top+62,32);crest(c,m.awayLogo,m.away,left+81,top+62,32);
                 team.setAlpha(alpha);Design.center(c,Design.fitShrink(m.home,team,170),right-81,top+120,team);
@@ -284,7 +288,7 @@ public final class MatchesScreenActivity extends Activity {
             for(int i=from;i<=to&&i<chips.size();i++)w+=Math.max(chip.measureText(chips.get(i)),chipOn.measureText(chips.get(i)))+44+14;
             return w;
         }
-        private String scoreText(MatchCarouselView.Match m){return m.awayScore.isEmpty()&&m.homeScore.isEmpty()?(m.live()?"0 - 0":"—"):m.awayScore+" - "+m.homeScore;}
+        private String scoreText(MatchCarouselView.Match m){return m.awayScore.isEmpty()&&m.homeScore.isEmpty()?"—":m.awayScore+" - "+m.homeScore;}
         private float chipRight(Canvas c,float right,String label,boolean on,boolean focused){
             Paint t=on?chipOn:chip;
             float width=t.measureText(label)+44;
@@ -352,6 +356,10 @@ public final class MatchesScreenActivity extends Activity {
         }
 
         @Override public boolean onKeyDown(int key,KeyEvent e){
+            try{return handleKey(key,e);}
+            catch(RuntimeException ex){AppLog.w("matches-screen key failed: "+Log.getStackTraceString(ex));return true;}
+        }
+        private boolean handleKey(int key,KeyEvent e){
             List<MatchCarouselView.Match> list=visible();
             int chipsTotal=3+chips.size();
             switch(key){
@@ -362,7 +370,7 @@ public final class MatchesScreenActivity extends Activity {
                 case KeyEvent.KEYCODE_DPAD_DOWN:
                     if(area==0){area=1;sel=Math.min(sel,Math.max(0,list.size()-1));}
                     else if(area==1){if(sel+2<list.size())sel+=2;else if(sel+1<list.size()&&sel%2==0)sel++;}
-                    else if(area==2){{MatchCarouselView.Match pm=list.get(Math.min(sel,list.size()-1));LiveData.Channel pc=channelFor(pm);if(panelFocus<(pc!=null?1:0)+extraOptions(pm,pc).size()+1)panelFocus++;}}
+                    else if(area==2){if(list.isEmpty()){area=1;invalidate();return true;}{MatchCarouselView.Match pm=list.get(Math.min(sel,list.size()-1));LiveData.Channel pc=channelFor(pm);if(panelFocus<(pc!=null?1:0)+extraOptions(pm,pc).size()+1)panelFocus++;}}
                     invalidate();return true;
                 case KeyEvent.KEYCODE_DPAD_RIGHT:   // RTL: the first chip and the first column are on the right
                     if(area==0){if(chipFocus>0)chipFocus--;}
