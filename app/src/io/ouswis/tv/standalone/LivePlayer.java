@@ -26,7 +26,7 @@ final class LivePlayer {
     static ExoPlayer create(Context c){return create(c,false);}
 
     /**
-     * `full`: the full-screen channel, with a longer buffer (15 to 50 s, never more than about 24 or 48 MB) and a short start.
+     * `full`: the full-screen channel, with a longer buffer (15 to 50 s, never more than about 24 or 48 MB) and a short start (1 s, 2.5 s after a stall).
      * Whatever player still exists is released first: the provider's account may allow only one connection.
      */
     static synchronized ExoPlayer create(Context c,boolean full){
@@ -37,7 +37,7 @@ final class LivePlayer {
         if(full){
             ActivityManager am=(ActivityManager)c.getSystemService(Context.ACTIVITY_SERVICE);
             int mb=am!=null&&am.isLowRamDevice()?24:48;
-            lb.setBufferDurationsMs(15_000,50_000,2_500,5_000).setTargetBufferBytes(mb*1024*1024).setPrioritizeTimeOverSizeThresholds(false);
+            lb.setBufferDurationsMs(15_000,50_000,1_000,2_500).setTargetBufferBytes(mb*1024*1024).setPrioritizeTimeOverSizeThresholds(false);
         }else lb.setBufferDurationsMs(4_000,16_000,1_500,3_000);
         current=new ExoPlayer.Builder(c.getApplicationContext())
                 .setMediaSourceFactory(new DefaultMediaSourceFactory(new DefaultDataSource.Factory(c.getApplicationContext(),http)))
@@ -72,7 +72,34 @@ final class LivePlayer {
     /** m3u8 first unless the server says the channel is .ts, per SPEC; attempt 1 flips it (the fallback). */
     static String extension(Context c,LiveData.Channel ch,int attempt){
         String forced=streamType(c);
-        return AUTO.equals(forced)?extension(ch,attempt):forced;   // a chosen type is never flipped: the test is meant to be clean
+        if(!AUTO.equals(forced))return forced;   // a chosen type is never flipped: the test is meant to be clean
+        java.util.Set<String> ok=allowed(c);
+        boolean hls=ok==null||ok.contains(HLS),ts=ok==null||ok.contains(TS);
+        if(hls&&!ts)return HLS;
+        if(ts&&(!hls||noHls(c,ch.id)))return TS;   // the account has no m3u8, or this channel refused it before: ts straight away
+        return extension(ch,attempt);
+    }
+
+    // MARK: what the account allows (user_info.allowed_output_formats) and the channels that refused m3u8
+    static java.util.Set<String> allowed(Context c){
+        String v=prefs(c).getString("allowed",null);
+        if(v==null||v.isEmpty())return null;
+        java.util.Set<String> out=new java.util.HashSet<>();
+        for(String f:v.split(","))if(!f.trim().isEmpty())out.add(f.trim().toLowerCase(java.util.Locale.US));
+        return out.isEmpty()?null:out;
+    }
+    static void setAllowed(Context c,java.util.Collection<String> formats){
+        StringBuilder b=new StringBuilder();
+        for(String f:formats){if(b.length()>0)b.append(',');b.append(f.trim().toLowerCase(java.util.Locale.US));}
+        prefs(c).edit().putString("allowed",b.toString()).commit();
+    }
+    private static String noHlsIds(Context c){return prefs(c).getString("nohls","");}
+    static boolean noHls(Context c,String id){return (","+noHlsIds(c)+",").contains(","+id+",");}
+    static void markNoHls(Context c,String id){
+        if(noHls(c,id))return;
+        String all=noHlsIds(c);
+        if(all.length()>2000)all=all.substring(all.indexOf(',',all.length()/2)+1);   // a long list drops its oldest half
+        prefs(c).edit().putString("nohls",(all.isEmpty()?"":all+",")+id).commit();
     }
     static String extension(LiveData.Channel ch,int attempt){
         String preferred=ch.ext!=null&&ch.ext.equalsIgnoreCase("ts")?"ts":"m3u8";
@@ -80,11 +107,11 @@ final class LivePlayer {
         return attempt%2==0?preferred:other;
     }
 
-    static MediaItem item(XtreamAccount a,LiveData.Channel ch,String ext){return item(a,ch,ext,false);}
+    static MediaItem item(XtreamAccount a,LiveData.Channel ch,String ext){return item(a,ch,ext,false,false);}
 
     /** `full`: an HLS channel stays about 5 to 8 seconds behind the live edge (target 6.5 s) instead of the server's default. */
-    static MediaItem item(XtreamAccount a,LiveData.Channel ch,String ext,boolean full){
-        MediaItem.Builder b=new MediaItem.Builder().setUri(a.liveUrl(ch.id,ext));
+    static MediaItem item(XtreamAccount a,LiveData.Channel ch,String ext,boolean full,boolean alt){
+        MediaItem.Builder b=new MediaItem.Builder().setUri(alt?a.liveUrlAlt(ch.id,ext):a.liveUrl(ch.id,ext));
         if(ext.equals("m3u8")){
             b.setMimeType(MimeTypes.APPLICATION_M3U8);
             if(full)b.setLiveConfiguration(new MediaItem.LiveConfiguration.Builder()

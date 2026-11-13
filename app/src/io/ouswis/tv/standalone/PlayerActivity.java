@@ -48,6 +48,20 @@ public final class PlayerActivity extends Activity {
     private long channelStartAt,lastProgressAt,lastPos=-1,lastHeartbeatAt,lastLoadLogAt;
     private final List<Long> freezes=new ArrayList<>();
     private boolean gaveUp;
+    // Reconnecting: a live stream that the server closes is joined again at once, with the last picture left on screen
+    private static final long STALL_MS=6_000;          // the buffer isn't being filled for this long: reconnect
+    private static final long STATUS_DELAY_MS=3_000;   // "loading" shows only if a reconnect or a rebuffer lasts this long
+    private static final long CLOSE_GAP_MS=250;        // the old connection is closed this long before the new one opens
+    private long reconnectT0,lastBufferedPos=-1,bufferMovedAt;
+    private final List<Long> instants=new ArrayList<>();
+    private boolean pictured;                          // this channel has shown a picture
+    private String currentExt="";
+    private int hlsForm;                               // 0: the usual m3u8 address, 1: the older one without /live
+    private String pendingStatus;
+    private final Runnable showPending=()->{if(pendingStatus!=null){status.setText(pendingStatus);status.setVisibility(View.VISIBLE);}};
+    private void statusLater(String text,long ms){pendingStatus=text;main.removeCallbacks(showPending);main.postDelayed(showPending,ms);}
+    private void statusNow(String text){pendingStatus=text;main.removeCallbacks(showPending);status.setText(text);status.setVisibility(View.VISIBLE);}
+    private void statusClear(){pendingStatus=null;main.removeCallbacks(showPending);status.setVisibility(View.GONE);}
     private final Runnable hideLabel=()->label.setVisibility(View.GONE);
     private long playingSince;   // elapsedRealtime when this channel's picture first came up; 0 until then
     /** "Last channel" and "Recent": only a channel that has played full screen for 10 seconds (the small preview never gets here). */
@@ -130,19 +144,23 @@ public final class PlayerActivity extends Activity {
         if(account==null)return;
         player=LivePlayer.create(this,true);   // the only player: the preview's is released first
         player.setVideoSurfaceView(surface);
-        channelStartAt=android.os.SystemClock.elapsedRealtime();freezes.clear();gaveUp=false;
+        channelStartAt=android.os.SystemClock.elapsedRealtime();freezes.clear();instants.clear();gaveUp=false;pictured=false;hlsForm=0;
         log("فتح ملء الشاشة · نوع البث: "+LivePlayer.streamType(this));
         logAccountInfo();
         player.addListener(new Player.Listener(){
             @Override public void onPlaybackStateChanged(int state){
                 log("الحالة: "+stateName(state)+" · مخزّن "+(player==null?0:player.getTotalBufferedDuration()/1000)+" ث");
-                if(state==Player.STATE_BUFFERING)status.setText("جارٍ التحميل…");
-                if(state==Player.STATE_READY){status.setVisibility(View.GONE);failures=0;}
-                if(state==Player.STATE_BUFFERING)status.setVisibility(View.VISIBLE);
+                if(state==Player.STATE_ENDED){main.post(()->reconnect("انتهى الملف (ENDED): السيرفر أغلق الاتصال"));return;}   // a live channel never ends
+                if(state==Player.STATE_BUFFERING&&pictured)statusLater("جارٍ التحميل…",STATUS_DELAY_MS);   // the last picture stays; the text comes only if it lasts
+                if(state==Player.STATE_READY){statusClear();failures=0;}
             }
-            @Override public void onRenderedFirstFrame(){status.setVisibility(View.GONE);pictureUp();log("ظهرت أول لقطة");}
+            @Override public void onRenderedFirstFrame(){statusClear();pictureUp();pictured=true;log("ظهرت أول لقطة");}
             @Override public void onPlaybackSuppressionReasonChanged(int reason){if(reason!=Player.PLAYBACK_SUPPRESSION_REASON_NONE)log("إيقاف مؤقت من النظام (السبب "+reason+")");}
-            @Override public void onIsPlayingChanged(boolean playing){if(playing)pictureUp();}
+            @Override public void onIsPlayingChanged(boolean playing){
+                if(!playing)return;
+                pictureUp();
+                if(reconnectT0!=0){log("عاد البث بعد "+(android.os.SystemClock.elapsedRealtime()-reconnectT0)+" مللي ثانية من إعادة الاتصال");reconnectT0=0;}
+            }
             @Override public void onVideoSizeChanged(VideoSize size){fit(size);}
             @Override public void onPlayerError(PlaybackException e){
                 log("توقف: "+describe(e)+" · "+playerState());
@@ -150,7 +168,8 @@ public final class PlayerActivity extends Activity {
                     try{player.seekToDefaultPosition();player.prepare();player.setPlayWhenReady(true);lastProgressAt=android.os.SystemClock.elapsedRealtime();log("عودة إلى البث المباشر: seekToDefaultPosition + prepare");return;}
                     catch(RuntimeException x){log("تعذّر الرجوع للبث المباشر: "+x.getClass().getSimpleName());}
                 }
-                fail();
+                if(pictured&&dropped(e)){final String code=e.getErrorCodeName();main.post(()->reconnect("انقطع الاتصال أثناء المشاهدة ("+code+")"));return;}   // same address again, not a different format
+                fail(e);
             }
         });
         player.addAnalyticsListener(new AnalyticsListener(){
@@ -228,7 +247,13 @@ public final class PlayerActivity extends Activity {
             String text;
             try{
                 org.json.JSONObject u=new org.json.JSONObject(XtreamAccount.get(a.api(null,null))).getJSONObject("user_info");
-                text="الحساب: max_connections="+u.opt("max_connections")+" active_cons="+u.opt("active_cons")+" status="+u.opt("status");
+                java.util.List<String> formats=new ArrayList<>();
+                Object f=u.opt("allowed_output_formats");
+                if(f instanceof org.json.JSONArray)for(int i=0;i<((org.json.JSONArray)f).length();i++)formats.add(String.valueOf(((org.json.JSONArray)f).opt(i)));
+                else if(f instanceof String)for(String x:((String)f).split("[,\\s]+"))if(!x.isEmpty())formats.add(x);
+                if(!formats.isEmpty())LivePlayer.setAllowed(PlayerActivity.this,formats);
+                text="الحساب: max_connections="+u.opt("max_connections")+" active_cons="+u.opt("active_cons")+" status="+u.opt("status")
+                        +" · الصيغ المسموحة: "+(formats.isEmpty()?"غير معلنة":android.text.TextUtils.join(",",formats));
             }catch(Exception e){
                 text="تعذّر قراءة user_info: "+e.getClass().getSimpleName()+(String.valueOf(e.getMessage()).startsWith("HTTP ")?" "+e.getMessage():"");
             }
@@ -242,6 +267,12 @@ public final class PlayerActivity extends Activity {
         long pos=player.getCurrentPosition();
         if(player.getPlaybackState()==Player.STATE_READY&&player.getPlayWhenReady()&&pos!=lastPos)lastProgressAt=now;
         lastPos=pos;
+        long bp=player.getBufferedPosition();
+        if(bp!=lastBufferedPos){lastBufferedPos=bp;bufferMovedAt=now;}
+        int st=player.getPlaybackState();
+        if(pictured&&!gaveUp&&started&&(st==Player.STATE_READY||st==Player.STATE_BUFFERING)&&player.getTotalBufferedDuration()<30_000&&now-bufferMovedAt>STALL_MS){
+            reconnect("توقف الإرسال: المخزون لا يمتلئ منذ "+(now-bufferMovedAt)/1000+" ث");
+        }
         if(now-lastHeartbeatAt>=15_000){lastHeartbeatAt=now;log("نبض: "+playerState());}
         if(!gaveUp&&started&&now-lastProgressAt>FREEZE_MS)frozen(now);
         main.postDelayed(this,1000);
@@ -252,34 +283,69 @@ public final class PlayerActivity extends Activity {
         if(freezes.size()>=FREEZE_TRIES){
             gaveUp=true;
             log("تجمّد ولم تنفع "+FREEZE_TRIES+" محاولات: "+playerState());
-            status.setText("توقّف البث. جرّب قناة أخرى أو غيّر نوع البث من الإعدادات > سجل التشغيل");status.setVisibility(View.VISIBLE);
+            statusNow("توقّف البث. جرّب قناة أخرى أو غيّر نوع البث من الإعدادات > سجل التشغيل");
             return;
         }
         freezes.add(now);
         log("تجمّد "+FREEZE_MS/1000+" ث بلا تقدّم ("+playerState()+") — إعادة تحضير "+freezes.size()+"/"+FREEZE_TRIES);
         logAccountInfo();
-        playCurrent();
+        restart(0);
+    }
+
+    /**
+     * The server closed the stream (or stopped sending): join the same channel again at once, not counted among the
+     * freeze retries, with the last picture left on screen. Five of these within 20 seconds count as a freeze instead,
+     * so a server that refuses can't be hammered.
+     */
+    private void reconnect(String why){
+        if(player==null||isFinishing()||gaveUp)return;
+        long now=android.os.SystemClock.elapsedRealtime();
+        for(int i=instants.size()-1;i>=0;i--)if(now-instants.get(i)>20_000)instants.remove(i);
+        if(instants.size()>=5){log("إعادة اتصال متكررة (5 خلال 20 ث): "+why);instants.clear();frozen(now);return;}
+        instants.add(now);
+        reconnectT0=now;
+        log("إعادة اتصال فورية: "+why+" · "+playerState());
+        restart(CLOSE_GAP_MS);
+    }
+
+    /** Closes the old connection, waits `gap` ms, then opens the same channel again; no loading text unless it lasts. */
+    private void restart(long gap){
+        if(player==null||index<0||index>=list.size())return;
+        final int mine=++generation;
+        final LiveData.Channel ch=list.get(index);
+        long now=android.os.SystemClock.elapsedRealtime();
+        lastProgressAt=now;lastPos=-1;lastBufferedPos=-1;bufferMovedAt=now;
+        statusLater("جارٍ إعادة الاتصال…",STATUS_DELAY_MS);
+        try{player.stop();player.clearMediaItems();}catch(RuntimeException ignored){}   // the picture stays: the surface is not touched
+        final long t0=reconnectT0==0?now:reconnectT0;
+        main.postDelayed(()->{
+            if(mine!=generation||player==null)return;
+            openStream(ch,currentExt.isEmpty()?LivePlayer.extension(this,ch,attempt):currentExt);
+            log("أُعيد فتح الاتصال بعد "+(android.os.SystemClock.elapsedRealtime()-t0)+" مللي ثانية");
+        },gap);
+    }
+
+    private void openStream(LiveData.Channel ch,String ext){
+        currentExt=ext;
+        log("تشغيل "+ch.name+" ("+ch.id+") · "+ext+(hlsForm==1?" (عنوان بديل)":"")+(attempt>0?" · محاولة "+(attempt+1):""));
+        player.setMediaItem(LivePlayer.item(account,ch,ext,true,hlsForm==1));
+        player.setVolume(1f);
+        player.prepare();player.setPlayWhenReady(true);
+        lastProgressAt=android.os.SystemClock.elapsedRealtime();bufferMovedAt=lastProgressAt;
     }
 
     private void playCurrent(){
         if(player==null||index<0||index>=list.size())return;
-        LiveData.Channel ch=list.get(index);
+        final LiveData.Channel ch=list.get(index);
         final int mine=++generation;
         main.removeCallbacks(noteLater);playingSince=0;
         final String ext=LivePlayer.extension(this,ch,attempt);
-        status.setText("جارٍ الاتصال…");status.setVisibility(View.VISIBLE);
+        statusLater("جارٍ الاتصال…",1_500);   // a new channel: the old picture stays a moment, then the text if it is slow
         showLabel(ch);
         started=true;
-        lastProgressAt=android.os.SystemClock.elapsedRealtime();lastPos=-1;
+        lastProgressAt=android.os.SystemClock.elapsedRealtime();lastPos=-1;bufferMovedAt=lastProgressAt;lastBufferedPos=-1;
         long wait=LivePlayer.settleMs();   // the preview's connection was just closed: it ends at the server first
-        Runnable go=()->{
-            if(mine!=generation||player==null)return;
-            log("تشغيل "+ch.name+" ("+ch.id+") · "+ext+(attempt>0?" · محاولة "+(attempt+1):""));
-            player.setMediaItem(LivePlayer.item(account,ch,ext,true));
-            player.setVolume(1f);
-            player.prepare();player.setPlayWhenReady(true);
-            lastProgressAt=android.os.SystemClock.elapsedRealtime();
-        };
+        Runnable go=()->{if(mine==generation&&player!=null)openStream(ch,ext);};
         if(wait>0)main.postDelayed(go,wait);else go.run();
         main.removeCallbacks(watch);main.postDelayed(watch,1000);
     }
@@ -288,10 +354,31 @@ public final class PlayerActivity extends Activity {
         label.setVisibility(View.VISIBLE);
         main.removeCallbacks(hideLabel);main.postDelayed(hideLabel,3500);
     }
-    private void fail(){
+    /** A network drop or a server close in the middle of watching: not a reason to change format. */
+    private static boolean dropped(PlaybackException e){
+        switch(e.errorCode){
+            case PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED:case PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT:
+            case PlaybackException.ERROR_CODE_IO_UNSPECIFIED:case PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS:
+            case PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED:return true;
+        }
+        return false;
+    }
+    private void fail(PlaybackException e){
+        LiveData.Channel ch=index>=0&&index<list.size()?list.get(index):null;
+        boolean auto=LivePlayer.AUTO.equals(LivePlayer.streamType(this));
+        boolean hlsRefused=ch!=null&&"m3u8".equals(currentExt)&&e.errorCode==PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS;
+        if(auto&&hlsRefused&&hlsForm==0){   // try the older form of the HLS address before giving up on m3u8
+            hlsForm=1;
+            log("m3u8 رُفض (HTTP "+httpCode(e)+"): تجربة العنوان البديل");
+            final int mine=++generation;
+            main.postDelayed(()->{if(mine==generation&&player!=null)openStream(ch,"m3u8");},CLOSE_GAP_MS);
+            return;
+        }
+        if(auto&&hlsRefused){LivePlayer.markNoHls(this,ch.id);log("m3u8 غير متاح لهذه القناة: ts مباشرة من الآن");}
+        hlsForm=0;
         failures++;attempt++;
-        if(failures>6){status.setText("تعذّر تشغيل هذه القناة");status.setVisibility(View.VISIBLE);return;}
-        status.setText("إعادة الاتصال…");status.setVisibility(View.VISIBLE);
+        if(failures>6){statusNow("تعذّر تشغيل هذه القناة");return;}
+        statusLater("إعادة الاتصال…",STATUS_DELAY_MS);
         final int mine=generation;
         main.postDelayed(()->{if(mine==generation)playCurrent();},failures<=1?300:2000);
     }
@@ -300,7 +387,7 @@ public final class PlayerActivity extends Activity {
         leaveChannel();
         index=(index+by+list.size())%list.size();
         attempt=0;failures=0;
-        channelStartAt=android.os.SystemClock.elapsedRealtime();freezes.clear();gaveUp=false;
+        channelStartAt=android.os.SystemClock.elapsedRealtime();freezes.clear();instants.clear();gaveUp=false;pictured=false;hlsForm=0;currentExt="";reconnectT0=0;
         log("تغيير القناة");
         playCurrent();
     }

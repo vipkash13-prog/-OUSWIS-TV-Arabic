@@ -14,6 +14,7 @@ OUT = Path(sys.argv[1]); OUT.mkdir(parents=True, exist_ok=True)
 ADB = os.environ.get('ADB', 'adb')
 PKG = 'io.ouswis.tv.standalone'
 HITS = {}
+ALLOWED = ['m3u8', 'ts']   # what the mock account's user_info says it may stream
 
 def adb(*args, check=True):
     return subprocess.run([ADB, *args], capture_output=True, timeout=90, check=check).stdout.decode('utf-8', 'replace').replace('\r', '')
@@ -190,6 +191,10 @@ with tempfile.TemporaryDirectory() as temp:
     subprocess.run(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', 'testsrc=s=640x360:r=10', '-t', '90',
                     '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-f', 'mpegts', str(clip)], check=True)
     data = clip.read_bytes()
+    short_clip = Path(temp) / 'short.ts'   # 5 seconds: the player reaches its end, as a server that closes the connection does
+    subprocess.run(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', 'testsrc=s=640x360:r=10', '-t', '5',
+                    '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-f', 'mpegts', str(short_clip)], check=True)
+    short_data = short_clip.read_bytes()
     CATS = [('18', 'US APPLE TV'), ('10', 'FR|TF1 HD'), ('14', 'FR| BEIN SPORTS'), ('15', 'BE| SPORT'), ('16', 'US| NEWS'), ('11', 'رياضة'), ('12', 'أخبار'), ('13', 'أفلام'), ('17', 'AR| عام')]   # the foreign ones are listed first and two of them say sport: the Arabic ones must still lead
     STREAMS = {'11': [('101', 'SSC 1 HD', 'ts'), ('102', 'SSC 2 HD', 'ts'), ('103', 'SSC 3 HD', 'ts'), ('110', 'beIN Sports 1 HD', 'ts'),
                       ('111', 'beIN Sports 2', 'ts'), ('112', 'beIN Sports 3', 'm3u8'), ('113', 'FR| beIN SPORTS 4 HD (H.265)', 'ts'), ('120', 'AD Sports 1', 'ts'), ('105', 'beIN SPORTS XTRA 1HD', 'ts')],
@@ -255,8 +260,10 @@ with tempfile.TemporaryDirectory() as temp:
                     if sid in EPGX:
                         body = {'epg_listings': [{'title': base64.b64encode(t.encode()).decode(), 'start_timestamp': str(now + a), 'stop_timestamp': str(now + b)} for t, a, b in EPGX[sid]]}
                 else:
-                    body = {'user_info': {'status': 'Active', 'max_connections': '1', 'active_cons': '0', 'exp_date': str(int(time.time()) + 86400 * 120)}}
+                    body = {'user_info': {'status': 'Active', 'max_connections': '1', 'active_cons': '0', 'allowed_output_formats': ALLOWED, 'exp_date': str(int(time.time()) + 86400 * 120)}}
                 payload = json.dumps(body).encode(); kind = 'application/json'
+            elif url.path == '/live/demo/demo/999.ts':
+                payload = short_data; kind = 'video/mp2t'
             elif re.fullmatch(r'/live/demo/demo/[0-9]+\.ts', url.path):
                 payload = data; kind = 'video/mp2t'
             else:
@@ -453,6 +460,54 @@ with tempfile.TemporaryDirectory() as temp:
     keys('DPAD_CENTER', pause=0.8)   # back to automatic
     assert any('تلقائي' in l for l in labels()), 'The stream type must be back on automatic'
     keys('BACK', pause=1)
+
+    # 4c. the server closes the stream (the 5 s clip ends): the same channel is joined again at once, the last picture stays, no loading text
+    hits999 = HITS.get('999.ts', 0)
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.PlayerActivity', '-e', 'id', '999', '-e', 'name', 'Short clip', '-e', 'ext', 'ts', '-e', 'num', '999')
+    time.sleep(4)
+    frames, blank = 0, 0
+    loading_seen = []
+    t_end = time.time() + 22
+    next_dump = time.time() + 2
+    while time.time() < t_end:
+        img = shot('redesign-reconnect-burst.png'); frames += 1
+        if colourful(img, (0.2, 0.2, 0.8, 0.8)) < 0.05: blank += 1
+        if time.time() >= next_dump:
+            loading_seen += [l for l in labels() if 'جارٍ' in l or 'إعادة الاتصال' in l]
+            next_dump = time.time() + 4
+        time.sleep(0.3)
+    reconnects = HITS.get('999.ts', 0) - hits999
+    note('Reconnect test: %d connections in 26 s, %d frames sampled, %d blank, loading text seen: %s' % (reconnects, frames, blank, loading_seen))
+    assert reconnects >= 3, 'The 5 s clip ends again and again: the channel must be joined again each time (connections: %d)' % reconnects
+    assert blank <= 1, 'The last picture must stay on screen while reconnecting (%d of %d frames were blank)' % (blank, frames)
+    assert not loading_seen, 'No loading text may show for a reconnect that takes under 3 s: ' + str(loading_seen)
+    keys('BACK', pause=1)
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.PlayLogActivity'); wait_label('سجل التشغيل', 'the playback log page after the reconnects')
+    time.sleep(1)
+    page = ' || '.join(labels())
+    ms = [int(x) for x in re.findall(r'عاد البث بعد (\d+) مللي ثانية', page)]
+    note('Reconnect times (ms): ' + str(ms))
+    assert 'إعادة اتصال فورية' in page or ms, 'Each reconnect must be in the log: ' + page[:600]
+    assert ms and max(ms) < 3000, 'The picture must be back within 3 s of each reconnect: ' + str(ms)
+    assert 'محاولة' not in ' '.join(l for l in labels() if 'تشغيل Short' in l), 'A reconnect after ENDED must not count as a failed attempt'
+    shot('redesign-playlog-reconnect.png')
+    note('PASS: when the stream ended the same channel was joined again at once (%d times), the last picture stayed (%d blank of %d frames), no loading text, back in %s ms.' % (reconnects, blank, frames, ms))
+    keys('BACK', pause=1)
+
+    # 4d. the account allows only ts (user_info.allowed_output_formats): a channel asked as m3u8 goes straight to ts, m3u8 is never requested
+    ALLOWED[:] = ['ts']
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.PlayerActivity', '-e', 'id', '201', '-e', 'name', 'Al Arabiya', '-e', 'ext', 'ts', '-e', 'num', '201')
+    time.sleep(5); keys('BACK', pause=1)    # reads user_info and remembers the formats
+    before = HITS.get('113.m3u8', 0)
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.PlayerActivity', '-e', 'id', '113', '-e', 'name', 'Four', '-e', 'ext', 'm3u8', '-e', 'num', '113')
+    time.sleep(7); img = shot('redesign-player-allowed-ts.png')
+    assert HITS.get('113.m3u8', 0) == before, 'The account allows only ts: m3u8 must not be requested: ' + str(HITS)
+    assert colourful(img, (0.2, 0.2, 0.8, 0.8)) > 0.2, 'The ts-only account did not play'
+    note('PASS: with allowed_output_formats = [ts], an m3u8 channel went straight to ts and m3u8 was never requested.')
+    keys('BACK', pause=1)
+    ALLOWED[:] = ['m3u8', 'ts']
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.PlayerActivity', '-e', 'id', '201', '-e', 'name', 'Al Arabiya', '-e', 'ext', 'ts', '-e', 'num', '201')
+    time.sleep(4); keys('BACK', pause=1)
 
     # 5. the league -> channel table (Settings): pick by hand, then back to the default
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.ChannelMapActivity')
