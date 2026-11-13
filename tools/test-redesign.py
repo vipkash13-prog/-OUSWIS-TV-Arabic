@@ -669,7 +669,8 @@ with tempfile.TemporaryDirectory() as temp:
     side = [('Live TV', 'LiveActivity'), ('Matches', 'MatchesScreenActivity'), ('Updates', 'UpdatesActivity'),
             ('ربط القنوات', 'ChannelMapActivity'), ('ترتيب الأقسام', 'SectionOrderActivity'), ('اشتراك IPTV', 'IptvActivity')]
     for i, (name, activity) in enumerate(side):
-        adb('shell', 'am', 'start', '-W', '-n', PKG + '/.SettingsActivity'); time.sleep(2.5)
+        adb('shell', 'am', 'force-stop', PKG); time.sleep(1)   # a fresh Settings each time: the focus starts on the list
+        adb('shell', 'am', 'start', '-W', '-n', PKG + '/.SettingsActivity'); time.sleep(3)
         keys('DPAD_LEFT', pause=0.7)
         keys(*['DPAD_DOWN'] * i, pause=0.7)
         held = [n.get('text', '') for n in tree().iter('node') if n.get('package') == PKG and n.get('class') == 'android.widget.Button' and n.get('focused') == 'true']
