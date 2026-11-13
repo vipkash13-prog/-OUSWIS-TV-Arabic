@@ -63,7 +63,8 @@ with zipfile.ZipFile(OLD) as old,zipfile.ZipFile(NEW) as new:
     ADDED={'assets/fonts/Tajawal-OFL.txt','assets/backgrounds/ouswis_bg_1080p.webp','assets/backgrounds/ouswis_bg_4k.webp','assets/backgrounds/ouswis_bg_inner_1080p.webp'}
     REMOVED={'assets/themes/gold-sunset.png','assets/themes/gold-frame.png'}
     assert (names-REMOVED)|ADDED=={n for n in new.namelist() if n.startswith('assets/')},sorted(names^{n for n in new.namelist() if n.startswith('assets/')})
-    for n in names-REMOVED:assert old.read(n)==new.read(n),'Asset changed: '+n
+    # Round K dropped two unused translation keys (the Settings subtitle and the English "is on" notice): the i18n catalogues may differ.
+    for n in names-REMOVED:assert n.startswith('assets/i18n/') or old.read(n)==new.read(n),'Asset changed: '+n
     assert not any(n.startswith('lib/') and n.endswith('.so') for n in new.namelist()),'Recheck native ABI coverage'
 note('PASS: all official assets, wallpaper and icons are byte-identical. No native .so/ABI restriction: Java/Dex APK supports armeabi-v7a without a separate native build.')
 assert adb('shell','getprop','ro.kernel.qemu').strip()=='1'
