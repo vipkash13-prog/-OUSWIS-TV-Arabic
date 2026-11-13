@@ -33,6 +33,7 @@ public final class PlayerActivity extends Activity {
     private final Handler main=new Handler(Looper.getMainLooper());
     private FrameLayout root;
     private SurfaceView surface;
+    private android.widget.ImageView hold;   // a copy of the last picture, shown over the surface while a reconnect has none
     private TextView label,status;
     private ExoPlayer player;
     private XtreamAccount account;
@@ -102,6 +103,8 @@ public final class PlayerActivity extends Activity {
         root=new FrameLayout(this);root.setBackgroundColor(Color.BLACK);
         surface=new SurfaceView(this);
         root.addView(surface,new FrameLayout.LayoutParams(-1,-1,Gravity.CENTER));
+        hold=new android.widget.ImageView(this);hold.setScaleType(android.widget.ImageView.ScaleType.FIT_XY);hold.setVisibility(android.view.View.GONE);
+        root.addView(hold,new FrameLayout.LayoutParams(-1,-1));
         label=new TextView(this);label.setTextColor(Color.WHITE);label.setTextSize(30);label.setTypeface(Design.bold());
         label.setBackgroundColor(0xB0000000);label.setPadding(40,22,40,22);label.setGravity(Gravity.CENTER_VERTICAL|Gravity.RIGHT);
         root.addView(label,new FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM));
@@ -154,7 +157,7 @@ public final class PlayerActivity extends Activity {
                 if(state==Player.STATE_BUFFERING&&pictured)statusLater("جارٍ التحميل…",STATUS_DELAY_MS);   // the last picture stays; the text comes only if it lasts
                 if(state==Player.STATE_READY){statusClear();failures=0;}
             }
-            @Override public void onRenderedFirstFrame(){statusClear();pictureUp();pictured=true;log("ظهرت أول لقطة");}
+            @Override public void onRenderedFirstFrame(){releaseHold();statusClear();pictureUp();pictured=true;log("ظهرت أول لقطة");}
             @Override public void onPlaybackSuppressionReasonChanged(int reason){if(reason!=Player.PLAYBACK_SUPPRESSION_REASON_NONE)log("إيقاف مؤقت من النظام (السبب "+reason+")");}
             @Override public void onIsPlayingChanged(boolean playing){
                 if(!playing)return;
@@ -309,8 +312,22 @@ public final class PlayerActivity extends Activity {
     }
 
     /** Closes the old connection, waits `gap` ms, then opens the same channel again; no loading text unless it lasts. */
+    /** Copies what the surface shows into {@link #hold}: the codec release of a reconnect can blank some TVs' surfaces. */
+    private void holdPicture(){
+        if(!pictured||hold.getVisibility()==android.view.View.VISIBLE||surface==null||!surface.getHolder().getSurface().isValid()||surface.getWidth()<2)return;
+        try{
+            final android.graphics.Bitmap bm=android.graphics.Bitmap.createBitmap(Math.max(2,surface.getWidth()/2),Math.max(2,surface.getHeight()/2),android.graphics.Bitmap.Config.ARGB_8888);
+            android.view.PixelCopy.request(surface,bm,result->{
+                if(result==android.view.PixelCopy.SUCCESS&&!isFinishing()&&!pictured0()){hold.setImageBitmap(bm);hold.setVisibility(android.view.View.VISIBLE);}
+            },main);
+        }catch(Throwable t){log("تعذّر حفظ آخر لقطة: "+t.getClass().getSimpleName());}
+    }
+    private boolean pictured0(){return holdDone;}
+    private boolean holdDone;
+    private void releaseHold(){holdDone=true;if(hold!=null){hold.setVisibility(android.view.View.GONE);hold.setImageDrawable(null);}}
     private void restart(long gap){
         if(player==null||index<0||index>=list.size())return;
+        holdDone=false;holdPicture();
         final int mine=++generation;
         final LiveData.Channel ch=list.get(index);
         long now=android.os.SystemClock.elapsedRealtime();
@@ -388,7 +405,7 @@ public final class PlayerActivity extends Activity {
         leaveChannel();
         index=(index+by+list.size())%list.size();
         attempt=0;failures=0;
-        channelStartAt=android.os.SystemClock.elapsedRealtime();freezes.clear();instants.clear();gaveUp=false;pictured=false;hlsForm=0;currentExt="";reconnectT0=0;
+        channelStartAt=android.os.SystemClock.elapsedRealtime();freezes.clear();instants.clear();gaveUp=false;pictured=false;hlsForm=0;currentExt="";reconnectT0=0;releaseHold();
         log("تغيير القناة");
         playCurrent();
     }
