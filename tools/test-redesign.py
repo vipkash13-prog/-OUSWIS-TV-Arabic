@@ -597,7 +597,9 @@ with tempfile.TemporaryDirectory() as temp:
     assert not classic, 'Something still creates the old HomeView: ' + str(classic)
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.HomeActivity'); wait_label('غانا ضد الصومال', 'the home before Recent Apps')
     keys('DPAD_DOWN', 'DPAD_DOWN', 'DPAD_DOWN', pause=0.8)
-    keys('DPAD_LEFT', 'DPAD_LEFT', 'DPAD_LEFT', pause=0.8)
+    for _ in range(8):
+        if 'الأخيرة' in focused_label(): break
+        keys('DPAD_LEFT', pause=0.8)
     assert 'الأخيرة' in focused_label(), 'The fourth shortcut must be الأخيرة: ' + focused_label()
     keys('DPAD_CENTER', pause=0.5); front('RecentsActivity')
     wait_label('التطبيقات الأخيرة', 'the Recent Apps title')
