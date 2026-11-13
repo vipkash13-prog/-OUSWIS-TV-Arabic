@@ -196,7 +196,7 @@ with tempfile.TemporaryDirectory() as temp:
                '12': [('201', 'Al Arabiya', 'ts'), ('202', 'Sky News Arabia', 'ts')], '13': [('301', 'Movies One', 'ts')], '10': [('401', 'TF1 HD', 'ts')], '14': [], '15': [], '16': [('701', 'US News 1', 'ts')], '17': [('801', 'MBC 1', 'ts')]}
     HOUR = 3600
     # guide programmes other than the default four: (title, start offset, stop offset) in seconds from now
-    EPGX = {'120': [('NBA: Philadelphia 76ers vs Boston Celtics', -1200, 6000), ('NBA Highlights', 6000, 9600)],
+    EPGX = {'120': [('الهلال × النصر · دوري روشن', -1800, 1800), ('NBA: Philadelphia 76ers vs Boston Celtics', -1200, 6000), ('NBA Highlights', 6000, 9600)],
             '103': [('Philadelphia 76ers vs Boston Celtics - NBA', -900, 6300), ('Volleyball: Italy vs Poland', 6300, 9900)],
             '110': [('England vs Croatia - International Friendly', -1200, 6000), ('Studio', 6000, 9600)],
             '112': [('England vs Croatia - Classic', -600, 6600), ('Spain vs Germany - Highlights', 6600, 10200)],
