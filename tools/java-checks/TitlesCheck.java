@@ -59,6 +59,21 @@ public final class TitlesCheck {
             is(false,Titles.isRerun(t2)||Titles.isOtherSport(t2),"a match: "+t2);
         for(String t3:new String[]{"NBA: Philadelphia 76ers vs Boston Celtics","Philadelphia 76ers vs Boston Celtics - NBA","Volleyball: Italy vs Poland","Basketball: Lakers vs Bulls","كرة السلة: فيلادلفيا ضد بوسطن","UFC 300","Tennis: Alcaraz vs Sinner"})
             is(true,Titles.isOtherSport(t3),"other sport: "+t3);
+        eq("الدوري التركي",Titles.withoutYear("الدوري التركي 2027"));
+        eq("Africa Cup of Nations Qualifying",Titles.withoutYear("Africa Cup of Nations Qualifying 2027"));
+        eq("الدوري الإنجليزي الممتاز",Titles.withoutYear("2026/27 الدوري الإنجليزي الممتاز"));
+        eq("غامبيا",TeamNames.arabic("Gambia"));
+        eq("جينتشلربيرليغي",TeamNames.arabic("Gençlerbirliği"));
+        eq("بشكتاش",TeamNames.arabic("Beşiktaş A.Ş."));
+        is(true,Titles.isLiveTitle("Live: Senegal vs Sudan - Africa Cup of Nations"),"live tag");
+        is(true,Titles.isLiveTitle("(L) Senegal vs Sudan"),"(L) tag");
+        is(true,Titles.isLiveTitle("مباشر: السنغال × السودان"),"مباشر tag");
+        is(false,Titles.isLiveTitle("Senegal vs Sudan - Africa Cup of Nations"),"no tag");
+        is(false,Titles.isLiveTitle("Delivered vs Alive FC"),"words that only contain l-i-v-e");
+        eq("Senegal vs Sudan - Africa Cup of Nations",Titles.stripLive("Live: Senegal vs Sudan - Africa Cup of Nations"));
+        eq("Senegal vs Sudan",Titles.stripLive("(L) Senegal vs Sudan"));
+        eq("السنغال × السودان",Titles.stripLive("مباشر: السنغال × السودان"));
+        eq("Senegal vs Sudan - Africa Cup of Nations",Titles.stripLive("Senegal vs Sudan - Africa Cup of Nations - Live"));
         eq("فياريال",TeamNames.arabic("Villareal"));
         eq("فياريال",TeamNames.arabic("Villarreal"));
         eq("إريتريا",TeamNames.arabic("Eritrea"));

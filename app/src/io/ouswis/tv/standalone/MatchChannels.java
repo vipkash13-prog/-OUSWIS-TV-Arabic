@@ -287,21 +287,23 @@ final class MatchChannels {
      * two channels counts once (the lowest channel number wins). Cached until the feed list or the scan changes.
      */
     static synchronized java.util.List<MatchCarouselView.Match> withGuide(java.util.List<MatchCarouselView.Match> api){
-        Object stamp=System.identityHashCode(api)+":"+api.size()+":"+guideAt+":"+(api.isEmpty()?"":api.get(0).key+api.get(api.size()-1).key);
+        long now=System.currentTimeMillis();
+        Object stamp=System.identityHashCode(api)+":"+api.size()+":"+guideAt+":"+now/60_000L+":"+(api.isEmpty()?"":api.get(0).key+api.get(api.size()-1).key);
         java.util.List<MatchCarouselView.Match> cached=merged;
         if(cached!=null&&stamp.equals(mergedFor))return cached;
         java.util.List<MatchCarouselView.Match> out=new ArrayList<>(api);
-        long now=System.currentTimeMillis();
-        java.util.Map<String,MatchCarouselView.Match> found=new java.util.LinkedHashMap<>();
-        java.util.Map<String,Integer> rank=new java.util.HashMap<>();
-        java.util.Map<String,java.util.List<LiveData.Channel>> extra=new java.util.HashMap<>();
+        // the guide adds a match only when its title says it is live ("Live", "مباشر", "(L)"): everything else in it is a repeat
+        // or a programme, and is used only to find the channel of a match the feed already has. A match shown again later
+        // (other start time) is a repeat: the first showing counts, and the other channels of that showing are options.
+        java.util.List<Object[]> shows=new ArrayList<>();   // {programme, channel, parts}
         for(java.util.Map.Entry<String,java.util.List<LiveData.Program>> e:guides.entrySet()){
             LiveData.Channel ch=guideChannels.get(e.getKey());
             if(ch==null)continue;
             for(LiveData.Program p:e.getValue()){
                 long len=p.end-p.start;
-                if(p.end<now||p.start<now-3*3600_000L||len<60*60_000L||len>240*60_000L||Titles.isRerun(p.title)||Titles.isOtherSport(p.title)||Titles.isOtherSport(ch.name))continue;   // not today's match: a repeat, another sport, or one that began over 3 h ago
-                String[] parts=Titles.parseMatch(p.title);
+                if(p.end<now||len<60*60_000L||len>240*60_000L||Titles.isRerun(p.title)||Titles.isOtherSport(p.title)||Titles.isOtherSport(ch.name))continue;
+                if(!Titles.isLiveTitle(p.title))continue;
+                String[] parts=Titles.parseMatch(Titles.stripLive(p.title));
                 if(parts==null)continue;
                 boolean dup=false;
                 for(MatchCarouselView.Match x:api){
@@ -309,19 +311,32 @@ final class MatchChannels {
                     if(Titles.sameMatch(p.title,x.homeEn,x.home,x.awayEn,x.away)){dup=true;break;}
                 }
                 if(dup)continue;
-                String id=Titles.key(Titles.teamArabic(parts[0]))+"|"+Titles.key(Titles.teamArabic(parts[1]))+"|"+(p.start/(3600_000L));
-                int r=rank(ch);
-                java.util.List<LiveData.Channel> opts=extra.get(id);
-                if(opts==null){opts=new ArrayList<>();extra.put(id,opts);}
-                if(!opts.contains(ch))opts.add(ch);
-                Integer had=rank.get(id);
-                if(had!=null&&had<=r)continue;
-                String home=Titles.teamArabic(parts[0]),away=Titles.teamArabic(parts[1]);
-                MatchCarouselView.Match m=new MatchCarouselView.Match(parts[2],home,away,"",p.start);
-                m.homeEn=parts[0];m.awayEn=parts[1];m.key="epg:"+id;m.epgChannelId=ch.id;
-                m.state="pre";   // the guide only knows when it starts: "live" and the score come from the feed alone
-                found.put(id,m);rank.put(id,r);
+                shows.add(new Object[]{p,ch,parts});
             }
+        }
+        java.util.Collections.sort(shows,(x,y)->Long.compare(((LiveData.Program)x[0]).start,((LiveData.Program)y[0]).start));
+        java.util.Map<String,MatchCarouselView.Match> found=new java.util.LinkedHashMap<>();
+        java.util.Map<String,Long> firstStart=new java.util.HashMap<>();
+        java.util.Map<String,Integer> rank=new java.util.HashMap<>();
+        java.util.Map<String,java.util.List<LiveData.Channel>> extra=new java.util.HashMap<>();
+        for(Object[] sh:shows){
+            LiveData.Program p=(LiveData.Program)sh[0];LiveData.Channel ch=(LiveData.Channel)sh[1];String[] parts=(String[])sh[2];
+            String home=Titles.teamArabic(parts[0]),away=Titles.teamArabic(parts[1]);
+            String a1=Titles.key(home),b1=Titles.key(away);
+            String id=(a1.compareTo(b1)<0?a1+"|"+b1:b1+"|"+a1);
+            Long first=firstStart.get(id);
+            if(first==null)firstStart.put(id,p.start);
+            else if(p.start-first>2*3600_000L)continue;   // shown again later: a repeat
+            int r=rank(ch);
+            java.util.List<LiveData.Channel> opts=extra.get(id);
+            if(opts==null){opts=new ArrayList<>();extra.put(id,opts);}
+            if(!opts.contains(ch))opts.add(ch);
+            Integer had=rank.get(id);
+            if(had!=null&&had<=r)continue;
+            MatchCarouselView.Match m=new MatchCarouselView.Match(parts[2],home,away,"",p.start);
+            m.homeEn=parts[0];m.awayEn=parts[1];m.key="epg:"+id+"|"+(first==null?p.start:first)/3600_000L;m.epgChannelId=ch.id;
+            m.state="pre";   // the guide only knows when it starts: "live" and the score come from the feed alone
+            found.put(id,m);rank.put(id,r);
         }
         for(java.util.Map.Entry<String,MatchCarouselView.Match> e:found.entrySet()){
             java.util.List<LiveData.Channel> o=new ArrayList<>(extra.get(e.getKey()));
@@ -330,6 +345,9 @@ final class MatchChannels {
         }
         out.addAll(found.values());
         out=dedupe(out);
+        // began over 2.5 h ago and the feed has no result: it is over (the card says so and it goes to the end of the list)
+        for(MatchCarouselView.Match m:out)
+            if(m.upcoming()&&m.kickoffMillis<now-150*60_000L){m.state="post";m.status="انتهت";}
         merged=out;mergedFor=stamp;
         return out;
     }

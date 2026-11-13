@@ -93,7 +93,7 @@ final class TeamNames {
             "Olympique Lyonnais|ليون","Monaco|موناكو","AS Monaco|موناكو","Lille|ليل","Nice|نيس","Lens|لانس","Rennes|رين","Strasbourg|ستراسبورغ",
             "Nantes|نانت","Toulouse|تولوز","Reims|ريمس","Brest|بريست","Benfica|بنفيكا","Porto|بورتو","FC Porto|بورتو","Sporting CP|سبورتينغ لشبونة",
             "Sporting Lisbon|سبورتينغ لشبونة","Braga|براغا","Ajax|أياكس","PSV Eindhoven|آيندهوفن","PSV|آيندهوفن","Feyenoord|فينورد","AZ Alkmaar|ألكمار",
-            "Celtic|سلتيك","Rangers|رينجرز","Galatasaray|غلطة سراي","Fenerbahce|فنربخشة","Fenerbahçe|فنربخشة","Besiktas|بشكتاش","Beşiktaş|بشكتاش",
+            "Gambia|غامبيا","The Gambia|غامبيا","Gençlerbirliği|جينتشلربيرليغي","Genclerbirligi|جينتشلربيرليغي","Beşiktaş A.Ş.|بشكتاش","Besiktas A.S.|بشكتاش","Celtic|سلتيك","Rangers|رينجرز","Galatasaray|غلطة سراي","Fenerbahce|فنربخشة","Fenerbahçe|فنربخشة","Besiktas|بشكتاش","Beşiktaş|بشكتاش",
             "Trabzonspor|طرابزون سبور","Olympiacos|أولمبياكوس","Panathinaikos|باناثينايكوس","Shakhtar Donetsk|شاختار دونيتسك","Dynamo Kyiv|دينامو كييف",
             "Club Brugge|كلوب بروج","Anderlecht|أندرلخت","Red Bull Salzburg|ريد بول سالزبورغ","Young Boys|يانغ بويز","Copenhagen|كوبنهاغن",
             "Slavia Prague|سلافيا براغ","Sparta Prague|سبارتا براغ","Dinamo Zagreb|دينامو زغرب","Red Star Belgrade|النجم الأحمر","Qarabag|قره باغ");

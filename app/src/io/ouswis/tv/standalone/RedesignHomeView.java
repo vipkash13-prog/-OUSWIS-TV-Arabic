@@ -121,7 +121,7 @@ final class RedesignHomeView extends View {
         try{io.execute(()->{
             long end=start+24L*3600_000;
             List<MatchCarouselView.Match> list=new ArrayList<>();
-            for(MatchCarouselView.Match m:MatchChannels.withGuide(api))if(m.live()||(m.kickoffMillis>=start&&m.kickoffMillis<end))list.add(m);
+            for(MatchCarouselView.Match m:MatchChannels.withGuide(api))if(m.live()||(m.upcoming()&&m.kickoffMillis>=start&&m.kickoffMillis<end))list.add(m);   // the row shows what is on and what is coming, never what finished
             java.util.Collections.sort(list,(a,b)->{
                 int ra=a.live()?0:a.upcoming()?1:2,rb=b.live()?0:b.upcoming()?1:2;
                 return ra!=rb?Integer.compare(ra,rb):Long.compare(a.kickoffMillis,b.kickoffMillis);
@@ -196,7 +196,7 @@ final class RedesignHomeView extends View {
                 long start=dayStart(),end=start+24L*3600_000;
                 java.util.Set<String> seen=new java.util.HashSet<>();
                 for(MatchCarouselView.Match m:found)
-                    if((m.live()||(m.kickoffMillis>=start&&m.kickoffMillis<end))&&seen.add(m.key))shown.add(m);
+                    if((m.live()||(m.upcoming()&&m.kickoffMillis>=start&&m.kickoffMillis<end))&&seen.add(m.key))shown.add(m);
                 java.util.Collections.sort(shown,(a,b)->{
                     int ra=a.live()?0:a.upcoming()?1:2,rb=b.live()?0:b.upcoming()?1:2;
                     return ra!=rb?Integer.compare(ra,rb):Long.compare(a.kickoffMillis,b.kickoffMillis);
@@ -362,7 +362,7 @@ final class RedesignHomeView extends View {
         p.setStyle(Paint.Style.FILL);p.setShader(null);p.setColor(Design.GOLD);
         c.drawCircle(box.right-30,box.centerY(),13,p);
         String t=Double.isNaN(wx.temp)?"—":Math.round(wx.temp)+"° "+shortCondition(wx);
-        Design.center(c,t,box.left+66,box.centerY()+7,chip);
+        Design.center(c,Design.fitShrink(t,chip,104),box.left+66,box.centerY()+7,chip);
         a11y.add(box,"الطقس "+t,focus(0,0),true);
         if(focus(0,0))Design.focusRing(c,box,28,1,p);
         r.set(147,60,260,116);Design.card(c,r,28,1,p,Design.SURFACE);
@@ -374,9 +374,16 @@ final class RedesignHomeView extends View {
         a11y.add(box,"الإعدادات",focus(0,1),true);
         if(focus(0,1))Design.focusRing(c,box,28,1,p);
     }
+    /** One word for the chip (it is small): clear, cloudy, rainy... */
     private String shortCondition(HomeData.Weather wx){
-        String s=Design.weather(wx.code,wx.isDay);
-        return s.length()>8?s.substring(0,8):s;
+        int code=wx.code;
+        if(code<0)return "";
+        if(code<=1)return wx.isDay?"صافٍ":"صافية";
+        if(code<=3)return "غائم";
+        if(code==45||code==48)return "ضباب";
+        if(code>=71&&code<=77||code==85||code==86)return "ثلج";
+        if(code>=95)return "عاصف";
+        return "ممطر";
     }
 
     /** dp of the reference design: 1920 reference px across 1280 dp. */
@@ -563,7 +570,7 @@ final class RedesignHomeView extends View {
             boolean known=MatchChannels.resolved(getContext(),m);   // until it is known the line stays empty: no "اختر القناة" that then turns into a name
             if(ch!=null&&!done)Design.center(c,(m.live()?"▶ ":"")+Design.fit(MatchChannels.shortName(ch.name),goldText15,360),cx,575,goldText15);
             else if(!done&&known)Design.center(c,"اختر القناة",cx,575,tx(Design.MUTED,15,Design.regular()));
-            a11y.add(box,m.home+" ضد "+m.away+" · "+(m.live()?"مباشر "+scoreText(m):done?"انتهت "+m.awayScore+" - "+m.homeScore:fmt("h:mm a",m.kickoffMillis))+(ch!=null&&!done?" · "+MatchChannels.shortName(ch.name):!done&&known?" · اختر القناة":""),focus(2,i),true);
+            a11y.add(box,m.home+" ضد "+m.away+" · "+(m.live()?"مباشر "+scoreText(m):done?"انتهت "+scoreText(m):fmt("h:mm a",m.kickoffMillis))+(ch!=null&&!done?" · "+MatchChannels.shortName(ch.name):!done&&known?" · اختر القناة":""),focus(2,i),true);
             if(focus(2,i))Design.focusRing(c,box,22,1,p);
         }
     }
@@ -706,7 +713,7 @@ final class RedesignHomeView extends View {
                 switch(cl){
                     case 0:start(new Intent(ctx,LiveActivity.class));break;
                     case 1:start(new Intent(ctx,MatchesScreenActivity.class));break;
-                    case 2:host.openClassic(false);break;
+                    case 2:start(new Intent(ctx,AllAppsActivity.class));break;
                     case 3:host.openClassic(true);break;
                     case 4:start(new Intent(ctx,UpdatesActivity.class));break;
                     default:start(new Intent().setComponent(new ComponentName(ctx,SettingsActivity.class)));

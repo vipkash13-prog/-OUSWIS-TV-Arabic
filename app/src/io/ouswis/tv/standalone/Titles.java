@@ -49,7 +49,7 @@ final class Titles {
         league("كأس فرنسا","Coupe de France");
         league("الدوري البرتغالي","Portuguese Primeira Liga","Primeira Liga","Liga Portugal");
         league("الدوري الهولندي","Dutch Eredivisie","Eredivisie");
-        league("الدوري التركي","Turkish Super Lig","Super Lig","Süper Lig");
+        league("الدوري التركي","Turkish Super League","Turkish Super Lig","Super League Turkey","Super Lig","Süper Lig");
         league("دوري روشن السعودي","Saudi Pro League","Roshn Saudi League","Saudi Roshn League");
         league("كأس الملك","Saudi Kings Cup","King's Cup","Kings Cup");
         league("كأس السوبر السعودي","Saudi Super Cup");
@@ -88,6 +88,16 @@ final class Titles {
         return title!=null&&RERUN.matcher(title).find();
     }
     private static final Pattern RERUN=Pattern.compile("(?i)\\b(replay|replays|rerun|re-run|highlights|re-live|repeat|classic|classics|stories|story|recap|full match replay)\\b|إعادة|اعادة|ملخص|كلاسيك|قصص|\\(r\\)");
+    private static final Pattern LIVE_TAG=Pattern.compile("(?i)(?<![\\p{L}\\p{N}])live(?![\\p{L}\\p{N}])|مباشر|\\(\\s*l\\s*\\)|\\[\\s*l\\s*\\]");
+    /** A guide title that says the programme is live: "Live", "مباشر" or "(L)". */
+    static boolean isLiveTitle(String title){return title!=null&&LIVE_TAG.matcher(title).find();}
+    /** The title without its live tag ("Live: A vs B" and "(L) A vs B" become "A vs B"). */
+    static String stripLive(String title){
+        if(title==null)return "";
+        String t=LIVE_TAG.matcher(title).replaceAll(" ");
+        t=t.replaceAll("^[\\s:\\-–—|·]+|[\\s:\\-–—|·]+$","").replaceAll("\\s{2,}"," ").replaceAll("\\s+([-–—|·])\\s*$","");
+        return t.trim();
+    }
     /** Other sports than football (the matches are football only): a programme or competition that names one. */
     static boolean isOtherSport(String title){
         return title!=null&&OTHER_SPORT.matcher(title).find();
@@ -95,9 +105,13 @@ final class Titles {
     private static final Pattern OTHER_SPORT=Pattern.compile("(?i)\\b(nba|wnba|nfl|nhl|mlb|ncaa|basketball|volleyball|handball|tennis|rugby|cricket|baseball|hockey|boxing|ufc|mma|wwe|f1|formula|motogp|golf|futsal|"
         +"76ers|sixers|lakers|celtics|knicks|bucks|raptors|clippers|nuggets|mavericks|pelicans|grizzlies|timberwolves|pistons|pacers|cavaliers|trail blazers)\\b"
         +"|كرة السلة|السلة|الطائرة|كرة اليد|تنس|رجبي|كريكت|بيسبول|هوكي|ملاكمة|مصارعة|فورمولا|الدوري الأمريكي للمحترفين|اتش بي|فيلادلفيا سفنتي");
+    /** A competition's name without a year or a season ("... 2027", "2026/27 ..."): the year is no part of its name. */
+    static String withoutYear(String name){
+        return name==null?"":name.replaceAll("(?<![\\p{L}\\p{N}])(?:19|20)\\d{2}(?:\\s*[/-]\\s*(?:\\d{4}|\\d{2}))?(?![\\p{L}\\p{N}])","").replaceAll("\\s{2,}"," ").replaceAll("^[\\s\\-–—:]+|[\\s\\-–—:]+$","");
+    }
     /** The chip text of a competition in the matches filter ("تصفيات كأس العالم - آسيا" → "تصفيات كأس العالم"). */
     static String filterLabel(String competition){
-        String c=competition==null?"":competition.trim();
+        String c=withoutYear(competition==null?"":competition.trim());
         if(c.startsWith("تصفيات كأس العالم"))return "تصفيات كأس العالم";
         if(c.startsWith("تصفيات كأس الأمم الأفريقية"))return "تصفيات أمم أفريقيا";
         if(c.equals("الدوري الإنجليزي الممتاز"))return "الدوري الإنجليزي";
@@ -105,7 +119,7 @@ final class Titles {
     }
     /** A short league name for a match card, so it is never cut ("دوري الأمم الأوروبية" → "دوري الأمم"). */
     static String shortLeague(String competition){
-        String c=competition==null?"":competition.trim();
+        String c=withoutYear(competition==null?"":competition.trim());
         if(c.startsWith("تصفيات كأس العالم")){int i=c.indexOf(" - ");return "تصفيات العالم"+(i>0?" - "+c.substring(i+3):"");}
         String[][] t={{"تصفيات كأس الأمم الأفريقية","تصفيات أفريقيا"},{"دوري الأمم الأوروبية","دوري الأمم"},{"دوري أبطال أوروبا للسيدات","أبطال أوروبا للسيدات"},
             {"دوري أبطال أوروبا","أبطال أوروبا"},{"دوري أبطال آسيا للنخبة","أبطال آسيا للنخبة"},{"دوري أبطال آسيا","أبطال آسيا"},{"دوري أبطال أفريقيا","أبطال أفريقيا"},
@@ -161,7 +175,7 @@ final class Titles {
     }
     /** An unknown league keeps its words but loses season and matchday fragments. */
     private static String cleanExtra(String p){
-        String s=p.replaceAll("(?i)\\b\\d{4}\\s*[/-]\\s*\\d{2,4}\\b","").replaceAll("(?i)\\b(?:md|gw|rd)\\s*\\d+\\b","")
+        String s=p.replaceAll("(?i)\\b\\d{4}\\s*[/-]\\s*\\d{2,4}\\b","").replaceAll("(?<![\\p{L}\\p{N}])(?:19|20)\\d{2}(?![\\p{L}\\p{N}])","").replaceAll("(?i)\\b(?:md|gw|rd)\\s*\\d+\\b","")
                 .replaceAll("(?i)\\b(?:matchday|week|round|leg)\\s*\\d+\\b","").replaceAll("\\s{2,}"," ").trim();
         return s;
     }

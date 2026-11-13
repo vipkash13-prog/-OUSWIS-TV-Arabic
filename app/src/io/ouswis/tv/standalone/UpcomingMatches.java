@@ -48,11 +48,12 @@ public final class UpcomingMatches {
         {"Italian Coppa Italia","كأس إيطاليا"},{"German Bundesliga","الدوري الألماني"},
         {"German DFB-Pokal","كأس ألمانيا"},{"French Ligue 1","الدوري الفرنسي"},
         {"French Coupe de France","كأس فرنسا"},{"Coupe de France","كأس فرنسا"},{"Portuguese Primeira Liga","الدوري البرتغالي"},
-        {"Dutch Eredivisie","الدوري الهولندي"},{"Turkish Super Lig","الدوري التركي"},
+        {"Dutch Eredivisie","الدوري الهولندي"},{"Turkish Super Lig","الدوري التركي"},{"Turkish Super League","الدوري التركي"},{"Gambia Premier League","الدوري الغامبي"},
         {"Africa Cup of Nations","كأس الأمم الأفريقية"},{"Africa Cup of Nations Qualifying","تصفيات كأس الأمم الأفريقية"},
         {"CAF Champions League","دوري أبطال أفريقيا"},{"CAF Confederation Cup","كأس الكونفدرالية الأفريقية"},
         {"International Friendly","المباراة الودية الدولية"}};
-    static String arabicCompetition(String name){
+    static String arabicCompetition(String raw){
+        String name=Titles.withoutYear(raw);
         for(String[] c:COMPETITIONS)if(c[0].equalsIgnoreCase(name))return c[1];
         if(name.startsWith("FIFA World Cup")){
             String region=name.contains("AFC")?" - آسيا":name.contains("CAF")?" - أفريقيا":name.contains("UEFA")?" - أوروبا":name.contains("CONMEBOL")?" - أمريكا الجنوبية"

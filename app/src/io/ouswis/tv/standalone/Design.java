@@ -116,6 +116,7 @@ final class Design {
         if(name!=null)name=name.replace("\u2068","").replace("\u2069","");
         p.setStyle(Paint.Style.FILL);p.setShader(null);p.setColor(0xFF1A1F3A);   // a dark disc and the first letter, never a loud colour
         c.drawCircle(cx,cy,radius,p);
+        if(name!=null){name=name.trim();if(name.length()>3&&name.startsWith("ال"))name=name.substring(2);}   // "السنغال" is س, not ا: the article is not the name's letter
         String ch=name==null||name.isEmpty()?"?":name.substring(0,name.offsetByCodePoints(0,1));
         t.setTextSize(radius*0.95f);t.setColor(TEXT);
         center(c,ch,cx,cy+radius*0.33f,t);

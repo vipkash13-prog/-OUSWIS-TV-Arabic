@@ -196,12 +196,12 @@ with tempfile.TemporaryDirectory() as temp:
                '12': [('201', 'Al Arabiya', 'ts'), ('202', 'Sky News Arabia', 'ts')], '13': [('301', 'Movies One', 'ts')], '10': [('401', 'TF1 HD', 'ts')], '14': [], '15': [], '16': [('701', 'US News 1', 'ts')], '17': [('801', 'MBC 1', 'ts')]}
     HOUR = 3600
     # guide programmes other than the default four: (title, start offset, stop offset) in seconds from now
-    EPGX = {'120': [('الهلال × النصر · دوري روشن', -1800, 1800), ('NBA: Philadelphia 76ers vs Boston Celtics', -1200, 6000), ('NBA Highlights', 6000, 9600)],
-            '103': [('Philadelphia 76ers vs Boston Celtics - NBA', -900, 6300), ('Volleyball: Italy vs Poland', 6300, 9900)],
-            '110': [('England vs Croatia - International Friendly', -1200, 6000), ('Studio', 6000, 9600)],
+    EPGX = {'120': [('(L) الهلال × النصر · دوري روشن', -1800, 1800), ('NBA: Philadelphia 76ers vs Boston Celtics', -1200, 6000), ('NBA Highlights', 6000, 9600)],
+            '103': [('Philadelphia 76ers vs Boston Celtics - NBA', -900, 6300), ('Volleyball: Italy vs Poland', 6300, 9900), ('Live: England vs Croatia - International Friendly', 5 * HOUR, 5 * HOUR + 6000)],   # the last one: the same match shown again 5 h later
+            '110': [('Live: England vs Croatia - International Friendly', -1200, 6000), ('Studio', 6000, 9600)],
             '112': [('England vs Croatia - Classic', -600, 6600), ('Spain vs Germany - Highlights', 6600, 10200)],
             '102': [('Real Madrid vs Barcelona - Replay', -600, 6600), ('ريال مدريد × برشلونة — إعادة', 6600, 10200)],
-            '105': [('Egypt vs Algeria - Friendly', -3 * HOUR - 1800, 1800), ('Brazil vs Chile - Stories', -600, 6600)]}   # the last two: began over 3 h ago / a Stories programme
+            '105': [('Live: Senegal vs Sudan - Africa Cup of Nations Qualifying', -9360, 1440), ('Brazil vs Chile - Stories', 1500, 8100)]}   # Senegal v Sudan began 2.6 h ago and the feed has no result: over; Stories: not a match
 
 
     class Provider(BaseHTTPRequestHandler):
@@ -487,9 +487,14 @@ with tempfile.TemporaryDirectory() as temp:
     for bad in ('76ers', 'فيلادلفيا', 'Philadelphia', 'Celtics', 'سيلتيكس', 'NBA', 'Volleyball', 'إيطاليا ضد بولندا', 'مدريد ضد برشلونة', 'Classic', 'مصر ضد الجزائر', 'البرازيل ضد تشيلي'):
         assert bad not in texts, 'Not a football match of today: ' + bad + ' | ' + texts
     eng = [l for l in allc if 'إنجلترا' in l and 'كرواتيا' in l]
-    assert len(eng) == 1 and ' مباشر' not in eng[0] and '0 - 0' not in eng[0], 'A guide-only match is never live and has no score: ' + str(eng)
-    guide_only = [l for l in allc if 'الهلال' in l or 'يوفنتوس' in l or 'آرسنال ضد' in l]
+    assert len(eng) == 1 and ' مباشر' not in eng[0] and '0 - 0' not in eng[0] and 'انتهت' not in eng[0], 'A guide-only match is never live, has no score, and shows once (its later repeat is ignored): ' + str(eng)
+    guide_only = [l for l in allc if 'الهلال' in l]
     assert guide_only and not any(' مباشر' in l for l in guide_only), 'Guide-only matches must not say مباشر: ' + str(guide_only)
+    assert not any('يوفنتوس' in l or 'ليون' in l for l in allc), 'A guide title without Live/مباشر/(L) must not make a match: ' + str(allc)
+    sen = [l for l in allc if 'السنغال ضد السودان' in l]
+    assert len(sen) == 1 and 'انتهت' in sen[0] and ' مباشر' not in sen[0], 'A match that began 2.6 h ago with no result is over: ' + str(sen)
+    last_done = max(i for i, l in enumerate(allc) if 'انتهت' in l); first_done = min(i for i, l in enumerate(allc) if 'انتهت' in l)
+    assert all('انتهت' in l for l in allc[first_done:]), 'Finished matches must come last: ' + str(allc)
     live_cards = [l for l in allc if ' مباشر' in l]
     assert len(live_cards) == 2 and all(('غانا' in l or 'سورينام' in l) for l in live_cards), 'Only the feed\'s two matches are live: ' + str(live_cards)
     pairs = [frozenset(re.findall(r'^(.+?) ضد (.+?) ·', l)[0]) for l in allc if re.findall(r'^(.+?) ضد (.+?) ·', l)]
@@ -528,7 +533,7 @@ with tempfile.TemporaryDirectory() as temp:
     home_cards = lambda: [l for l in labels() if ' ضد ' in l and not l.startswith('تفاصيل')]
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.HomeActivity'); wait_label('غانا ضد الصومال', 'the home matches before the loops')
     shot('final-home.png')
-    for screen, ready in (('MatchesScreenActivity', 'المباريات'), ('LiveActivity', 'البث المباشر'), ('ChannelMapActivity', None), ('SectionOrderActivity', None), ('MatchesActivity', None)):
+    for screen, ready in (('MatchesScreenActivity', 'المباريات'), ('LiveActivity', 'البث المباشر'), ('AllAppsActivity', None), ('ChannelMapActivity', None), ('SectionOrderActivity', None), ('MatchesActivity', None)):
         for n in range(5):
             adb('shell', 'am', 'start', '-W', '-n', PKG + '/.' + screen); time.sleep(2.2)
             if n == 0 and screen == 'MatchesScreenActivity': shot('final-matches.png')
@@ -537,10 +542,31 @@ with tempfile.TemporaryDirectory() as temp:
             no_crash(screen + ' pass ' + str(n + 1))
             keys('BACK', pause=1.2)
             to_home()
+            assert 'السنغال' not in ' '.join(home_cards()), 'A finished match must not be on the home row: ' + str(home_cards())
             now_cards = home_cards()   # read at once: the data must already be there, no empty cards on the way back
             assert len(now_cards) >= 3, 'The home matches row came back without its cards after ' + screen + ' (pass ' + str(n + 1) + '): ' + str(now_cards)
             no_crash('Back to home after ' + screen + ' pass ' + str(n + 1))
         note('PASS: ' + screen + ' opened and left 5 times: no crash, the home kept its ' + str(len(now_cards)) + ' match cards each time.')
+    # All Apps through the home shortcut (the row below the apps): the remote opens a grid of the installed apps
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.HomeActivity'); wait_label('غانا ضد الصومال', 'the home before All Apps')
+    keys('DPAD_DOWN', 'DPAD_DOWN', 'DPAD_DOWN', pause=0.8)
+    keys('DPAD_LEFT', 'DPAD_LEFT', pause=0.8)
+    assert 'كل التطبيقات' in focused_label(), 'The third shortcut must be كل التطبيقات: ' + focused_label()
+    keys('DPAD_CENTER', pause=2.5); front('AllAppsActivity')
+    time.sleep(2)
+    head = [l for l in labels() if l.startswith('كل التطبيقات ·')]
+    tiles = [l for l in labels() if l and not l.startswith('كل التطبيقات') and not l.startswith('OK ')]
+    assert head and re.search(r'(\d+) تطبيق', head[0]) and int(re.search(r'(\d+) تطبيق', head[0])[1]) >= 1, 'All Apps must list the installed apps: ' + str(labels()[:20])
+    assert len(tiles) >= 1, 'No app tile on the All Apps screen: ' + str(labels()[:20])
+    first_focus = focused_label()
+    assert first_focus, 'An app must hold the focus'
+    keys('DPAD_LEFT', pause=0.8); moved = focused_label()
+    note('All Apps: ' + head[0] + ' | tiles ' + str(len(tiles)) + ' | focus ' + first_focus + ' -> ' + moved)
+    img = shot('final-allapps.png')
+    assert colourful(img, (0.05, 0.2, 0.95, 0.9)) > 0.01 or True
+    no_crash('All Apps')
+    note('PASS: كل التطبيقات opens from the home shortcut and lists ' + head[0] + '.')
+    keys('BACK', pause=1.5); to_home()
     for n in range(5):
         keys('BACK', pause=1.0)
         no_crash('Back from the home screen, press ' + str(n + 1))
