@@ -11,7 +11,7 @@
         <item name="android:colorBackgroundCacheHint">@null</item>
     </style>
     <!-- Matches, Live and All Apps: an opaque dark window and no transition, so two screens are never seen over each other. -->
-    <style name="FreeMyTV.NoTransition">
+    <style name="FreeMyTV.NoTransition" parent="">
         <item name="android:windowEnterAnimation">@null</item>
         <item name="android:windowExitAnimation">@null</item>
         <item name="android:activityOpenEnterAnimation">@null</item>
