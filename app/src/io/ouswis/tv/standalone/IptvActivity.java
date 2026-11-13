@@ -366,7 +366,7 @@ public class IptvActivity extends Activity {
         v.setSingleLine(true);
         v.setEllipsize(android.text.TextUtils.TruncateAt.END);
         v.setGravity(Gravity.LEFT | Gravity.CENTER_VERTICAL);
-        v.setTextDirection(View.TEXT_DIRECTION_LTR);
+        if (value.matches("[\\x00-\\x7F\u2022]*")) v.setTextDirection(View.TEXT_DIRECTION_LTR);   // server and user read left to right; an Arabic date keeps its own order
         r.addView(l, new LinearLayout.LayoutParams(px(250), -2));
         r.addView(v, new LinearLayout.LayoutParams(0, -2, 1));
         page.addView(r, lp);
