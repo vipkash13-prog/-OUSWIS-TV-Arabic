@@ -496,7 +496,7 @@ with tempfile.TemporaryDirectory() as temp:
     note('Reconnect times (ms): ' + str(ms))
     assert 'إعادة اتصال فورية' in page or ms, 'Each reconnect must be in the log: ' + page[:600]
     assert ms and max(ms) < 3000, 'The picture must be back within 3 s of each reconnect: ' + str(ms)
-    assert 'محاولة' not in ' '.join(l for l in labels() if 'تشغيل Short' in l), 'A reconnect after ENDED must not count as a failed attempt'
+    assert 'محاولة' not in ' '.join(l for l in labels() if 'تشغيل Short' in l), 'A reconnect after ENDED must not count as a failed attempt: ' + str(labels())
     shot('redesign-playlog-reconnect.png')
     note('PASS: when the stream ended the same channel was joined again at once (%d times), the last picture stayed (%d blank of %d frames), no loading text, back in %s ms.' % (reconnects, blank, frames, ms))
     keys('BACK', pause=1)
