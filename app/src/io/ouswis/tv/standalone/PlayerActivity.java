@@ -305,7 +305,7 @@ public final class PlayerActivity extends Activity {
         instants.add(now);
         reconnectT0=now;
         log("إعادة اتصال فورية: "+why+" · "+playerState());
-        restart(CLOSE_GAP_MS);
+        restart(0);
     }
 
     /** Closes the old connection, waits `gap` ms, then opens the same channel again; no loading text unless it lasts. */
@@ -316,7 +316,8 @@ public final class PlayerActivity extends Activity {
         long now=android.os.SystemClock.elapsedRealtime();
         lastProgressAt=now;lastPos=-1;lastBufferedPos=-1;bufferMovedAt=now;
         statusLater("جارٍ إعادة الاتصال…",STATUS_DELAY_MS);
-        try{player.stop();player.clearMediaItems();}catch(RuntimeException ignored){}   // the picture stays: the surface is not touched
+        // no stop()/clearMediaItems(): they release the video codec first and the surface can go black; setMediaItem() in openStream
+        // replaces the source on the same player (the old connection is closed by it) and the last frame stays until the new one is drawn
         final long t0=reconnectT0==0?now:reconnectT0;
         main.postDelayed(()->{
             if(mine!=generation||player==null)return;
