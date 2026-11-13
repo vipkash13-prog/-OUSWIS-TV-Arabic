@@ -876,7 +876,8 @@ public class SettingsActivity extends Activity {
 
         private static String versionName(Context c) {
             try {
-                return "OUSWIS TV " + c.getPackageManager().getPackageInfo(c.getPackageName(), 0).versionName;
+                android.content.pm.PackageInfo pi = c.getPackageManager().getPackageInfo(c.getPackageName(), 0);
+                return "OUSWIS TV " + pi.versionName + " · Build " + pi.versionCode;   // the build number tells which APK is installed
             } catch (android.content.pm.PackageManager.NameNotFoundException e) {
                 return "OUSWIS TV";
             }

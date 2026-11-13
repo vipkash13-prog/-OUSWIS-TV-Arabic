@@ -304,6 +304,12 @@ with tempfile.TemporaryDirectory() as temp:
     assert all(g <= 45 and b <= 75 for r, g, b in pts[:4]), 'The text side of the card must be the dark end (#121A3A): ' + str(pts)
     note('PASS: the English guide title "Juventus vs OL Lyonnes - UEFA Women\'s Champions League" shows as ' + arabic[0][-60:] + '.')
     assert 'آخر قناة' in focused_label(), 'The last-channel card must hold the first focus: ' + focused_label()
+    # the focus ring belongs round the card (no small ring under it, no stray dash inside it)
+    hb = [[int(v) for v in re.findall(r'\d+', n.get('bounds'))] for n in tree().iter('node') if n.get('package') == PKG and n.get('focused') == 'true' and 'آخر قناة' in (n.get('text', '') + n.get('content-desc', ''))]
+    assert hb and hb[0][3] - hb[0][1] >= 200 and hb[0][2] - hb[0][0] >= 1000, 'The focused node of the last-channel card must be the whole card: ' + str(hb)
+    under = [img.getpixel((x, y)) for x in range(1380, 1560, 6) for y in range(412, 480, 4)]
+    assert sum(1 for px in under if min(px) >= 245) < 6, 'A white ring (an empty focus) shows under the last-channel card'
+    note('PASS: the focus ring is round the whole last-channel card ' + str(hb[0]) + ' and nothing is drawn under it.')
     time.sleep(2)
     plain = adb('shell', 'cat', folder + '/XtreamActivity.xml')
     assert 'name="pass"' not in plain and 'name="user"' not in plain and 'name="server"' not in plain, 'Plain-text login was not erased: ' + plain
@@ -564,6 +570,9 @@ with tempfile.TemporaryDirectory() as temp:
     note('All Apps: ' + head[0] + ' | tiles ' + str(len(tiles)) + ' | focus ' + first_focus + ' -> ' + moved)
     img = shot('final-allapps.png')
     assert colourful(img, (0.05, 0.2, 0.95, 0.9)) > 0.01 or True
+    white = sum(1 for x in range(0, 1920, 8) for y in range(150, 900, 8) if min(img.getpixel((x, y))) >= 235)
+    assert white < 300, 'All Apps shows white areas (white cards): ' + str(white)
+    note('PASS: All Apps shows no white card (' + str(white) + ' near-white samples).')
     no_crash('All Apps')
     note('PASS: كل التطبيقات opens from the home shortcut and lists ' + head[0] + '.')
     keys('BACK', pause=1.5); to_home()

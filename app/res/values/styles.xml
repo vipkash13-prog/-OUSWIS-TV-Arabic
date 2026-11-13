@@ -2,12 +2,31 @@
 <resources>
     <!-- The light background already in the window: opening the home screen never flashes another color. -->
     <color name="home_background">#EBEBF0</color>
+    <color name="screen_background">#0B0D1A</color>
 
     <style name="FreeMyTV.Home" parent="@android:style/Theme.DeviceDefault.NoActionBar.Fullscreen">
         <item name="android:windowBackground">@color/home_background</item>
         <item name="android:windowContentOverlay">@null</item>
         <item name="android:windowShowWallpaper">false</item>
         <item name="android:colorBackgroundCacheHint">@null</item>
+    </style>
+    <!-- Matches, Live and All Apps: an opaque dark window and no transition, so two screens are never seen over each other. -->
+    <style name="FreeMyTV.NoTransition">
+        <item name="android:windowEnterAnimation">@null</item>
+        <item name="android:windowExitAnimation">@null</item>
+        <item name="android:activityOpenEnterAnimation">@null</item>
+        <item name="android:activityOpenExitAnimation">@null</item>
+        <item name="android:activityCloseEnterAnimation">@null</item>
+        <item name="android:activityCloseExitAnimation">@null</item>
+        <item name="android:taskOpenEnterAnimation">@null</item>
+        <item name="android:taskOpenExitAnimation">@null</item>
+        <item name="android:taskCloseEnterAnimation">@null</item>
+        <item name="android:taskCloseExitAnimation">@null</item>
+    </style>
+    <style name="FreeMyTV.Screen" parent="FreeMyTV.Home">
+        <item name="android:windowBackground">@color/screen_background</item>
+        <item name="android:windowIsTranslucent">false</item>
+        <item name="android:windowAnimationStyle">@style/FreeMyTV.NoTransition</item>
     </style>
     <style name="FreeMyTV.Matches" parent="@android:style/Theme.DeviceDefault.NoActionBar">
         <item name="android:windowIsTranslucent">true</item>

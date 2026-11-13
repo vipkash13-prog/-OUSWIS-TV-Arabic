@@ -45,7 +45,7 @@ final class TeamNames {
             "Hong Kong, China|هونغ كونغ","Chinese Taipei|تايبيه الصينية","Myanmar|ميانمار","Nepal|نيبال","Maldives|جزر المالديف");
         // Africa (CAF)
         add("Egypt|مصر","Morocco|المغرب","Algeria|الجزائر","Tunisia|تونس","Libya|ليبيا","Sudan|السودان","Mauritania|موريتانيا","Senegal|السنغال",
-            "Nigeria|نيجيريا","Ghana|غانا","Cameroon|الكاميرون","Ivory Coast|ساحل العاج","Cote d'Ivoire|ساحل العاج","Mali|مالي","Burkina Faso|بوركينا فاسو",
+            "Nigeria|نيجيريا","Ghana|غانا","Cameroon|الكاميرون","Ivory Coast|ساحل العاج","Cote d'Ivoire|ساحل العاج","Mali|مالي","Burkina Faso|بوركينا فاسو","Burundi|بوروندي",
             "Guinea|غينيا","South Africa|جنوب أفريقيا","DR Congo|الكونغو الديمقراطية","Congo DR|الكونغو الديمقراطية","Congo|الكونغو","Gabon|الغابون",
             "Angola|أنغولا","Zambia|زامبيا","Zimbabwe|زيمبابوي","Kenya|كينيا","Uganda|أوغندا","Tanzania|تنزانيا","Ethiopia|إثيوبيا",
             "Cape Verde|الرأس الأخضر","Cabo Verde|الرأس الأخضر","Benin|بنين","Togo|توغو","Mozambique|موزمبيق","Namibia|ناميبيا","Madagascar|مدغشقر",

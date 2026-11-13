@@ -390,6 +390,8 @@ final class RedesignHomeView extends View {
     private static final float DP=1.5f;
     private static final int CARD_DARK=0xBF0B0D1A;   // #0B0D1A at 75 %: the skyline behind never competes with the text
     private final float[] dy=new float[4];   // vertical shift of each block so the rows share the screen evenly
+    private final RectF heroBox=new RectF();
+    private android.graphics.drawable.GradientDrawable heroDrawable;
     private final Paint heroFill=new Paint(Paint.ANTI_ALIAS_FLAG),heroStroke=new Paint(Paint.ANTI_ALIAS_FLAG);
     private float heroL,heroT,heroR,heroB;   // the box the gradient was made for
     private final Path heroClip=new Path();
@@ -399,13 +401,15 @@ final class RedesignHomeView extends View {
 
     /** The last-channel card: 153 dp tall, always, and everything inside it is clipped to it, so it can't cover the row below. */
     private void drawHero(Canvas c){
-        r.set(611,163,1850,163+153*DP);RectF box=r;   // focused or not the card is the same size and colour: only the ring around it appears
-        // separate paints, so no later change to one can touch what is already recorded for the other
-        if(box.left!=heroL||box.top!=heroT||box.right!=heroR||box.bottom!=heroB){
-            heroL=box.left;heroT=box.top;heroR=box.right;heroB=box.bottom;
-            heroFill.setShader(new LinearGradient(heroR,heroT,heroR-(heroR-heroL)*0.35f,heroB,0xF2123D5C,0xF2121A3A,Shader.TileMode.CLAMP));   // #123D5C (at the thumbnail side) to #121A3A at 95 %, reached by the middle of the card, so the text sits on the dark end: the city behind never shows through
+        heroBox.set(611,163,1850,163+153*DP);RectF box=heroBox;   // its own rectangle: the shared r is changed by the lines drawn inside the card (that moved the ring and drew a stray dash). Focused or not the card is the same size and colour: only the ring appears
+        // the card is a GradientDrawable, #123D5C at the thumbnail side to #121A3A, opaque: nothing behind it shows through
+        if(heroDrawable==null){
+            heroDrawable=new android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.RIGHT_LEFT,new int[]{0xFF123D5C,0xFF121A3A});
+            heroDrawable.setGradientType(android.graphics.drawable.GradientDrawable.LINEAR_GRADIENT);
+            heroDrawable.setCornerRadius(30);
         }
-        heroFill.setStyle(Paint.Style.FILL);c.drawRoundRect(box,30,30,heroFill);
+        heroDrawable.setBounds(Math.round(box.left),Math.round(box.top),Math.round(box.right),Math.round(box.bottom));
+        heroDrawable.draw(c);
         heroStroke.setStyle(Paint.Style.STROKE);heroStroke.setStrokeWidth(1);heroStroke.setColor(Design.STROKE);c.drawRoundRect(box,30,30,heroStroke);
         LiveData.Channel ch=lastChannel();
         c.save();c.clipRect(box.left+2,box.top+2,box.right-2,box.bottom-2);
@@ -562,11 +566,14 @@ final class RedesignHomeView extends View {
             Design.center(c,Design.fitShrink(m.away,team,140),left+67,566,team);
             float cx=(left+right)/2;
             if(m.live()){
-                Design.liveBadge(c,cx,490,"'"+minute(m),15,p,badge);
+                Design.liveBadge(c,cx,490,minute(m),15,p,badge);
                 Design.center(c,scoreText(m),cx,543,tx(Design.TEXT,42,Design.bold()));
             }else if(done){
-                Design.center(c,"انتهت",cx,492,tx(Design.MUTED,15,Design.regular()));
-                Design.center(c,scoreText(m),cx,543,tx(0x99F4EFE4,42,Design.bold()));
+                if(m.awayScore.isEmpty()&&m.homeScore.isEmpty())Design.center(c,"انتهت",cx,540,tx(0x99F4EFE4,34,Design.bold()));   // no score known: the word alone, no dash
+                else{
+                    Design.center(c,"انتهت",cx,492,tx(Design.MUTED,15,Design.regular()));
+                    Design.center(c,scoreText(m),cx,543,tx(0x99F4EFE4,42,Design.bold()));
+                }
             }else{
                 Design.center(c,"اليوم",cx,492,tx(Design.MUTED,15,Design.regular()));
                 Design.center(c,fmt("h:mm a",m.kickoffMillis),cx,543,tx(Design.TEXT,38,Design.bold()));
@@ -583,7 +590,7 @@ final class RedesignHomeView extends View {
         return account==null?null:MatchChannels.forMatch(getContext(),account,m);
     }
     private String minute(MatchCarouselView.Match m){
-        String d=m.status==null?"":m.status.replaceAll("[^0-9+]","");return d.isEmpty()?"مباشر":d;
+        String d=m.status==null?"":m.status.replaceAll("[^0-9+]","");return d.isEmpty()?"مباشر":d+"'";   // the minute, or just the word: never a bare mark
     }
     private void crest(Canvas c,String url,String name,float cx,float cy,float radius){
         Bitmap b=ImageCache.get(url,this::postInvalidate);

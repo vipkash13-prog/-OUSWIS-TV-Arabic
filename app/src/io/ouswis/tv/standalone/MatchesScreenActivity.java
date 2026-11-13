@@ -51,8 +51,10 @@ public final class MatchesScreenActivity extends Activity {
     private SharedPreferences store;
     private final Runnable refresh=new Runnable(){@Override public void run(){load();}};
 
+    @Override public void finish(){super.finish();overridePendingTransition(0,0);}   // and goes at once
     @Override protected void onCreate(Bundle b){
         super.onCreate(b);
+        overridePendingTransition(0,0);   // opens at once: no fade or slide over the screen before
         Ui.init(this);
         getWindow().getDecorView().setSystemUiVisibility(5894);
         store=getSharedPreferences("ouswis-live",Context.MODE_PRIVATE);
@@ -285,11 +287,15 @@ public final class MatchesScreenActivity extends Activity {
                 Design.center(c,Design.fitShrink(m.away,team,170),left+81,top+120,team);team.setAlpha(255);
                 float cx=(left+right)/2;
                 if(m.live()){
-                    Design.liveBadge(c,cx,top+32,"'"+minuteOf(m),17,p,badge);
+                    Design.liveBadge(c,cx,top+32,minuteOf(m),17,p,badge);
                     big.setTextSize(50);Design.center(c,scoreText(m),cx,top+98,big);
                 }else if(done){
-                    Design.center(c,"انتهت",cx,top+34,small);
-                    big.setAlpha(alpha);Design.center(c,scoreText(m),cx,top+98,big);big.setAlpha(255);
+                    if(m.awayScore.isEmpty()&&m.homeScore.isEmpty()){   // no score known: the word alone, no dash
+                        big.setTextSize(36);big.setAlpha(alpha);Design.center(c,"انتهت",cx,top+92,big);big.setAlpha(255);big.setTextSize(50);
+                    }else{
+                        Design.center(c,"انتهت",cx,top+34,small);
+                        big.setAlpha(alpha);Design.center(c,scoreText(m),cx,top+98,big);big.setAlpha(255);
+                    }
                 }else{
                     Design.center(c,Design.fit(Titles.shortLeague(m.competition),small,cardW-270),cx,top+34,small);
                     big.setTextSize(46);Design.center(c,timeOf(m.kickoffMillis),cx,top+98,big);

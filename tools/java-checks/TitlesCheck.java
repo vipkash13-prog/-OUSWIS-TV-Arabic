@@ -63,6 +63,7 @@ public final class TitlesCheck {
         eq("Africa Cup of Nations Qualifying",Titles.withoutYear("Africa Cup of Nations Qualifying 2027"));
         eq("الدوري الإنجليزي الممتاز",Titles.withoutYear("2026/27 الدوري الإنجليزي الممتاز"));
         eq("غامبيا",TeamNames.arabic("Gambia"));
+        eq("بوروندي",TeamNames.arabic("Burundi"));
         eq("جينتشلربيرليغي",TeamNames.arabic("Gençlerbirliği"));
         eq("بشكتاش",TeamNames.arabic("Beşiktaş A.Ş."));
         is(true,Titles.isLiveTitle("Live: Senegal vs Sudan - Africa Cup of Nations"),"live tag");

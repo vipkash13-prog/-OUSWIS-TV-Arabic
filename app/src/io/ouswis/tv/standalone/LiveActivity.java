@@ -43,6 +43,29 @@ public final class LiveActivity extends Activity {
     private RectF previewBox=new RectF();
     private int previewAttempt;
     private TextView previewLabel;
+    private Cover cover;
+    /** Dark #0B0D1A with the channel's logo (or its name) in the middle: what the preview shows while it loads. */
+    private static final class Cover extends View {
+        private final Paint p=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
+        private final RectF dst=new RectF();
+        private LiveData.Channel channel;
+        Cover(Context c){super(c);}
+        void set(LiveData.Channel c){channel=c;invalidate();}
+        @Override protected void onDraw(Canvas c){
+            c.drawColor(0xFF0B0D1A);
+            if(channel==null)return;
+            float w=getWidth(),h=getHeight();
+            Bitmap logo=channel.icon==null||channel.icon.isEmpty()?null:ImageCache.get(channel.icon,this::postInvalidate);
+            if(logo!=null&&logo.getWidth()>0&&logo.getHeight()>0){
+                float sc=Math.min(w*0.4f/logo.getWidth(),h*0.4f/logo.getHeight());
+                float lw=logo.getWidth()*sc,lh=logo.getHeight()*sc;
+                dst.set(w/2-lw/2,h/2-lh/2,w/2+lw/2,h/2+lh/2);c.drawBitmap(logo,null,dst,p);
+            }else{
+                Paint t=Design.text(Design.TEXT,Math.max(14,h*0.1f),Design.bold());
+                Design.center(c,Design.fit(RedesignHomeView.shortName(channel.name),t,w*0.8f),w/2,h/2+t.getTextSize()*0.35f,t);
+            }
+        }
+    }
     private final Handler main=new Handler(Looper.getMainLooper());
     private boolean foreground;
     /** Set when a match without a confirmed channel opened this screen: the sports section, on its first beIN or SSC channel. */
@@ -51,8 +74,10 @@ public final class LiveActivity extends Activity {
     private boolean pendingFocus;
     private int previewGeneration;
 
+    @Override public void finish(){super.finish();overridePendingTransition(0,0);}   // and goes at once
     @Override protected void onCreate(Bundle b){
         super.onCreate(b);
+        overridePendingTransition(0,0);   // opens at once: no fade or slide over the screen before
         Ui.init(this);
         getWindow().getDecorView().setSystemUiVisibility(5894);
         XtreamAccount account=XtreamAccount.read(this);
@@ -69,6 +94,8 @@ public final class LiveActivity extends Activity {
         preview=new SurfaceView(this);
         preview.setVisibility(View.GONE);
         root.addView(preview,new FrameLayout.LayoutParams(10,10));
+        cover=new Cover(this);cover.setVisibility(View.GONE);
+        root.addView(cover,new FrameLayout.LayoutParams(10,10));   // over the picture's surface until the first frame: no green or black square while a channel loads
         previewLabel=new TextView(this);
         previewLabel.setTextColor(Color.WHITE);previewLabel.setGravity(Gravity.CENTER_VERTICAL|Gravity.RIGHT);
         previewLabel.setVisibility(View.GONE);
@@ -89,6 +116,9 @@ public final class LiveActivity extends Activity {
         FrameLayout.LayoutParams lp=new FrameLayout.LayoutParams(Math.round(rect.width()),Math.round(rect.height()));
         lp.leftMargin=Math.round(rect.left);lp.topMargin=Math.round(rect.top);
         preview.setLayoutParams(lp);
+        FrameLayout.LayoutParams cl=new FrameLayout.LayoutParams(Math.round(rect.width()),Math.round(rect.height()));
+        cl.leftMargin=Math.round(rect.left);cl.topMargin=Math.round(rect.top);
+        cover.setLayoutParams(cl);cover.set(c);cover.setVisibility(View.VISIBLE);
         FrameLayout.LayoutParams ll=new FrameLayout.LayoutParams(Math.round(rect.width()),Math.round(rect.height()*0.13f),Gravity.TOP|Gravity.LEFT);
         ll.leftMargin=Math.round(rect.left);ll.topMargin=Math.round(rect.bottom-rect.height()*0.13f);
         previewLabel.setLayoutParams(ll);previewLabel.setText(caption);
@@ -104,7 +134,7 @@ public final class LiveActivity extends Activity {
             exo.setVolume(0f);     // sound only after OK
             exo.addListener(new Player.Listener(){
                 @Override public void onRenderedFirstFrame(){
-                    previewLabel.setVisibility(View.VISIBLE);view.previewShown(true);
+                    cover.setVisibility(View.GONE);previewLabel.setVisibility(View.VISIBLE);view.previewShown(true);
                 }
                 @Override public void onVideoSizeChanged(VideoSize size){
                     int[] f=VideoFit.size(size.width,size.height,Math.round(previewBox.width()),Math.round(previewBox.height()));
@@ -132,6 +162,7 @@ public final class LiveActivity extends Activity {
         previewGeneration++;
         if(exo!=null){try{exo.stop();exo.clearMediaItems();}catch(Exception ignored){}}
         if(preview!=null)preview.setVisibility(View.GONE);
+        if(cover!=null)cover.setVisibility(View.GONE);
         if(previewLabel!=null)previewLabel.setVisibility(View.GONE);
         if(view!=null)view.previewShown(false);
     }

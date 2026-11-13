@@ -39,8 +39,10 @@ public class AllAppsActivity extends Activity {
     private final List<String[]> apps=new ArrayList<>();   // package, label
     private volatile boolean loaded;
 
+    @Override public void finish(){super.finish();overridePendingTransition(0,0);}   // and goes at once
     @Override protected void onCreate(Bundle b){
         super.onCreate(b);
+        overridePendingTransition(0,0);   // opens at once: no fade or slide over the screen before
         Ui.init(this);
         getWindow().getDecorView().setSystemUiVisibility(5894);
         view=new AppsView(this);
@@ -80,7 +82,7 @@ public class AllAppsActivity extends Activity {
     }
 
     // A card is 16:9 like the home screen's app tiles: the app's TV banner fills it; an app without one shows its icon, 56 dp, in the middle.
-    private static final int TILE_W=330,TILE_H=186,ICON=84;   // reference pixels (1 dp = 1.5 px)
+    private static final int CARD=0xFF1A1F3A,TILE_W=330,TILE_H=186,ICON=84;   // reference pixels (1 dp = 1.5 px)
 
     /** The app's card, made off the UI thread: banner, else icon on a dark card (never a blank white square). */
     static Bitmap makeTile(Context c,String pkg,String name){
@@ -96,14 +98,21 @@ public class AllAppsActivity extends Activity {
         boolean ok=false;
         if(banner!=null){
             try{
-                rc.drawColor(0xFF15161C);   // a banner with transparency sits on a dark card
+                rc.drawColor(CARD);   // a banner with transparency sits on a dark card
                 banner.setBounds(0,0,TILE_W,TILE_H);banner.draw(rc);
-                ok=!blank(raw);
+                ok=!blank(raw)&&whiteShare(raw)<0.5f;   // a banner that is mostly white is no banner: the icon on the dark card instead
             }catch(Throwable t){ok=false;}
         }
         String how="banner";
         if(!ok){
             how=drawIcon(c,pm,pkg,name,raw,rc);
+        }
+        if(whiteShare(raw)>=0.5f){   // whatever was drawn, a white card on an OLED is never shown
+            rc.drawColor(CARD);
+            Paint lp=Design.text(Design.TEXT,64,Design.bold());
+            String n=name==null?"":name.trim();if(n.length()>3&&n.startsWith("ال"))n=n.substring(2);
+            Design.center(rc,n.isEmpty()?"?":n.substring(0,n.offsetByCodePoints(0,1)),TILE_W/2f,TILE_H/2f+22,lp);
+            how="letter (card was white)";
         }
         AppLog.w("all-apps tile "+pkg+": "+how);
         // rounded corners, anti-aliased
@@ -116,7 +125,7 @@ public class AllAppsActivity extends Activity {
 
     /** The icon, in the middle of a dark card. Tries the icon the launcher shows, then the app's own icon resource, then the glyph layer alone, then the first letter. */
     private static String drawIcon(Context c,PackageManager pm,String pkg,String name,Bitmap raw,Canvas rc){
-        Paint bg=new Paint();bg.setShader(new LinearGradient(0,0,0,TILE_H,0xFF2B2E3A,0xFF17191F,Shader.TileMode.CLAMP));
+        Paint bg=new Paint();bg.setColor(CARD);   // #1A1F3A, flat
         Drawable[] tries=new Drawable[3];
         try{
             Intent launch=HomeApps.launchIntent(pm,pkg);
@@ -151,7 +160,7 @@ public class AllAppsActivity extends Activity {
                         if(pass==1)continue;   // a plain icon has no layers: nothing new to try
                         d.setBounds(0,0,ICON,ICON);d.draw(gc);
                     }
-                    if(!blank(glyph,0,0,ICON,pass==1)){
+                    if(!blank(glyph,0,0,ICON,pass==1)&&whiteShare(glyph)<0.6f){
                         rc.drawRect(0,0,TILE_W,TILE_H,bg);
                         rc.drawBitmap(glyph,left,top,null);
                         glyph.recycle();
@@ -169,6 +178,16 @@ public class AllAppsActivity extends Activity {
         return "letter";
     }
 
+    /** Share of a 40x24 grid of samples that are opaque and near white: 0.5 or more is a white card. */
+    private static float whiteShare(Bitmap b){
+        int white=0,n=0;
+        for(int i=0;i<40;i++)for(int j=0;j<24;j++){
+            int px=b.getPixel(Math.min(b.getWidth()-1,(int)((i+0.5f)*b.getWidth()/40)),Math.min(b.getHeight()-1,(int)((j+0.5f)*b.getHeight()/24)));
+            n++;
+            if((px>>>24)>=200&&(px>>16&255)>=232&&(px>>8&255)>=232&&(px&255)>=232)white++;
+        }
+        return white/(float)n;
+    }
     /** True when the picture is one flat colour (a blank white square) or has nothing drawn in it. Samples inside the edge, where a rounded icon is transparent. */
     private static boolean blank(Bitmap b){return blank(b,0,0,Math.min(b.getWidth(),b.getHeight()),false);}
     private static boolean blank(Bitmap b,int x0,int y0,int size,boolean glyphOnly){
