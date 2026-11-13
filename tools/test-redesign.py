@@ -644,11 +644,21 @@ with tempfile.TemporaryDirectory() as temp:
     assert top[0] < 400, 'Recent Apps shows white cards: ' + str(top[0])
     focus0 = focused_label()
     assert focus0 and 'مسح الكل' not in focus0, 'The focus must start on an app card, not on مسح الكل: ' + focus0
+    ring = sum(1 for x in range(1300, 1900, 2) for y in range(280, 330, 2) if min(img.getpixel((x, y))) >= 250)
+    assert ring > 40, 'The focused card must have a white frame (white pixels around the first card: %d)' % ring
+    # Round K3: the native focus moves across the cards themselves (not stuck on the button, not rotating them)
+    keys('DPAD_LEFT', pause=0.8); moved = focused_label()
+    assert moved and 'مسح الكل' not in moved and moved != focus0, 'Left must move the focus to the next card: %r -> %r' % (focus0, moved)
+    keys('DPAD_RIGHT', pause=0.8); back = focused_label()
+    assert back == focus0, 'Right must come back to the first card: %r -> %r' % (focus0, back)
     keys('DPAD_DOWN', pause=0.8); assert 'مسح الكل' in focused_label(), 'Down must reach مسح الكل: ' + focused_label()
     keys('DPAD_UP', pause=0.8); assert 'مسح الكل' not in focused_label(), 'Up from the button must go back to the cards: ' + focused_label()
     keys('DPAD_LEFT', pause=0.6); keys('DPAD_RIGHT', pause=0.6)
     first = focused_label(); before_n = len(card_labels())
-    keys('DPAD_UP', pause=0.5); time.sleep(1.8)
+    shot('k3-recents-before-up.png')
+    adb('shell', 'input', 'keyevent', '19'); time.sleep(0.2); shot('k3-recents-during-up.png'); time.sleep(1.8)
+    shot('k3-recents-after-up.png')
+    assert not any('محمية' in l or 'محمي ولا' in l for l in labels()), 'The protected-app message must be gone'
     after = card_labels()
     assert len(after) == before_n - 1 and first not in after, 'UP on a card must remove it from the list: ' + first + ' | ' + str(after)
     nxt = focused_label()
@@ -658,7 +668,12 @@ with tempfile.TemporaryDirectory() as temp:
     shot('final-recents-after-close.png')
     note('PASS: ▲ on "' + first + '" closed it and removed its card; the focus went to "' + nxt + '"; it did not come back.')
     gone = [pkg for pkg in candidates if not adb('shell', 'pidof', pkg, check=False).strip()]
-    assert gone, 'Closing a card must stop the app (force-stop): ' + str(candidates)
+    assert gone, 'Closing a card must stop the app (its processes are gone): ' + str(candidates)
+    # the removal is kept: leave and come back, the closed app is still off the list
+    keys('BACK', pause=1.5)
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.RecentsActivity'); time.sleep(5)
+    assert not any(first.split(' (')[0] == l for l in card_labels()), 'A closed app came back after reopening Recent Apps: ' + str(card_labels())
+    note('PASS: the removed app stays off the list after leaving and coming back; stopped processes: ' + str(gone))
     keys('DPAD_DOWN', pause=0.6); keys('DPAD_CENTER', pause=2.5)
     rest = card_labels()
     assert not rest or all('محمي' in l for l in rest), 'مسح الكل must close every app that may be closed: ' + str(rest)

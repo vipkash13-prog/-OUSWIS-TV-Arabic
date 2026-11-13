@@ -116,7 +116,10 @@ public class AllAppsActivity extends Activity {
     private static final int CARD=0xFF1A1F3A,TILE_W=330,TILE_H=186,ICON=84;   // reference pixels (1 dp = 1.5 px)
 
     /** The app's card, made off the UI thread: banner, else icon on a dark card (never a blank white square). */
-    static Bitmap makeTile(Context c,String pkg,String name){
+    static Bitmap makeTile(Context c,String pkg,String name){return makeTile(c,pkg,name,false);}
+
+    /** `light`: a card that is mostly bright (a yellow banner) counts like a white one, as Recent Apps asks. */
+    static Bitmap makeTile(Context c,String pkg,String name,boolean light){
         PackageManager pm=c.getPackageManager();
         Bitmap raw=Bitmap.createBitmap(TILE_W,TILE_H,Bitmap.Config.ARGB_8888);
         Canvas rc=new Canvas(raw);
@@ -131,14 +134,14 @@ public class AllAppsActivity extends Activity {
             try{
                 rc.drawColor(CARD);   // a banner with transparency sits on a dark card
                 banner.setBounds(0,0,TILE_W,TILE_H);banner.draw(rc);
-                ok=!blank(raw)&&whiteShare(raw)<0.5f;   // a banner that is mostly white is no banner: the icon on the dark card instead
+                ok=!blank(raw)&&whiteShare(raw)<0.5f&&!(light&&lightShare(raw)>=0.5f);   // a banner that is mostly white is no banner: the icon on the dark card instead
             }catch(Throwable t){ok=false;}
         }
         String how="banner";
         if(!ok){
             how=drawIcon(c,pm,pkg,name,raw,rc);
         }
-        if(whiteShare(raw)>=0.5f){   // whatever was drawn, a white card on an OLED is never shown
+        if(whiteShare(raw)>=0.5f||(light&&lightShare(raw)>=0.5f)){   // whatever was drawn, a white card on an OLED is never shown
             rc.drawColor(CARD);
             Paint lp=Design.text(Design.TEXT,64,Design.bold());
             String n=name==null?"":name.trim();if(n.length()>3&&n.startsWith("ال"))n=n.substring(2);
@@ -210,6 +213,17 @@ public class AllAppsActivity extends Activity {
     }
 
     /** Share of a 40x24 grid of samples that are opaque and near white: 0.5 or more is a white card. */
+    /** The share of samples that are bright (luminance 150 and up: white, light grey, yellow). */
+    static float lightShare(Bitmap b){
+        int light=0,n=0;
+        for(int i=0;i<40;i++)for(int j=0;j<24;j++){
+            int px=b.getPixel(Math.min(b.getWidth()-1,(int)((i+0.5f)*b.getWidth()/40)),Math.min(b.getHeight()-1,(int)((j+0.5f)*b.getHeight()/24)));
+            n++;
+            double luma=0.299*(px>>16&255)+0.587*(px>>8&255)+0.114*(px&255);
+            if((px>>>24)>=200&&luma>=150)light++;
+        }
+        return light/(float)n;
+    }
     private static float whiteShare(Bitmap b){
         int white=0,n=0;
         for(int i=0;i<40;i++)for(int j=0;j<24;j++){
@@ -324,6 +338,7 @@ public class AllAppsActivity extends Activity {
             return super.onKeyDown(key,e);
         }
         private void open(String pkg){
+            RecentsStore.reopened(getContext(),pkg);
             Intent i=HomeApps.launchIntent(getContext().getPackageManager(),pkg);
             try{if(i!=null)getContext().startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED));}
             catch(RuntimeException e){AppLog.w("all apps: could not open "+pkg);}

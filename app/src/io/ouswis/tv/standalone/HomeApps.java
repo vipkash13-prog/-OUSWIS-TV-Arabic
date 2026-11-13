@@ -622,6 +622,7 @@ final class HomeApps {
     static boolean open(Context a, Item it, android.os.Bundle options) {
         // plain: tried when `intent` finds nothing (the app's own home, when it won't take the title's address)
         Intent intent, plain = null;
+        if (it.kind == APP) RecentsStore.reopened(a, it.pkg);   // an app taken off Recent Apps is listed again once it is opened
         switch (it.kind) {
             case APP:
                 intent = launchIntent(a.getPackageManager(), it.pkg);

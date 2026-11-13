@@ -56,9 +56,16 @@ public class IptvActivity extends Activity {
 
     @Override public void finish() { super.finish(); overridePendingTransition(0, 0); }
 
+    /** Leaving for Settings shows no animation, so the two screens never overlap for a moment. */
+    @Override protected void onPause() {
+        super.onPause();
+        if (isFinishing()) overridePendingTransition(0, 0);
+    }
+
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
         overridePendingTransition(0, 0);
+        getWindow().setWindowAnimations(0);
         Ui.init(this);
         getWindow().getDecorView().setSystemUiVisibility(5894);
         getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN);
