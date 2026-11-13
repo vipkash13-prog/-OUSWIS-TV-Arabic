@@ -623,6 +623,14 @@ with tempfile.TemporaryDirectory() as temp:
     installed = adb('shell', 'pm', 'list', 'packages')
     candidates = [p for p in ('com.android.contacts', 'com.android.deskclock', 'com.android.calendar') if 'package:' + p + '\n' in installed]
     assert len(candidates) >= 2, 'The emulator needs two more apps for the Recent Apps test: ' + str(candidates)
+    # The emulator has no TV apps: let the home list ordinary system apps ("Android apps", as on a TV that has them), in a fresh process
+    adb('shell', 'am', 'force-stop', PKG)
+    cur = adb('shell', 'cat', '/data/user/0/%s/shared_prefs/settings.xml' % PKG, check=False)
+    if 'name="androidapps"' in cur: cur = re.sub(r'<boolean name="androidapps"[^>]*/>', '', cur)
+    if '</map>' not in cur: cur = '<?xml version="1.0" encoding="utf-8"?><map></map>'
+    cur = cur.replace('</map>', '<boolean name="androidapps" value="true" /></map>')
+    subprocess.run([ADB, 'shell', 'cat > /data/user/0/%s/shared_prefs/settings.xml' % PKG], input=cur.encode(), check=True)
+    adb('shell', 'chown', uid + ':' + uid, '/data/user/0/%s/shared_prefs/settings.xml' % PKG)
     for pkg in candidates:   # launched in this order: the last one is the newest card
         adb('shell', 'monkey', '-p', pkg, '-c', 'android.intent.category.LAUNCHER', '1', check=False); time.sleep(3)
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.HomeActivity'); wait_label('غانا ضد الصومال', 'the home before the open apps test')
