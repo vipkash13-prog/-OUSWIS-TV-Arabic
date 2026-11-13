@@ -644,7 +644,7 @@ final class HomeMode {
                 }
             }
             wakeWatch(adb, true);
-            notice(c, Ui.trf("Free My TV is on: new home screen and screensaver, {n} apps turned off.", "n", disabled.size()));
+            notice(c, "تم تفعيل OUSWIS TV: شاشة رئيسية وشاشة توقف جديدتان، وعدد التطبيقات المعطلة: " + disabled.size() + ".");
             busy(c, Ui.tr("Measuring Free My TV…"));
             measure(c, adb, FREE, false);
             done(c, null);

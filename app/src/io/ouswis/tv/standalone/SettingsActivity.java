@@ -57,7 +57,7 @@ public class SettingsActivity extends Activity {
     private SettingsView view;
     private DreamView preview;   // "Screensaver": the screensaver right here, without changing the system setting
     private FrameLayout settingsPage;
-    private Button channelsButton, matchesButton, updatesButton, channelMapButton, sectionOrderButton;
+    private Button channelsButton, matchesButton, updatesButton, channelMapButton, sectionOrderButton, iptvButton;
     private int featureReturnKey;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
@@ -84,6 +84,13 @@ public class SettingsActivity extends Activity {
         sectionOrderButton.setTextColor(0xFFFFFFFF);
         sectionOrderButton.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, 24 * scale);
         sectionOrderButton.setOnClickListener(v -> startActivity(new Intent(this, SectionOrderActivity.class)));
+        iptvButton = new Button(this);
+        iptvButton.setId(View.generateViewId());
+        iptvButton.setAllCaps(false);
+        iptvButton.setPadding(0, 0, 0, 0);
+        iptvButton.setTextColor(0xFFFFFFFF);
+        iptvButton.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, 24 * scale);
+        iptvButton.setOnClickListener(v -> startActivity(new Intent(this, IptvActivity.class)));
         channelMapButton = new Button(this);
         channelMapButton.setId(View.generateViewId());
         channelMapButton.setAllCaps(false);
@@ -117,16 +124,19 @@ public class SettingsActivity extends Activity {
         channelMapButton.setNextFocusUpId(updatesButton.getId());
         channelMapButton.setNextFocusDownId(sectionOrderButton.getId());
         sectionOrderButton.setNextFocusUpId(channelMapButton.getId());
+        sectionOrderButton.setNextFocusDownId(iptvButton.getId());
+        iptvButton.setNextFocusUpId(sectionOrderButton.getId());
         features.addView(channelsButton, buttonParams(scale));
         features.addView(matchesButton, buttonParams(scale));
         features.addView(updatesButton, buttonParams(scale));
         features.addView(channelMapButton, buttonParams(scale));
         features.addView(sectionOrderButton, buttonParams(scale));
+        features.addView(iptvButton, buttonParams(scale));
         FrameLayout.LayoutParams position = new FrameLayout.LayoutParams(Math.round(400 * scale), -2, Gravity.LEFT | Gravity.BOTTOM);
         position.leftMargin = Math.round(300 * scale);
-        position.bottomMargin = Math.round(44 * scale);
+        position.bottomMargin = Math.round(84 * scale);   // the build number sits under the buttons
         settingsPage.addView(features, position);
-        for (Button b : new Button[] {channelsButton, matchesButton, updatesButton, channelMapButton, sectionOrderButton}) darkButton(b, scale);
+        for (Button b : new Button[] {channelsButton, matchesButton, updatesButton, channelMapButton, sectionOrderButton, iptvButton}) darkButton(b, scale);
         refreshFeatureLabels();
         setContentView(settingsPage);
         view.requestFocus();
@@ -161,6 +171,7 @@ public class SettingsActivity extends Activity {
         updatesButton.setText(Ui.tr("Updates"));
         channelMapButton.setText("ربط القنوات");
         sectionOrderButton.setText("ترتيب الأقسام");
+        iptvButton.setText("اشتراك IPTV");
     }
 
     /**
@@ -234,7 +245,7 @@ public class SettingsActivity extends Activity {
             featureReturnKey = 0;
             return true;
         }
-        boolean featureFocused = channelsButton.hasFocus() || matchesButton.hasFocus() || updatesButton.hasFocus();
+        boolean featureFocused = channelsButton.hasFocus() || matchesButton.hasFocus() || updatesButton.hasFocus() || iptvButton.hasFocus();
         if (event.getAction() == KeyEvent.ACTION_DOWN) {
             if (featureFocused && (event.getKeyCode() == KeyEvent.KEYCODE_DPAD_RIGHT || event.getKeyCode() == KeyEvent.KEYCODE_BACK)) {
                 featureReturnKey = event.getKeyCode();
@@ -340,7 +351,7 @@ public class SettingsActivity extends Activity {
         private final boolean phone;   // installed on a phone: the settings say where it goes (HomeMode.phone)
         private int w, h;
         private float k = 1;
-        private Paint title, subtitle, version, rowLabel, rowValue, rowSub, header, cellLabel, cellValue, warn, spinner, white, shadow, ring;
+        private Paint title, subtitle, version, buildNumber, rowLabel, rowValue, rowSub, header, cellLabel, cellValue, warn, spinner, white, shadow, ring;
         private TextPaint notice, rowValueFit;
 
         private final Runnable poll = new Runnable() {
@@ -567,6 +578,8 @@ public class SettingsActivity extends Activity {
             Symbols.warm(getContext(), "check", 26 * k);
             title = Ui.text(Ui.displaySemibold, 50 * k, 0xFFFFFFFF);
             title.setTextAlign(Paint.Align.CENTER);
+            buildNumber = Ui.text(Ui.semibold != null ? Ui.semibold : Ui.regular, 26 * k, 0xCCFFFFFF);
+            buildNumber.setTextAlign(Paint.Align.CENTER);
             subtitle = Ui.text(Ui.regular, 26 * k, 0x99FFFFFF);
             subtitle.setTextAlign(Paint.Align.CENTER);
             version = Ui.text(Ui.regular, 22 * k, 0x66FFFFFF);
@@ -686,10 +699,10 @@ public class SettingsActivity extends Activity {
 
             // On the left: big symbol, title, description.
             float cx = 500 * k;
-            Symbols.draw(getContext(), c, "sparkles", cx, 400 * k, 150 * k, 0xEBFFFFFF);
-            c.drawText("OUSWIS TV", cx, 612 * k, title);
-            c.drawText(Ui.tr("Your TV's home screen and screensaver"), cx, 660 * k, subtitle);
-            c.drawText(versionName(getContext()), cx, 704 * k, version);
+            Symbols.draw(getContext(), c, "sparkles", cx, 300 * k, 150 * k, 0xEBFFFFFF);
+            c.drawText("OUSWIS TV", cx, 470 * k, title);   // the side buttons start at 540: the old subtitle line is gone
+            // The build number, clearly at the bottom of the page, under the side buttons.
+            c.drawText(versionName(getContext()), cx, 1046 * k, buildNumber);
 
             if (screen == MAIN) drawMain(c, seconds); else if (screen == HOME_CHOICE) drawChoice(c); else if (screen == PICKER) drawPicker(c); else if (screen == SHELF_EDIT) drawShelfEditor(c);
             else if (screen == TMDB_KEY) drawKey(c);
@@ -833,6 +846,13 @@ public class SettingsActivity extends Activity {
             return y + (46 + 40 * rows.length) * k;
         }
 
+        /** Notices saved by older versions: the old product name, and the "is on" line in English. */
+        private static String noticeText(String t) {
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile("Free My TV is on: new home screen and screensaver, (\\d+) apps turned off\\.").matcher(t);
+            if (m.matches()) return "تم تفعيل OUSWIS TV: شاشة رئيسية وشاشة توقف جديدتان، وعدد التطبيقات المعطلة: " + m.group(1) + ".";
+            return t.replace("Free My TV", "OUSWIS TV");
+        }
+
         private void drawNotices(Canvas c, float y) {
             float x = LIST_X * k + 30 * k;
             c.drawText(Ui.tr("NOTICES"), x, y, header);
@@ -841,7 +861,7 @@ public class SettingsActivity extends Activity {
             for (int i = 0; notices != null && i < notices.length() && shown < 2; i++) {
                 JSONObject o = notices.optJSONObject(i);
                 if (o == null) continue;
-                String line = ago(o.optLong("at")) + " · " + o.optString("text");
+                String line = ago(o.optLong("at")) + " · " + noticeText(o.optString("text"));
                 c.drawText(TextUtils.ellipsize(line, notice, 790 * k, TextUtils.TruncateAt.END).toString(), x, y + (42 + 38 * shown) * k, notice);
                 shown++;
             }
@@ -899,7 +919,7 @@ public class SettingsActivity extends Activity {
         private static String versionName(Context c) {
             try {
                 android.content.pm.PackageInfo pi = c.getPackageManager().getPackageInfo(c.getPackageName(), 0);
-                return "OUSWIS TV " + pi.versionName + " · Build " + pi.versionCode;   // the build number tells which APK is installed
+                return "OUSWIS TV " + pi.versionName + " · Build " + (android.os.Build.VERSION.SDK_INT >= 28 ? pi.getLongVersionCode() : pi.versionCode);   // the build number tells which APK is installed
             } catch (android.content.pm.PackageManager.NameNotFoundException e) {
                 return "OUSWIS TV";
             }

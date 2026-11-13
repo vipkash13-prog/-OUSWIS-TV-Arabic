@@ -19,10 +19,8 @@ import android.widget.TextView;
 public class HomeActivity extends Activity implements RedesignHomeView.Host {
     /** Opens All Apps (a remote's All Apps button, RemoteKeys). */
     static final String EXTRA_ALL_APPS = "io.ouswis.tv.standalone.ALL_APPS";
-    /** The classic Free My TV home screen, now only behind the redesign's "All Apps" and "Recent" shortcuts. */
-    private HomeView home;
+    /** The classic HomeView is never created any more: "All Apps" and "Recent" are screens of their own. */
     private RedesignHomeView redesign;
-    private boolean classic;
     private int prefsVersion = Prefs.version;   // settings changed while we were away: start over
 
     @Override protected void onCreate(Bundle savedInstanceState) {
@@ -47,7 +45,7 @@ public class HomeActivity extends Activity implements RedesignHomeView.Host {
         setContentView(redesign);
         redesign.requestFocus();
         getWindow().setBackgroundDrawable(null);
-        if (getIntent().getBooleanExtra(EXTRA_ALL_APPS, false)) openClassic(false);
+        if (getIntent().getBooleanExtra(EXTRA_ALL_APPS, false)) openClassic(false);   // starts AllAppsActivity
         // At power-on "Live TV" (#346): the first time the home screen comes up after a full start, in Free My TV mode.
         if (HomeMode.noteHomeShown(this) && SystemClock.elapsedRealtime() < 240_000 && "live".equals(Prefs.powerOn())) {
             org.json.JSONObject s = HomeMode.state(this);
@@ -77,14 +75,12 @@ public class HomeActivity extends Activity implements RedesignHomeView.Host {
             recreate();   // a new language or city: draw everything again
             return;
         }
-        if (classic && home != null) home.resume();
-        else if (redesign != null) redesign.resume();
+        if (redesign != null) redesign.resume();
         Updates.tellOnce(this);   // an update the week's check got ready: said once
     }
 
     @Override protected void onPause() {
         resumed = false;
-        if (home != null) home.pause();
         if (redesign != null) redesign.pause();
         super.onPause();
     }
@@ -101,7 +97,6 @@ public class HomeActivity extends Activity implements RedesignHomeView.Host {
         boolean twice = Prefs.recents().equals("home") && lastHome != 0 && now - lastHome < TWICE_MS;
         lastHome = twice ? 0 : now;
         if (twice) openClassic(true);
-        else if (classic) closeClassic();
         else redesign.reset();
     }
 
@@ -114,7 +109,6 @@ public class HomeActivity extends Activity implements RedesignHomeView.Host {
             redesign.removeCallbacks(powerOnLive);
             redesign.destroy();
         }
-        if (home != null) home.destroy();
         super.onDestroy();
     }
 
@@ -126,36 +120,19 @@ public class HomeActivity extends Activity implements RedesignHomeView.Host {
     @Override public boolean dispatchKeyEvent(KeyEvent event) {
         keyPressed = true;
         if (RemoteKeys.onKey(this, event)) return true;
-        if (classic && home != null) {
-            // Back leaves the classic screens for the new home; Home does too (onNewIntent).
-            if (event.getKeyCode() == KeyEvent.KEYCODE_BACK) {
-                if (event.getAction() == KeyEvent.ACTION_UP && !event.isCanceled()) closeClassic();
-                return true;
-            }
-            if (home.onKey(event)) return true;
+        if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0
+                && event.getKeyCode() == KeyEvent.KEYCODE_APP_SWITCH && !Prefs.recents().equals("off")) {
+            openClassic(true);
+            return true;
         }
         return super.dispatchKeyEvent(event);
     }
 
-    /** "All Apps" and "Recent" keep their existing, tested screens: the classic home view, opened straight onto them. */
+    /** "All Apps" and "Recent Apps" open as screens of their own on top of the new home; Back returns straight to it. */
     @Override public void openClassic(boolean recents) {
-        if (home == null) {
-            redesign.pause();
-            home = new HomeView(this);
-        }
-        classic = true;
-        setContentView(home);
-        getWindow().setBackgroundDrawable(null);
-        if (resumed) home.resume();
-        if (recents) home.showRecents(); else home.showAllApps();
+        try {
+            startActivity(new Intent(this, recents ? RecentsActivity.class : AllAppsActivity.class));
+            overridePendingTransition(0, 0);
+        } catch (RuntimeException e) { AppLog.w("could not open " + (recents ? "recents" : "all apps") + ": " + e); }
     }
-
-    private void closeClassic() {
-        if (home != null) { home.pause(); home.destroy(); home = null; }
-        classic = false;
-        setContentView(redesign);
-        redesign.requestFocus();
-        redesign.resume();
-    }
-
 }
