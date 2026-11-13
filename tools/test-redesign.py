@@ -568,8 +568,11 @@ with tempfile.TemporaryDirectory() as temp:
     keys('DPAD_DOWN', 'DPAD_DOWN', 'DPAD_DOWN', pause=0.8)
     keys('DPAD_LEFT', 'DPAD_LEFT', pause=0.8)
     assert 'كل التطبيقات' in focused_label(), 'The third shortcut must be كل التطبيقات: ' + focused_label()
-    keys('DPAD_CENTER', pause=2.5); front('AllAppsActivity')
-    time.sleep(2)
+    keys('DPAD_CENTER', pause=0.3); front('AllAppsActivity')
+    first_open = labels()   # the very first look: the list was read ahead when the home opened
+    assert not any('جارٍ التحميل' in l or 'جارٍ تحميل' in l for l in first_open), 'All Apps opened for the first time must show its list at once (read ahead): ' + str(first_open[:8])
+    note('PASS: All Apps opened for the first time showed its list at once (no loading text).')
+    time.sleep(1.5)
     head = [l for l in labels() if l.startswith('كل التطبيقات ·')]
     tiles = [l for l in labels() if l and not l.startswith('كل التطبيقات') and not l.startswith('OK ')]
     assert head and re.search(r'(\d+) تطبيق', head[0]) and int(re.search(r'(\d+) تطبيق', head[0])[1]) >= 1, 'All Apps must list the installed apps: ' + str(labels()[:20])

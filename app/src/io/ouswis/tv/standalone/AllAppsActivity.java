@@ -85,40 +85,77 @@ public class AllAppsActivity extends Activity {
     @Override protected void onPause(){onPackages=null;super.onPause();}
     @Override protected void onDestroy(){io.shutdownNow();super.onDestroy();}
 
+    /** The list, read off the UI thread: apps with a launcher, sorted by name. */
+    private static List<String[]> readList(Context ctx){
+        List<String[]> list=new ArrayList<>();
+        try{
+            for(String[] a:HomeApps.launchable(ctx)){
+                if(a[0].equals(ctx.getPackageName())||HomeApps.isHidden(a[0]))continue;
+                list.add(new String[]{a[0],a[1]==null?"":a[1].trim()});
+            }
+        }catch(Throwable t){AppLog.w("all apps list failed: "+Log.getStackTraceString(t));}
+        if(list.isEmpty()){   // the usual list found nothing (a TV with only system apps): every app with a launcher, except factory menus
+            try{
+                PackageManager pm=ctx.getPackageManager();java.util.Set<String> seen=new java.util.HashSet<>();
+                for(String cat:new String[]{Intent.CATEGORY_LEANBACK_LAUNCHER,Intent.CATEGORY_LAUNCHER})
+                    for(android.content.pm.ResolveInfo ri:pm.queryIntentActivities(new Intent(Intent.ACTION_MAIN).addCategory(cat),0)){
+                        String pkg=ri.activityInfo.packageName;
+                        if(pkg.equals(ctx.getPackageName())||HomeApps.isHidden(pkg)||HomeMode.factoryMenu(pkg)||!seen.add(pkg))continue;
+                        list.add(new String[]{pkg,String.valueOf(ri.loadLabel(pm)).trim()});
+                    }
+            }catch(Throwable t){AppLog.w("all apps fallback failed: "+Log.getStackTraceString(t));}
+        }
+        final java.text.Collator coll=java.text.Collator.getInstance(java.util.Locale.getDefault());
+        java.util.Collections.sort(list,(x,y)->coll.compare(x[1],y[1]));
+        return list;
+    }
+
     /** The list is read off the UI thread; it is read again each time the screen comes back (an app may have been installed). */
     private void load(){
         try{io.execute(()->{
-            List<String[]> list=new ArrayList<>();
-            try{
-                for(String[] a:HomeApps.launchable(this)){
-                    if(a[0].equals(getPackageName())||HomeApps.isHidden(a[0]))continue;
-                    list.add(new String[]{a[0],a[1]==null?"":a[1].trim()});
-                }
-            }catch(Throwable t){AppLog.w("all apps list failed: "+Log.getStackTraceString(t));}
-            if(list.isEmpty()){   // the usual list found nothing (a TV with only system apps): every app with a launcher, except factory menus
-                try{
-                    PackageManager pm=getPackageManager();java.util.Set<String> seen=new java.util.HashSet<>();
-                    for(String cat:new String[]{Intent.CATEGORY_LEANBACK_LAUNCHER,Intent.CATEGORY_LAUNCHER})
-                        for(android.content.pm.ResolveInfo ri:pm.queryIntentActivities(new Intent(Intent.ACTION_MAIN).addCategory(cat),0)){
-                            String pkg=ri.activityInfo.packageName;
-                            if(pkg.equals(getPackageName())||HomeApps.isHidden(pkg)||HomeMode.factoryMenu(pkg)||!seen.add(pkg))continue;
-                            list.add(new String[]{pkg,String.valueOf(ri.loadLabel(pm)).trim()});
-                        }
-                }catch(Throwable t){AppLog.w("all apps fallback failed: "+Log.getStackTraceString(t));}
-            }
-            final java.text.Collator coll=java.text.Collator.getInstance(java.util.Locale.getDefault());
-            java.util.Collections.sort(list,(x,y)->coll.compare(x[1],y[1]));
+            final List<String[]> list=readList(getApplicationContext());
             main.post(()->{cache=list;apps.clear();apps.addAll(list);loaded=true;view.dataChanged();});
         });}catch(java.util.concurrent.RejectedExecutionException gone){}
     }
+
+    private static final ExecutorService PRELOAD=Executors.newSingleThreadExecutor();
+    private static boolean preloading;
+    /** Called when the home screen opens: the list and the first cards are made in the background, so the first visit shows no loading text and no grey squares. */
+    static void preload(Context c){
+        final Context app=c.getApplicationContext();
+        final Handler ui=new Handler(Looper.getMainLooper());
+        ui.post(()->{
+            if(preloading||(cache!=null&&TILES.size()>=Math.min(cache.size(),PRELOAD_TILES)))return;
+            preloading=true;
+            watchPackages(app);
+            try{PRELOAD.execute(()->{
+                try{
+                    final List<String[]> list=readList(app);
+                    ui.post(()->{if(cache==null)cache=list;});
+                    int n=0;
+                    for(final String[] a:list){
+                        if(n++>=PRELOAD_TILES)break;
+                        final String pkg=a[0];
+                        try{
+                            final Bitmap t=makeTile(app,pkg,a[1]);
+                            ui.post(()->{if(!TILES.containsKey(pkg)){TILES.put(pkg,t);ASKED.add(pkg);}});
+                        }catch(Throwable t){AppLog.w("all-apps preload tile failed: "+pkg+" "+t);}
+                    }
+                }finally{ui.post(()->preloading=false);}
+            });}catch(java.util.concurrent.RejectedExecutionException gone){ui.post(()->preloading=false);}
+        });
+    }
+    private static final int PRELOAD_TILES=25;   // the first screen is 15 cards; a few rows more
 
     // A card is 16:9 like the home screen's app tiles: the app's TV banner fills it; an app without one shows its icon, 56 dp, in the middle.
     private static final int CARD=0xFF1A1F3A,TILE_W=330,TILE_H=186,ICON=84;   // reference pixels (1 dp = 1.5 px)
 
     /** The app's card, made off the UI thread: banner, else icon on a dark card (never a blank white square). */
-    static Bitmap makeTile(Context c,String pkg,String name){return makeTile(c,pkg,name,false);}
+    /** More than this share of a card that is light (white, grey, yellow…) and it becomes the dark card with the icon. */
+    private static final float LIGHT_LIMIT=0.35f;
+    static Bitmap makeTile(Context c,String pkg,String name){return makeTile(c,pkg,name,true);}
 
-    /** `light`: a card that is mostly bright (a yellow banner) counts like a white one, as Recent Apps asks. */
+    /** `light` is kept for callers; every card now gets the same check. */
     static Bitmap makeTile(Context c,String pkg,String name,boolean light){
         PackageManager pm=c.getPackageManager();
         Bitmap raw=Bitmap.createBitmap(TILE_W,TILE_H,Bitmap.Config.ARGB_8888);
@@ -134,14 +171,14 @@ public class AllAppsActivity extends Activity {
             try{
                 rc.drawColor(CARD);   // a banner with transparency sits on a dark card
                 banner.setBounds(0,0,TILE_W,TILE_H);banner.draw(rc);
-                ok=!blank(raw)&&whiteShare(raw)<0.5f&&!(light&&lightShare(raw)>=0.5f);   // a banner that is mostly white is no banner: the icon on the dark card instead
+                ok=!blank(raw)&&whiteShare(raw)<0.5f&&lightShare(raw)<LIGHT_LIMIT;   // a banner that is mostly white is no banner: the icon on the dark card instead
             }catch(Throwable t){ok=false;}
         }
         String how="banner";
         if(!ok){
             how=drawIcon(c,pm,pkg,name,raw,rc);
         }
-        if(whiteShare(raw)>=0.5f||(light&&lightShare(raw)>=0.5f)){   // whatever was drawn, a white card on an OLED is never shown
+        if(whiteShare(raw)>=0.5f||lightShare(raw)>=LIGHT_LIMIT){   // whatever was drawn, a white card on an OLED is never shown
             rc.drawColor(CARD);
             Paint lp=Design.text(Design.TEXT,64,Design.bold());
             String n=name==null?"":name.trim();if(n.length()>3&&n.startsWith("ال"))n=n.substring(2);

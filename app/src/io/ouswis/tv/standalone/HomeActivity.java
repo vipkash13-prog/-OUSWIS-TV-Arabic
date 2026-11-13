@@ -25,6 +25,7 @@ public class HomeActivity extends Activity implements RedesignHomeView.Host {
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        AllAppsActivity.preload(this);   // the apps list and its first cards, ready before the person opens it
         Watchdog.install(this);
         SleepTimer.listen(this);
         SleepTimer.check(this);
