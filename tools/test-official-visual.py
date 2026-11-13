@@ -31,7 +31,7 @@ def capture(name,redesigned=False):
     adb('shell','am','start','-W','-n',PKG+'/.HomeActivity')
     for attempt in range(20):
         tree=ui();text=ET.tostring(tree,encoding='unicode')
-        if 'المتبقي' in text and (('°' in text) if redesigned else ('°C' in text or '°F' in text)):break
+        if 'المتبقي' in text and '°' in text:break   # the redesigned home writes "32°", the old one "32°C"
         time.sleep(1)
     else:raise AssertionError('Expected real prayer/weather data before visual comparison; saw: '+' | '.join((n.get('text','')+n.get('content-desc','')).strip() for n in tree.iter('node') if n.get('package')==PKG and (n.get('text','')+n.get('content-desc','')).strip())[:900]+' | logcat: '+' / '.join(l[-160:] for l in adb('logcat','-d','-t','4000').splitlines() if 'ouswis' in l.lower() and any(k in l for k in ('weather','Weather','meteo','prayer','Prayer','offline','failed')))[:900])
     png=adb('exec-out','screencap','-p',binary=True)
@@ -39,7 +39,8 @@ def capture(name,redesigned=False):
     (OUT/(name+'.png')).write_bytes(png);(OUT/(name+'.xml')).write_bytes(ET.tostring(tree))
     nodes=[(n.get('class'),n.get('text',''),n.get('content-desc',''),n.get('bounds')) for n in tree.iter('node') if n.get('package')==PKG and n.get('clickable')=='true']
     assert len(nodes)>=10,nodes
-    if redesigned:
+    # Once the published release is itself the redesigned home (build 10209 on), the baseline gets the new-home checks too.
+    if redesigned or 'إضافة تطبيق' in text:
         labels=[(n[1] or n[2]).strip() for n in nodes]
         for shortcut in ('البث المباشر','المباريات','كل التطبيقات','الأخيرة','التحديثات','الإعدادات'):
             assert any(l.strip()==shortcut for l in labels),('Missing shortcut',shortcut)
