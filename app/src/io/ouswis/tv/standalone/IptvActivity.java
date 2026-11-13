@@ -94,7 +94,7 @@ public class IptvActivity extends Activity {
         if (to == INFO) first = buildInfo();
         else if (to == EDIT) buildEdit();
         else first = buildConfirm();
-        if (first != null) first.requestFocus();
+        if (first != null && !first.requestFocus()) first.requestFocusFromTouch();   // after a mouse click the TV is in touch mode
     }
 
     private Button buildInfo() {
