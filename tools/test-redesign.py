@@ -651,7 +651,9 @@ with tempfile.TemporaryDirectory() as temp:
     wait_label('دوري روشن السعودي', 'the league table')
     assert any('دوري روشن السعودي' in l and 'غير محددة' in l for l in labels()), 'With no pick the table must say so, not name a default: ' + str(labels()[:14])
     shot('redesign-channel-map.png')
-    keys('DPAD_CENTER', pause=2)
+    for _try in range(3):   # the first OK can land before the row has focus: press again if no list came
+        keys('DPAD_CENTER', pause=2)
+        if any('اختر القسم' in l for l in labels()): break
     wait_label('اختر القسم', 'the section list')
     tap('رياضة', exact=True)
     wait_label('SSC 1 HD', 'the channels of the chosen section')
