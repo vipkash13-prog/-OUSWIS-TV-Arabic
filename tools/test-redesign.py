@@ -430,7 +430,7 @@ with tempfile.TemporaryDirectory() as temp:
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.LiveActivity'); wait_label('قسم', 'the live screen again')
 
     # 3c. a section whose channel list fails to load said nothing and stayed empty: now it says so and tries again by itself
-    adb('shell', 'am', 'force-stop', PKG); adb('shell', 'sh', '-c', "'rm -f /data/user/0/%s/files/cat-*-13*'" % PKG)
+    adb('shell', 'sh', '-c', "'rm -f /data/user/0/%s/files/cat-*-13*'" % PKG)
     FAIL_CATS.add('13')
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.LiveActivity'); wait_label('قسم رياضة', 'the live screen after a restart')
     keys('DPAD_RIGHT')

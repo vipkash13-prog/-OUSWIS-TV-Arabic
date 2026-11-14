@@ -152,7 +152,7 @@ final class LiveData {
                     putChannels(category,parse(o.getJSONArray("items")));
                     fresh=System.currentTimeMillis()-o.optLong("at")<DAY;
                     ok=true;
-                    main.post(()->tell(category,false));
+                    if(!fresh)main.post(()->tell(category,false));   // an old file is shown at once, the network answer follows
                 }
             }catch(Exception ignored){}
             if(fresh){done(category);return;}
