@@ -858,7 +858,11 @@ with tempfile.TemporaryDirectory() as temp:
     # 6d. the matches screen lost its data while the home kept it: every competition but one fails (HTTP 500) and that one
     # answers with no matches. The shared list must keep the last data, with the "update failed" line, on both screens.
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.MatchesScreenActivity'); time.sleep(3)
-    before = ' | '.join(sorted(l for l in labels() if ' ضد ' in l and not l.startswith('تفاصيل')))
+    seen = set()
+    for _ in range(8):   # the grid shows six cards: scroll down so the late-day ones are read too, whatever the hour
+        seen.update(l for l in labels() if ' ضد ' in l and not l.startswith('تفاصيل'))
+        keys('DPAD_DOWN', pause=0.8)
+    before = ' | '.join(sorted(seen))
     assert 'أورليان' in before and 'ديجون' in before and 'رواندا' in before and 'مالاوي' in before, 'The four names must be in Arabic: ' + before
     assert not re.search(r'Orl|Dijon|Rwanda|Malawi', before), 'No English name left: ' + before
     keys('BACK', pause=1)
@@ -878,7 +882,7 @@ with tempfile.TemporaryDirectory() as temp:
         time.sleep(3)
     shot('redesign-matches-feed-down.png')
     after = ' | '.join(sorted(l for l in labels() if ' ضد ' in l and not l.startswith('تفاصيل')))
-    assert 'غانا ضد الصومال' in after and 'ليفربول ضد مانشستر سيتي' in after, 'The matches screen must keep the last data while the update fails: ' + after
+    assert 'غانا ضد الصومال' in after and 'سورينام ضد إريتريا' in after, 'The matches screen must keep the last data while the update fails: ' + after
     assert any('تعذّر التحديث' in l for l in labels()), 'The "update failed" line must show: ' + str(labels()[:20])
     assert not any('لا توجد مباريات' in l for l in labels()), 'The list must not be emptied'
     note('PASS: with the feed failing, the matches screen and the home kept their matches; the matches screen says تعذّر التحديث.')
