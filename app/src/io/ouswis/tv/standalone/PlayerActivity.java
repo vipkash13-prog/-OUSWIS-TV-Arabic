@@ -307,7 +307,10 @@ public final class PlayerActivity extends Activity {
             }
         }
         long freezeLimit=pictured?FREEZE_MS:FIRST_PICTURE_MS;   // the first picture may wait for the larger start buffer
-        if(started&&now-lastProgressAt>freezeLimit)frozen(now);
+        // while it is refilling the buffer (BUFFERING) and data keeps arriving, it is loading, not frozen: a live server sends at
+        // display speed, so refilling the 8-10 s start buffer after a stall takes as long as that
+        boolean loadingData=st==Player.STATE_BUFFERING&&now-bufferMovedAt<=BUFFERING_STUCK_MS&&now-lastProgressAt<=30_000;
+        if(started&&!loadingData&&now-lastProgressAt>freezeLimit)frozen(now);
         main.postDelayed(this,1000);
     }};
     /** No progress at all: same as a closed stream, join the channel again (with the growing wait), never give up. */
