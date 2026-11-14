@@ -269,10 +269,17 @@ final class LiveData {
             main.post(changed);
         });
     }
-    /** The next four programmes of a channel as the provider lists them (titles are Base64 there). Blocks: call off the UI thread. */
+    /** The next programmes of a channel as the provider lists them (titles are Base64 there). Blocks: call off the UI thread. */
     static List<Program> fetchGuide(XtreamAccount account,String id,int limit) throws Exception {
+        return parseGuide(XtreamAccount.get(account.api("get_short_epg","stream_id="+XtreamAccount.enc(id)+"&limit="+limit)));
+    }
+    /** The channel's whole day (what get_simple_data_table lists: past, present and the hours ahead). Blocks: call off the UI thread. */
+    static List<Program> fetchDay(XtreamAccount account,String id) throws Exception {
+        return parseGuide(XtreamAccount.get(account.api("get_simple_data_table","stream_id="+XtreamAccount.enc(id))));
+    }
+    private static List<Program> parseGuide(String json) throws Exception {
         List<Program> out=new ArrayList<>();
-        JSONObject o=new JSONObject(XtreamAccount.get(account.api("get_short_epg","stream_id="+XtreamAccount.enc(id)+"&limit="+limit)));
+        JSONObject o=new JSONObject(json);
         JSONArray rows=o.optJSONArray("epg_listings");
         for(int i=0;rows!=null&&i<rows.length();i++){
             JSONObject r=rows.optJSONObject(i);if(r==null)continue;
@@ -282,6 +289,7 @@ final class LiveData {
             try{t=new String(Base64.decode(t,Base64.DEFAULT),StandardCharsets.UTF_8);}catch(Exception ignored){}
             out.add(new Program(t.trim(),s,e));
         }
+        java.util.Collections.sort(out,(x,y)->Long.compare(x.start,y.start));
         return out;
     }
     static Program current(List<Program> list,long now){

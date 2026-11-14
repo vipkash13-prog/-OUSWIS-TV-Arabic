@@ -114,13 +114,13 @@ final class MatchChannels {
 
     // MARK: the guide decides
 
-    private static final long GUIDE_TTL=15*60_000L;
+    private static final long GUIDE_TTL=3*3600_000L;   // the whole day's guide is read every 3 hours, in the background only
     private static final java.util.Map<String,java.util.List<LiveData.Program>> guides=new java.util.concurrent.ConcurrentHashMap<>();
     private static final java.util.Map<String,LiveData.Channel> guideChannels=new java.util.concurrent.ConcurrentHashMap<>();
     private static volatile long guideAt;
     private static volatile boolean scanning;
     static final long KICK_WINDOW=30*60_000L;
-    private static final int GUIDE_CAP=120,GUIDE_PROGRAMMES=12;
+    private static final int GUIDE_CAP=200,GUIDE_PROGRAMMES=12;
     private static final java.util.Map<String,Object> confirmed=new java.util.concurrent.ConcurrentHashMap<>();   // match key → channel | NONE
 
     /**
@@ -135,20 +135,101 @@ final class MatchChannels {
         final Context app=c.getApplicationContext();
         worker.execute(()->{
             try{
+                topUpSportCategories(app,a);
+                if(guides.isEmpty()&&loadGuideFile(app,a))return;   // a recent copy on disk (after a restart): no requests at all
                 java.util.List<LiveData.Channel> list=sportChannels(app,a);
                 java.util.concurrent.ExecutorService pool=java.util.concurrent.Executors.newFixedThreadPool(4);   // never more than four requests at a time
                 java.util.List<java.util.concurrent.Future<?>> jobs=new ArrayList<>();
+                final long now=System.currentTimeMillis();
                 for(LiveData.Channel ch:list)jobs.add(pool.submit(()->{
-                    try{guides.put(ch.id,LiveData.fetchGuide(a,ch.id,GUIDE_PROGRAMMES));guideChannels.put(ch.id,ch);}catch(Exception ignored){}
+                    try{
+                        java.util.List<LiveData.Program> day=null;
+                        try{day=LiveData.fetchDay(a,ch.id);}catch(Exception ignored){}
+                        if(day==null||day.isEmpty())day=LiveData.fetchGuide(a,ch.id,GUIDE_PROGRAMMES);   // a provider without the day table: the next programmes
+                        java.util.List<LiveData.Program> keep=new ArrayList<>();
+                        for(LiveData.Program p:day)if(p.end>now-3*3600_000L&&p.start<now+30*3600_000L)keep.add(p);
+                        guides.put(ch.id,keep);guideChannels.put(ch.id,ch);
+                    }catch(Exception ignored){}
                 }));
-                for(java.util.concurrent.Future<?> j:jobs){try{j.get(40,java.util.concurrent.TimeUnit.SECONDS);}catch(Exception ignored){}}
+                for(java.util.concurrent.Future<?> j:jobs){try{j.get(60,java.util.concurrent.TimeUnit.SECONDS);}catch(Exception ignored){}}
                 pool.shutdownNow();
+                if(!guides.isEmpty())saveGuideFile(app,a);
             }catch(Throwable ignored){}
-            // nothing read (no sports files yet): try again in a minute rather than in twelve
+            // nothing read (no sports files yet): try again in a minute rather than in three hours
             guideAt=guides.isEmpty()?System.currentTimeMillis()-GUIDE_TTL+60_000L:System.currentTimeMillis();scanning=false;
             clearAnswers();
             fire();
         });
+    }
+    private static File guideFile(Context c,XtreamAccount a){return new File(c.getFilesDir(),"guide-day-"+Integer.toHexString((a.server+"|"+a.user).hashCode())+".json");}
+    private static void saveGuideFile(Context c,XtreamAccount a){
+        try{
+            JSONObject root=new JSONObject(),chs=new JSONObject();
+            for(java.util.Map.Entry<String,java.util.List<LiveData.Program>> e:guides.entrySet()){
+                LiveData.Channel ch=guideChannels.get(e.getKey());if(ch==null)continue;
+                JSONObject o=new JSONObject();o.put("c",ch.json());
+                JSONArray ps=new JSONArray();
+                for(LiveData.Program p:e.getValue())ps.put(new JSONArray().put(p.title).put(p.start).put(p.end));
+                o.put("p",ps);chs.put(e.getKey(),o);
+            }
+            root.put("at",System.currentTimeMillis()).put("ch",chs);
+            Files.write(guideFile(c,a).toPath(),root.toString().getBytes(StandardCharsets.UTF_8));
+        }catch(Exception ignored){}
+    }
+    /** Loads the day's guide saved by an earlier run when it is under three hours old. */
+    private static boolean loadGuideFile(Context c,XtreamAccount a){
+        try{
+            File f=guideFile(c,a);if(!f.exists())return false;
+            JSONObject root=new JSONObject(new String(Files.readAllBytes(f.toPath()),StandardCharsets.UTF_8));
+            long at=root.optLong("at");
+            if(System.currentTimeMillis()-at>=GUIDE_TTL)return false;
+            JSONObject chs=root.getJSONObject("ch");
+            java.util.Iterator<String> it=chs.keys();
+            while(it.hasNext()){
+                String id=it.next();JSONObject o=chs.getJSONObject(id);
+                LiveData.Channel ch=LiveData.Channel.from(o.getJSONObject("c"));if(ch==null)continue;
+                java.util.List<LiveData.Program> ps=new ArrayList<>();
+                JSONArray arr=o.getJSONArray("p");
+                for(int i=0;i<arr.length();i++){JSONArray r=arr.getJSONArray(i);ps.add(new LiveData.Program(r.getString(0),r.getLong(1),r.getLong(2)));}
+                guides.put(id,ps);guideChannels.put(id,ch);
+            }
+            if(guides.isEmpty())return false;
+            guideAt=at;scanning=false;clearAnswers();fire();
+            return true;
+        }catch(Exception e){return false;}
+    }
+    /**
+     * Once per install: the sports categories (beIN, SSC and the foreign "FR| beIN SPORTS" ones, up to twelve) that were not
+     * downloaded yet are downloaded, so the guide scan reads their channels too. Runs in the background.
+     */
+    private static void topUpSportCategories(Context c,XtreamAccount a){
+        final SharedPreferences sp=store(c);
+        if(sp.getBoolean("sportTopUp1",false))return;
+        final java.util.concurrent.CountDownLatch done=new java.util.concurrent.CountDownLatch(1);
+        main.post(()->{
+            final LiveData data=new LiveData(c,a);
+            data.loadCategories(()->{
+                List<LiveData.Category> sports=new ArrayList<>();
+                synchronized(data.categories){
+                    for(LiveData.Category cat:data.categories){
+                        String n=cat.name.toLowerCase(java.util.Locale.ROOT);
+                        if(n.contains("sport")||n.contains("ssc")||n.contains("bein")||n.contains("رياض")||n.contains("بي ان")||n.contains("مباريات"))sports.add(cat);
+                    }
+                }
+                if(sports.isEmpty()){if(!data.categories.isEmpty())sp.edit().putBoolean("sportTopUp1",true).apply();done.countDown();return;}
+                String key=Integer.toHexString((a.server+"|"+a.user).hashCode());
+                final List<LiveData.Category> missing=new ArrayList<>();
+                for(int i=0;i<Math.min(12,sports.size());i++)
+                    if(!new File(c.getFilesDir(),"live-cat-"+key+"-"+sports.get(i).id+".json").exists())missing.add(sports.get(i));
+                StringBuilder ids=new StringBuilder();
+                for(int i=0;i<Math.min(12,sports.size());i++)ids.append(i>0?",":"").append(sports.get(i).id);
+                sp.edit().putString("sportCats",ids.toString()).putBoolean("sportTopUp1",true).apply();
+                if(missing.isEmpty()){done.countDown();return;}
+                final int[] left={missing.size()};
+                for(LiveData.Category cat:missing)data.loadChannels(cat.id,()->{if(--left[0]==0)done.countDown();});
+            });
+        });
+        try{done.await(90,java.util.concurrent.TimeUnit.SECONDS);}catch(InterruptedException ignored){}
     }
     /** Channels of the sports categories already downloaded (the ones {@link #prepare} chose, else every downloaded one); the cap keeps the scan short. */
     private static java.util.List<LiveData.Channel> sportChannels(Context c,XtreamAccount a){
@@ -200,7 +281,9 @@ final class MatchChannels {
 
     static int qualityPenalty(String name){return Titles.qualityPenalty(name);}
     // HD first, then FHD, then a name with no tag, then SD; 4K and H.265 last
-    private static int rank(LiveData.Channel ch){return qualityPenalty(ch.name)*1_000_000+(FHD.matcher(ch.name==null?"":ch.name).find()&&!HD_ONLY.matcher(ch.name).find()?500_000:0)+number(canonical(ch.name))*1000+(ch.name.hashCode()&511);}   // ties go the same way every time
+    private static final Pattern FOREIGN=Pattern.compile("^\\s*(?!AR\\b)[A-Za-z]{2,3}\\s*[|:]");
+    // an Arabic channel before a foreign one (FR| beIN SPORTS ...) for the same match, then quality
+    private static int rank(LiveData.Channel ch){return (FOREIGN.matcher(ch.name==null?"":ch.name).find()?10_000_000:0)+qualityPenalty(ch.name)*1_000_000+(FHD.matcher(ch.name==null?"":ch.name).find()&&!HD_ONLY.matcher(ch.name).find()?500_000:0)+number(canonical(ch.name))*1000+(ch.name.hashCode()&511);}   // ties go the same way every time
     private static final java.util.Map<String,java.util.List<LiveData.Channel>> optionsMap=new java.util.concurrent.ConcurrentHashMap<>();
     /** Every sports channel whose programme names both teams near the kickoff, best first (HD before 4K). Uses only what the last scan read; off the UI thread. */
     static java.util.List<LiveData.Channel> guideOptions(MatchCarouselView.Match m){
@@ -212,7 +295,8 @@ final class MatchChannels {
             if(ch==null||out.contains(ch)||(bad!=null&&bad.contains(ch.id)))continue;
             for(LiveData.Program p:e.getValue()){
                 if(p.end<now)continue;
-                if(kick>0&&Math.abs(p.start-kick)>KICK_WINDOW)continue;   // the programme starts within 30 minutes of the kickoff
+                // the programme's time covers the kickoff (it may start up to 30 minutes after it, as a late "live" block, or earlier with a pre-match show)
+                if(kick>0&&(p.start>kick+KICK_WINDOW||p.end<=kick||p.start<kick-4*3600_000L))continue;
                 if(Titles.isRerun(p.title))continue;
                 if(!Titles.sameMatch(p.title,m.homeEn,m.home,m.awayEn,m.away))continue;
                 out.add(ch);break;

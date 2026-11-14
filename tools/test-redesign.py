@@ -204,6 +204,9 @@ with tempfile.TemporaryDirectory() as temp:
     HOUR = 3600
     LIVE_SECONDS = int(os.environ.get('OUSWIS_LIVE_SECONDS', '600'))   # the live-speed stream is watched this long: 600 = the full test
     # guide programmes other than the default four: (title, start offset, stop offset) in seconds from now
+    # item: the day's guide. Norway v Wales starts in 4 hours: only get_simple_data_table lists it, on two channels (the first, beIN Sports 1 HD, is the main one)
+    EPGDAY = {'110': [('Live: Norway vs Wales - UEFA Nations League', 4 * HOUR - 600, 4 * HOUR + 6600)],
+              '114': [('مباشر: النرويج × ويلز - دوري الأمم الأوروبية', 4 * HOUR - 600, 4 * HOUR + 6600)]}
     EPGX = {'120': [('(L) الهلال × النصر · دوري روشن', -1800, 1800), ('NBA: Philadelphia 76ers vs Boston Celtics', -1200, 6000), ('NBA Highlights', 6000, 9600)],
             '103': [('Philadelphia 76ers vs Boston Celtics - NBA', -900, 6300), ('Volleyball: Italy vs Poland', 6300, 9900), ('Live: England vs Croatia - International Friendly', 5 * HOUR, 5 * HOUR + 6000)],   # the last one: the same match shown again 5 h later
             '110': [('Live: England vs Croatia - International Friendly', -1200, 6000), ('Studio', 6000, 9600), ('Live: Egypt vs Malawi - Africa Cup Qualifiers', 1500, 8100)],
@@ -245,7 +248,7 @@ with tempfile.TemporaryDirectory() as temp:
                 lname = 'English Premier League'
                 if slug == 'eng.1' and FEED_MODE[0] == 'ok' and q.get('dates', [''])[0] == time.strftime('%Y%m', utc):
                     # a finished match with goals (today and yesterday), one tomorrow, one later today; a team name the table lacks
-                    events = [fx('8007', 'Moldova', 'Kazakhstan', 'pre', 20), fx('8008', 'Egypt', 'Malawi', 'pre', 25), fx('8009', 'Spain', 'Greece', 'pre', 40, bc='beIN Sports 3'), fx('8010', 'Tunisia', 'Libya', 'pre', 35, bc='beIN SPORTS 7'), fx('8001', 'Liverpool', 'Manchester City', 'post', -240, '2', '1', goals=True), fx('8002', 'Wolverhampton Wanderers', 'Fulham FC XYZ', 'post', -1700, '0', '0'),
+                    events = [fx('8007', 'Moldova', 'Kazakhstan', 'pre', 20), fx('8008', 'Egypt', 'Malawi', 'pre', 25), fx('8009', 'Spain', 'Greece', 'pre', 40, bc='beIN Sports 3'), fx('8010', 'Tunisia', 'Libya', 'pre', 35, bc='beIN SPORTS 7'), fx('8011', 'Norway', 'Wales', 'pre', 4 * 60), fx('8001', 'Liverpool', 'Manchester City', 'post', -240, '2', '1', goals=True), fx('8002', 'Wolverhampton Wanderers', 'Fulham FC XYZ', 'post', -1700, '0', '0'),
                               fx('8003', 'Arsenal', 'Chelsea', 'pre', 24 * 60 + 5), fx('8004', 'Tottenham Hotspur', 'Everton', 'pre', 150), fx('8005', 'Orléans', 'Dijon FCO', 'post', -30, '1', '0'), fx('8006', 'Rwanda', 'Malawi', 'post', -45, '0', '0')]   # finished a moment ago: on today's list whatever the hour
                 body = {'leagues': [{'name': lname if slug == 'eng.1' else 'Africa Cup of Nations Qualifying', 'logos': []}], 'events': events}
                 payload = json.dumps(body).encode(); kind = 'application/json'
@@ -258,7 +261,7 @@ with tempfile.TemporaryDirectory() as temp:
                     if cat in FAIL_CATS:
                         self.send_response(500); self.end_headers(); return
                     body = [{'num': int(s), 'name': n, 'stream_id': s, 'category_id': cat, 'stream_icon': '', 'container_extension': e} for s, n, e in STREAMS.get(cat, [])]
-                elif action == 'get_short_epg':
+                elif action in ('get_short_epg', 'get_simple_data_table'):
                     now = int(time.time())
                     titles = ['الهلال × النصر · دوري روشن', 'الاستوديو التحليلي', 'أهداف الجولة', 'نشرة الرياضة']
                     if q.get('stream_id', [''])[0] == '101':   # a TV guide in English: the app shows Arabic
@@ -269,6 +272,8 @@ with tempfile.TemporaryDirectory() as temp:
                     sid = q.get('stream_id', [''])[0]
                     if sid in EPGX:
                         body = {'epg_listings': [{'title': base64.b64encode(t.encode()).decode(), 'start_timestamp': str(now + a), 'stop_timestamp': str(now + b)} for t, a, b in EPGX[sid]]}
+                    if action == 'get_simple_data_table' and sid in EPGDAY:   # the whole day: what the short guide (the next few programmes) does not list yet
+                        body['epg_listings'] += [{'title': base64.b64encode(t.encode()).decode(), 'start_timestamp': str(now + a), 'stop_timestamp': str(now + b)} for t, a, b in EPGDAY[sid]]
                 elif q.get('username', [''])[0] == 'bad':   # a provider that refuses the login (HTTP 200, auth 0)
                     body = {'user_info': {'auth': 0, 'status': 'Disabled'}}
                 else:
@@ -542,6 +547,8 @@ with tempfile.TemporaryDirectory() as temp:
 
     # 0. a healthy live stream: the server sends at display speed, so the buffer stays at a constant few seconds while the position advances.
     # For 10 minutes that must never be taken for a stall: zero reconnects.
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.PlayLogActivity'); wait_label('سجل التشغيل', 'the playback log page before the live run')
+    tap('مسح السجل'); time.sleep(1); keys('BACK', pause=1)   # the earlier tests' reconnects must not be in the page this run is judged by
     hits998 = HITS.get('998.ts', 0)
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.PlayerActivity', '-e', 'id', '998', '-e', 'name', 'Live paced', '-e', 'ext', 'ts', '-e', 'num', '998')
     t_live = time.time(); alive = True
@@ -615,7 +622,7 @@ with tempfile.TemporaryDirectory() as temp:
     guide_card = wait_label('الهلال ضد النصر', 'the match found only in the guide')
     assert any(('SSC 1' in l or 'beIN Sports 1' in l or 'AD Sports 1' in l) for l in guide_card), 'The guide match must carry the channel it was found on: ' + str(guide_card)
     for l in cards:
-        if any(t in l for t in ('الهلال', 'يوفنتوس', 'آرسنال', 'غانا', 'إنجلترا', 'مولدوفا', 'مصر', 'إسبانيا')): continue   # found in the mock guide: confirmed
+        if any(t in l for t in ('الهلال', 'يوفنتوس', 'آرسنال', 'غانا', 'إنجلترا', 'مولدوفا', 'مصر', 'إسبانيا', 'النرويج')): continue   # found in the mock guide: confirmed
         assert 'beIN' not in l and 'SSC' not in l and 'AD Sports' not in l and 'beIN SPORTS' not in l, 'No channel may be named without a confirmation: ' + l
         if 'انتهت' not in l: assert 'اختر القناة' in l, 'An unconfirmed match must ask to pick the channel: ' + l
     labs = labels(); i_all = [i for i, l in enumerate(labs) if l.startswith('الكل')][0]
@@ -650,6 +657,14 @@ with tempfile.TemporaryDirectory() as temp:
     assert any('beIN Sports 1' in l for l in egy) and not any('غير مؤكدة' in l for l in egy), 'Egypt v Malawi must show beIN Sports 1: ' + str(egy)
     esp = wait_label('إسبانيا ضد اليونان', 'Spain v Greece', tries=60)
     assert any('اختر القناة' in l for l in esp) and not any('beIN' in l for l in esp), 'The feed says beIN Sports 3 but its guide shows another match then: it must not be offered: ' + str(esp)
+    # the day's guide: a match 4 hours ahead already carries its channel (the short guide does not list it yet)
+    nor = []
+    for _ in range(12):
+        nor = [l for l in labels() if 'النرويج ضد ويلز' in l]
+        if nor: break
+        keys('DPAD_DOWN', pause=1)
+    assert any('beIN Sports 1' in l for l in nor) and not any('اختر القناة' in l for l in nor), 'Norway v Wales (in the whole-day guide, 4 hours ahead) must show its channel now: ' + str(nor)
+    for _ in range(12): keys('DPAD_UP', pause=0.4)
     tun = wait_label('تونس ضد ليبيا', 'Tunisia v Libya', tries=60)
     assert any('اختر القناة' in l for l in tun) and not any('beIN' in l for l in tun), 'A channel only the feed names is not shown on the card: ' + str(tun)
     focus_card('تونس ضد ليبيا'); keys('DPAD_CENTER', pause=2); front('LiveActivity')
