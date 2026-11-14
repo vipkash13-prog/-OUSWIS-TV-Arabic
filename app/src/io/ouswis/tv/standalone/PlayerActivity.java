@@ -126,7 +126,7 @@ public final class PlayerActivity extends Activity {
         list.add(first);index=0;
         data=new LiveData(this,account);
         matchKey=str(EXTRA_MATCH_KEY);
-        for(String id:str(EXTRA_NO_SAVE).split(","))if(!id.isEmpty())noSave.add(id);
+        for(String nsId:str(EXTRA_NO_SAVE).split(","))if(!nsId.isEmpty())noSave.add(nsId);
         final String given=str(EXTRA_SECTION);
         if(given.isEmpty()){
             // Opened from a match: find the section the channel belongs to, so CH+/CH- have a list to move through.
