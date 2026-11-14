@@ -487,17 +487,18 @@ public final class PlayerActivity extends Activity {
         final XtreamAccount a=account;
         new Thread(()->{
             long t0=android.os.SystemClock.elapsedRealtime();
-            int cons;boolean waited=false;
+            int cons,firstCons=-1;boolean waited=false;
             while(true){
                 cons=activeCons(a);
+                if(firstCons<0)firstCons=cons;
                 if(cons<1||android.os.SystemClock.elapsedRealtime()-t0>=FREE_WAIT_MS)break;
                 if(!waited){waited=true;main.post(()->{if(mine==generation&&!isFinishing())statusNow("جاري التجهيز…");});}
                 try{Thread.sleep(1_000);}catch(InterruptedException e){break;}
             }
-            final boolean w=waited;final int c=cons;final long took=android.os.SystemClock.elapsedRealtime()-t0;
+            final boolean w=waited;final int c=cons,c0=firstCons;final long took=android.os.SystemClock.elapsedRealtime()-t0;
             main.post(()->{
                 if(mine!=generation||player==null||isFinishing())return;
-                if(w){log("انتظار تحرير الاتصال القديم: active_cons="+c+" بعد "+took/1000+" ث");statusClear();}
+                if(w){log("انتظار تحرير الاتصال القديم: active_cons="+c0+(c==c0?"":" ← "+c)+" بعد "+took/1000+" ث");statusClear();}
                 open.run();
             });
         }).start();
