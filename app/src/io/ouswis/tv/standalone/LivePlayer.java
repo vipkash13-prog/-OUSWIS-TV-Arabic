@@ -70,15 +70,14 @@ final class LivePlayer {
     static void setStreamType(Context c,String v){prefs(c).edit().putString("stream",v).commit();}
     static String nextStreamType(Context c){String v=streamType(c);return AUTO.equals(v)?HLS:HLS.equals(v)?TS:AUTO;}
 
-    /** m3u8 first unless the server says the channel is .ts, per SPEC; attempt 1 flips it (the fallback). */
+    /** ts in "auto" (m3u8 only if the account has no ts); a type the viewer chose is used as it is. */
     static String extension(Context c,LiveData.Channel ch,int attempt){
         String forced=streamType(c);
         if(!AUTO.equals(forced))return forced;   // a chosen type is never flipped: the test is meant to be clean
+        // "auto" is ts, always: it plays without the 509s and the broken manifests of m3u8. m3u8 only when the account has no ts or the viewer chose it.
         java.util.Set<String> ok=allowed(c);
         boolean hls=ok==null||ok.contains(HLS),ts=ok==null||ok.contains(TS);
-        if(hls&&!ts)return HLS;
-        if(ts&&(!hls||noHls(c,ch.id)))return TS;   // the account has no m3u8, or this channel refused it before: ts straight away
-        return extension(ch,attempt);
+        return hls&&!ts?HLS:TS;
     }
 
     // MARK: what the account allows (user_info.allowed_output_formats) and the channels that refused m3u8

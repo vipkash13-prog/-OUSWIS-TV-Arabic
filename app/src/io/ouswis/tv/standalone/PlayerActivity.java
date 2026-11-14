@@ -60,6 +60,9 @@ public final class PlayerActivity extends Activity {
     // Reconnecting: a live stream that the server closes is joined again at once, with the last picture left on screen
     private static final long STALL_MS=6_000;          // the buffer isn't being filled for this long: reconnect
     private static final long STATUS_DELAY_MS=3_000;   // "loading" shows only if a reconnect or a rebuffer lasts this long
+    private static final long ZAP_SETTLE_MS=700;       // a channel opens only after the viewer rested on it this long: passing channels never connect
+    private static final long FREE_WAIT_MS=8_000;      // the provider still counts the old connection: wait for active_cons to drop, at most this long
+    private static final long LIMIT_WAIT_MS=3_000;     // HTTP 509 (connection limit): wait this long before asking again
     private static final long CLOSE_GAP_MS=250;        // the old connection is closed this long before the new one opens
     private long reconnectT0,lastBufferedPos=-1,bufferMovedAt,posMovedAt,healthySince;
     private int backoffStep;                           // consecutive reconnects without a healthy run: 0, 1, 2, 4, 8, 10, 10 … seconds of waiting
@@ -179,6 +182,7 @@ public final class PlayerActivity extends Activity {
             @Override public void onPlayerError(PlaybackException e){
                 log("توقف: "+describe(e)+" · "+playerState());
                 if(isDecoderError(e)){main.post(()->decoderFailed());return;}
+                if(httpCode(e)==509){main.post(()->limitReached());return;}
                 if(e.errorCode==PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW){   // fell behind the live edge: jump back to it, not a failure
                     try{player.seekToDefaultPosition();player.prepare();player.setPlayWhenReady(true);lastProgressAt=android.os.SystemClock.elapsedRealtime();log("عودة إلى البث المباشر: seekToDefaultPosition + prepare");return;}
                     catch(RuntimeException x){log("تعذّر الرجوع للبث المباشر: "+x.getClass().getSimpleName());}
@@ -190,6 +194,7 @@ public final class PlayerActivity extends Activity {
         player.addAnalyticsListener(new AnalyticsListener(){
             @Override public void onLoadError(AnalyticsListener.EventTime t,LoadEventInfo info,MediaLoadData data,java.io.IOException error,boolean canceled){
                 long now=android.os.SystemClock.elapsedRealtime();
+                if(httpCode(error)==509){main.post(()->limitReached());return;}   // the connection limit: stop asking, wait, then join again
                 if(now-lastLoadLogAt<3_000)return;   // a bad stretch would fill the log
                 lastLoadLogAt=now;
                 int http=httpCode(error);
@@ -387,13 +392,19 @@ public final class PlayerActivity extends Activity {
         final LiveData.Channel ch=list.get(index);
         final int mine=++generation;
         main.removeCallbacks(noteLater);playingSince=0;
-        final String ext=LivePlayer.extension(this,ch,attempt);
+        final String ext=tsOverride?"ts":LivePlayer.extension(this,ch,attempt);
+        final boolean zapped=zapSettle;zapSettle=false;
         statusLater("جارٍ الاتصال…",1_500);   // a new channel: the old picture stays a moment, then the text if it is slow
         showLabel(ch);
         started=true;
         lastProgressAt=android.os.SystemClock.elapsedRealtime();lastPos=-1;bufferMovedAt=lastProgressAt;lastBufferedPos=-1;
         long wait=LivePlayer.settleMs();   // the preview's connection was just closed: it ends at the server first
-        Runnable go=()->{if(mine==generation&&player!=null)openStream(ch,ext);};
+        if(zapped)wait=Math.max(wait,ZAP_SETTLE_MS);   // zapping: a channel connects only once the viewer rested on it
+        Runnable go=()->{
+            if(mine!=generation||player==null)return;
+            if(zapped&&player.getMediaItemCount()>0)player.stop();   // the old connection ends now (the held picture stays), then wait for the provider to count it out
+            afterFree(mine,()->openStream(ch,ext));
+        };
         if(wait>0)main.postDelayed(go,wait);else go.run();
         main.removeCallbacks(watch);main.postDelayed(watch,1000);
     }
@@ -413,6 +424,17 @@ public final class PlayerActivity extends Activity {
     }
     private void fail(PlaybackException e){
         LiveData.Channel ch=index>=0&&index<list.size()?list.get(index):null;
+        if(httpCode(e)==509){limitReached();return;}
+        if(ch!=null&&"m3u8".equals(currentExt)&&!tsOverride&&tsAllowed()&&(e.errorCode==PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED
+                ||e.errorCode==PlaybackException.ERROR_CODE_PARSING_MANIFEST_UNSUPPORTED||e.errorCode==PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED
+                ||e.errorCode==PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS)){
+            // the channel's m3u8 is refused or broken on the server: ts for this channel at once, not another m3u8 try
+            tsOverride=true;
+            log("ملف m3u8 مرفوض أو تالف ("+e.getErrorCodeName()+") لهذه القناة: تجربة ts مباشرة");
+            final int mine=++generation;
+            main.postDelayed(()->{if(mine==generation&&player!=null)openStream(ch,"ts");},CLOSE_GAP_MS);
+            return;
+        }
         boolean auto=LivePlayer.AUTO.equals(LivePlayer.streamType(this));
         boolean hlsRefused=ch!=null&&"m3u8".equals(currentExt)&&e.errorCode==PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS;
         if(auto&&hlsRefused&&hlsForm==0){   // try the older form of the HLS address before giving up on m3u8
@@ -430,7 +452,60 @@ public final class PlayerActivity extends Activity {
         final int mine=generation;
         main.postDelayed(()->{if(mine==generation)playCurrent();},failures<=1?300:2000);
     }
-    private boolean decoderHandled;
+    /** The provider refused the connection (HTTP 509): the old one is still counted. Stop asking at once, wait 3 s, then join again. */
+    private void limitReached(){
+        if(player==null||isFinishing()||index<0||index>=list.size())return;
+        long now=android.os.SystemClock.elapsedRealtime();
+        if(now-limitAt<LIMIT_WAIT_MS+2_000)return;   // one wait at a time
+        limitAt=now;
+        holdDone=false;holdPicture();
+        log("تجاوز حد الاتصال (HTTP 509): إيقاف الطلبات "+LIMIT_WAIT_MS/1000+" ث ثم إعادة الاتصال · "+playerState());
+        statusNow("تجاوز حد الاتصال… إعادة المحاولة بعد "+LIMIT_WAIT_MS/1000+" ث");
+        final int mine=++generation;
+        final LiveData.Channel ch=list.get(index);
+        lastProgressAt=now+LIMIT_WAIT_MS+FREE_WAIT_MS;lastPos=-1;bufferMovedAt=lastProgressAt;posMovedAt=lastProgressAt;   // the detectors wait
+        main.postDelayed(()->{if(mine==generation&&player!=null)player.stop();},200);   // the loader stops asking now; the last picture stays
+        main.postDelayed(()->{
+            if(mine!=generation||player==null)return;
+            afterFree(mine,()->{statusClear();openStream(ch,currentExt.isEmpty()?LivePlayer.extension(this,ch,attempt):currentExt);});
+        },LIMIT_WAIT_MS);
+    }
+    /** The provider's count of open connections; -1 when it does not answer in 3 s. */
+    private int activeCons(final XtreamAccount a){
+        try{
+            return NET.submit(()->{
+                org.json.JSONObject u=new org.json.JSONObject(XtreamAccount.get(a.api(null,null))).getJSONObject("user_info");
+                return Integer.parseInt(String.valueOf(u.opt("active_cons")).trim());
+            }).get(3,java.util.concurrent.TimeUnit.SECONDS);
+        }catch(Exception e){return -1;}
+    }
+    /**
+     * Before opening a channel: while the provider still counts an old connection (active_cons >= 1), wait and look again every
+     * second, at most 8 s, with "جاري التجهيز" on screen; then open. An answer that does not come opens at once.
+     */
+    private void afterFree(final int mine,final Runnable open){
+        final XtreamAccount a=account;
+        new Thread(()->{
+            long t0=android.os.SystemClock.elapsedRealtime();
+            int cons;boolean waited=false;
+            while(true){
+                cons=activeCons(a);
+                if(cons<1||android.os.SystemClock.elapsedRealtime()-t0>=FREE_WAIT_MS)break;
+                if(!waited){waited=true;main.post(()->{if(mine==generation&&!isFinishing())statusNow("جاري التجهيز…");});}
+                try{Thread.sleep(1_000);}catch(InterruptedException e){break;}
+            }
+            final boolean w=waited;final int c=cons;final long took=android.os.SystemClock.elapsedRealtime()-t0;
+            main.post(()->{
+                if(mine!=generation||player==null||isFinishing())return;
+                if(w){log("انتظار تحرير الاتصال القديم: active_cons="+c+" بعد "+took/1000+" ث");statusClear();}
+                open.run();
+            });
+        }).start();
+    }
+    private boolean tsAllowed(){java.util.Set<String> ok=LivePlayer.allowed(this);return ok==null||ok.contains("ts");}
+    private boolean decoderHandled,tsOverride,zapSettle;
+    private long limitAt;
+    private static final java.util.concurrent.ExecutorService NET=java.util.concurrent.Executors.newCachedThreadPool();
     private static boolean isDecoderError(PlaybackException e){
         switch(e.errorCode){
             case PlaybackException.ERROR_CODE_DECODER_INIT_FAILED:case PlaybackException.ERROR_CODE_DECODING_FAILED:
@@ -452,12 +527,14 @@ public final class PlayerActivity extends Activity {
     }
     private void zap(int by){
         if(list.size()<2)return;
-        switchTo((index+by+list.size())%list.size());
+        switchTo((index+by+list.size())%list.size(),true);
     }
-    private void switchTo(int to){
+    private void switchTo(int to){switchTo(to,false);}
+    private void switchTo(int to,boolean quick){
         if(to<0||to>=list.size())return;
+        if(quick){holdDone=false;holdPicture();zapSettle=true;}   // the last picture is copied before the channel changes
         leaveChannel();
-        index=to;decoderHandled=false;
+        index=to;decoderHandled=false;tsOverride=false;
         attempt=0;failures=0;
         channelStartAt=android.os.SystemClock.elapsedRealtime();freezes.clear();instants.clear();gaveUp=false;backoffStep=0;healthySince=0;posMovedAt=android.os.SystemClock.elapsedRealtime();pictured=false;hlsForm=0;currentExt="";reconnectT0=0;releaseHold();
         log("تغيير القناة");

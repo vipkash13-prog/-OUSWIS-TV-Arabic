@@ -16,6 +16,8 @@ PKG = 'io.ouswis.tv.standalone'
 HITS = {}
 FAIL_CATS = set()   # categories whose channel list answers HTTP 500 (a section left empty for good in the video)
 FEED_MODE = ['ok']   # 'down': every competition but one answers HTTP 500, that one answers with no matches (what wiped the matches screen)
+ACTIVE = ['0']   # user_info.active_cons: the provider's count of open connections (a test raises it to look like an old connection still counted)
+T997 = []   # when 997.ts was asked for: its first two answers are HTTP 509 (the connection limit)
 ALLOWED = ['m3u8', 'ts']   # what the mock account's user_info says it may stream
 
 def adb(*args, check=True):
@@ -277,7 +279,7 @@ with tempfile.TemporaryDirectory() as temp:
                 elif q.get('username', [''])[0] == 'bad':   # a provider that refuses the login (HTTP 200, auth 0)
                     body = {'user_info': {'auth': 0, 'status': 'Disabled'}}
                 else:
-                    body = {'user_info': {'auth': 1, 'status': 'Active', 'max_connections': '1', 'active_cons': '0', 'allowed_output_formats': ALLOWED, 'exp_date': str(int(time.time()) + 86400 * 120)}}
+                    body = {'user_info': {'auth': 1, 'status': 'Active', 'max_connections': '1', 'active_cons': ACTIVE[0], 'allowed_output_formats': ALLOWED, 'exp_date': str(int(time.time()) + 86400 * 120)}}
                 payload = json.dumps(body).encode(); kind = 'application/json'
             elif url.path == '/live/demo/demo/998.ts':
                 # a live server: sends at display speed for 11 minutes (ffmpeg -re), so the player's buffer stays constant
@@ -292,6 +294,10 @@ with tempfile.TemporaryDirectory() as temp:
                 except (BrokenPipeError, ConnectionResetError): pass
                 finally: proc.kill()
                 return
+            elif url.path == '/live/demo/demo/997.ts':
+                T997.append(time.time())
+                if len(T997) <= 2: self.send_error(509); return
+                payload = data; kind = 'video/mp2t'
             elif url.path == '/live/demo/demo/999.ts':
                 payload = short_data; kind = 'video/mp2t'
             elif re.fullmatch(r'/live/demo/demo/[0-9]+\.ts', url.path):
@@ -429,6 +435,12 @@ with tempfile.TemporaryDirectory() as temp:
     assert colourful(img, (0.2, 0.2, 0.8, 0.8)) > 0.2, 'No picture after changing channel'
     no_crash('Zapping')
     note('PASS: OK plays full screen; CH+ / CH- move through the section (103, then back to 101) and the picture follows.')
+    # CH+ twice at once (101 -> 102 -> 103): the channel passed on the way never connects, only the one the viewer rested on
+    before_102, before_103 = HITS.get('102.ts', 0), HITS.get('103.ts', 0)
+    adb('shell', 'input keyevent 166; input keyevent 166'); time.sleep(6)
+    assert HITS.get('102.ts', 0) == before_102, 'A channel passed in a quick zap must not connect: ' + str(HITS)
+    assert HITS.get('103.ts', 0) > before_103, 'The channel the viewer rested on must connect: ' + str(HITS)
+    note('PASS: quick CH+ CH+ opened only the last channel (the passed one never connected).')
     keys('BACK', pause=1.5); front('LiveActivity')
     note('PASS: Back from the player returned to the channel list.')
 
@@ -469,13 +481,29 @@ with tempfile.TemporaryDirectory() as temp:
     note('PASS: a section whose list failed said "تعذّر تحميل القنوات", then filled by itself once the server answered.')
     keys('BACK', pause=1)
 
-    # 4. a channel whose .m3u8 is refused plays through the .ts fallback
+    # 4. "auto" is ts, always: a channel asked as m3u8 (whose m3u8 the server refuses) plays from .ts and the .m3u8 is never requested
     before = HITS.get('112.m3u8', 0)
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.PlayerActivity', '-e', 'id', '112', '-e', 'name', 'beIN Sports 3', '-e', 'ext', 'm3u8', '-e', 'num', '112')
     time.sleep(9); img = shot('redesign-player-fallback.png')
-    assert HITS.get('112.m3u8', 0) > before and HITS.get('112.ts', 0) > 0, HITS
-    assert colourful(img, (0.2, 0.2, 0.8, 0.8)) > 0.2, 'The .ts fallback did not play'
-    note('PASS: the refused .m3u8 was tried first, then the .ts fallback played.')
+    assert HITS.get('112.m3u8', 0) == before and HITS.get('112.ts', 0) > 0, 'Auto must be ts only: ' + str(HITS)
+    assert colourful(img, (0.2, 0.2, 0.8, 0.8)) > 0.2, 'The .ts did not play'
+    note('PASS: "auto" played .ts and never asked for the .m3u8.')
+    keys('BACK', pause=1)
+
+    # 4a. m3u8 chosen by hand + a channel whose m3u8 the server refuses (404): after the first failure ts is tried for that channel at once
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.PlayLogActivity'); wait_label('سجل التشغيل', 'the playback log page (set m3u8)')
+    keys('DPAD_CENTER', pause=0.8); assert any('m3u8 فقط' in l for l in labels()), 'The stream type must read m3u8 only'
+    keys('BACK', pause=1)
+    before_m3u8, before_ts = HITS.get('112.m3u8', 0), HITS.get('112.ts', 0)
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.PlayerActivity', '-e', 'id', '112', '-e', 'name', 'beIN Sports 3', '-e', 'ext', 'm3u8', '-e', 'num', '112')
+    time.sleep(9); img = shot('redesign-player-m3u8-then-ts.png')
+    assert before_m3u8 + 1 <= HITS.get('112.m3u8', 0) <= before_m3u8 + 4, 'With m3u8 chosen it is asked for, and only the player\'s own few retries follow: ' + str(HITS)
+    assert HITS.get('112.ts', 0) > before_ts and colourful(img, (0.2, 0.2, 0.8, 0.8)) > 0.2, 'After the refused m3u8 the same channel must play from ts: ' + str(HITS)
+    note('PASS: with m3u8 chosen, a refused m3u8 was asked for (%d time(s)) and the channel then played from ts.' % (HITS.get('112.m3u8', 0) - before_m3u8))
+    keys('BACK', pause=1)
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.PlayLogActivity'); wait_label('سجل التشغيل', 'the playback log page (back to auto)')
+    keys('DPAD_CENTER', pause=0.8); keys('DPAD_CENTER', pause=0.8)   # ts only, then auto
+    assert any('تلقائي' in l for l in labels()), 'The stream type must be back on auto'
     keys('BACK', pause=1)
 
     # 4b. the playback log (Settings > سجل التشغيل): what the player did, the provider's connection count, no login in it
@@ -565,6 +593,34 @@ with tempfile.TemporaryDirectory() as temp:
     assert 'إعادة اتصال' not in page and 'تجمّد' not in page and 'ENDED' not in page, 'A healthy paced stream must never be reconnected: ' + page[:900]
     assert conns == 1, 'One connection for the whole run, not %d' % conns
     note('PASS: a live-speed stream for 10 minutes (buffer constant): %d connection, no reconnect, no freeze event in the log.' % conns)
+    keys('BACK', pause=1)
+
+    # 4e. the provider still counts the old connection (active_cons=1): wait for it to drop (looking again every second, at most 8 s), then open
+    ACTIVE[0] = '1'
+    threading.Timer(3.0, lambda: ACTIVE.__setitem__(0, '0')).start()
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.PlayerActivity', '-e', 'id', '102', '-e', 'name', 'SSC 2 HD', '-e', 'ext', 'ts', '-e', 'num', '102')
+    time.sleep(12)
+    adb('shell', 'input', 'keyevent', 'KEYCODE_BACK'); time.sleep(1)
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.PlayLogActivity'); wait_label('سجل التشغيل', 'the playback log page (connection wait)')
+    page = ' || '.join(labels())
+    assert 'انتظار تحرير الاتصال القديم: active_cons=1' in page, 'The wait for the old connection must be logged: ' + page[:900]
+    assert 'ظهرت أول لقطة' in page, 'The channel must open once the count dropped: ' + page[:900]
+    note('PASS: while active_cons was 1 the player waited, then opened the channel once it dropped.')
+    keys('BACK', pause=1)
+
+    # 4f. HTTP 509 (the connection limit): not asked again at once, a wait of 3 s, logged as such, then it plays
+    T997.clear()
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.PlayerActivity', '-e', 'id', '997', '-e', 'name', 'Limit', '-e', 'ext', 'ts', '-e', 'num', '997')
+    time.sleep(16)
+    gaps = [round(b - a, 1) for a, b in zip(T997, T997[1:])]
+    img = shot('redesign-player-509.png')
+    adb('shell', 'input', 'keyevent', 'KEYCODE_BACK'); time.sleep(1)
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.PlayLogActivity'); wait_label('سجل التشغيل', 'the playback log page (509)')
+    page = ' || '.join(labels())
+    assert 'تجاوز حد الاتصال' in page, 'HTTP 509 must be logged as the connection limit: ' + page[:900]
+    assert len(T997) >= 2 and gaps[0] >= 2.8, 'After a 509 the next request must wait about 3 s, gaps: ' + str(gaps) + ' ' + page[:600]
+    assert colourful(img, (0.2, 0.2, 0.8, 0.8)) > 0.2, 'The channel must play once the limit let it through: ' + str(gaps)
+    note('PASS: HTTP 509 was logged as the connection limit, the next request waited %s s, then the channel played.' % gaps)
     keys('BACK', pause=1)
 
     # 4d. the account allows only ts (user_info.allowed_output_formats): a channel asked as m3u8 goes straight to ts, m3u8 is never requested
