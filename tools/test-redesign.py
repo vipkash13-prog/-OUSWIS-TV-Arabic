@@ -882,6 +882,7 @@ with tempfile.TemporaryDirectory() as temp:
     for _ in range(40):
         if any('تعذّر التحديث' in l for l in labels()): break
         time.sleep(3)
+    for _ in range(10): keys('DPAD_UP', pause=0.4)   # the selection of the earlier visit may have scrolled the grid down
     shot('redesign-matches-feed-down.png')
     after = ' | '.join(sorted(l for l in labels() if ' ضد ' in l and not l.startswith('تفاصيل')))
     assert 'غانا ضد الصومال' in after and 'سورينام ضد إريتريا' in after, 'The matches screen must keep the last data while the update fails: ' + after
