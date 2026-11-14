@@ -1160,7 +1160,11 @@ with tempfile.TemporaryDirectory() as temp:
     live_xml = after.replace('&quot;', '"')
     got = lambda key: sorted(int(i) for i in re.findall(r'"id":"(\d+)"', re.search(r'name="%s">(.*?)</string>' % key, live_xml, re.S)[1]))
     assert got('favorites') == [5110, 5201], 'Favourites must come back under B\'s numbers, the channel B lacks dropped: ' + str(got('favorites')) + live_xml[:500]
-    assert got('recent') == [5101] and got('last') == [5101], 'Recents and the last channel must come back under B\'s numbers: ' + str(got('recent')) + str(got('last'))
+    before_xml = before.replace('&quot;', '"')
+    a_recent = sorted(int(i) for i in re.findall(r'"id":"(\d+)"', re.search(r'name="recent">(.*?)</string>', before_xml, re.S)[1]))
+    a_last = sorted(int(i) for i in re.findall(r'"id":"(\d+)"', re.search(r'name="last">(.*?)</string>', before_xml, re.S)[1]))
+    assert a_recent and a_last, 'Test setup: A must have recents and a last channel: ' + before_xml[:300]
+    assert got('recent') == [i + 5000 for i in a_recent] and got('last') == [i + 5000 for i in a_last], 'Recents and the last channel must come back under B\'s numbers (A\'s +5000): A had ' + str(a_recent) + str(a_last) + ', B has ' + str(got('recent')) + str(got('last'))
     assert 'Gone Channel' not in live_xml and 'Ghost' not in live_xml, 'A channel with no match in B must be dropped, and only that one'
     plog = adb('shell', 'cat', files_dir + '/playlog.txt', check=False)
     assert 'تغيير الاشتراك' in plog, 'The change must be logged: ' + plog[-300:]
