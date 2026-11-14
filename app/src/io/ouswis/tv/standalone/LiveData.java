@@ -155,7 +155,7 @@ final class LiveData {
                     if(!fresh)main.post(()->tell(category,false));   // an old file is shown at once, the network answer follows
                 }
             }catch(Exception ignored){}
-            if(fresh){done(category);return;}
+            if(fresh){main.post(()->done(category));return;}
             try{
                 JSONArray rows=new JSONArray(XtreamAccount.get(account.api("get_live_streams","category_id="+XtreamAccount.enc(category))));
                 List<Channel> list=parse(rows);
