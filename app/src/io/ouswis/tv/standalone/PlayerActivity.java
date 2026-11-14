@@ -464,7 +464,7 @@ public final class PlayerActivity extends Activity {
         final int mine=++generation;
         final LiveData.Channel ch=list.get(index);
         lastProgressAt=now+LIMIT_WAIT_MS+FREE_WAIT_MS;lastPos=-1;bufferMovedAt=lastProgressAt;posMovedAt=lastProgressAt;   // the detectors wait
-        main.postDelayed(()->{if(mine==generation&&player!=null)player.stop();},200);   // the loader stops asking now; the last picture stays
+        try{player.stop();}catch(RuntimeException x){}   // the loader stops asking now (not 200 ms later: ExoPlayer retries at once); the last picture stays
         main.postDelayed(()->{
             if(mine!=generation||player==null)return;
             afterFree(mine,()->{statusClear();openStream(ch,currentExt.isEmpty()?LivePlayer.extension(this,ch,attempt):currentExt);});
