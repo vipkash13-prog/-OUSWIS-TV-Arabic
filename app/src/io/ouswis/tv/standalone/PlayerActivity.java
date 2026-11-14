@@ -49,6 +49,9 @@ public final class PlayerActivity extends Activity {
     private static final long BUFFERING_STUCK_MS=4_000;
     private static final long HEARTBEAT_MS=60_000;
     static final String EXTRA_MATCH_KEY="matchKey";
+    /** Ids (comma separated) the app itself proposed for the match: watching one of them is not the viewer's choice and is never saved. */
+    static final String EXTRA_NO_SAVE="noSave";
+    private final java.util.Set<String> noSave=new java.util.HashSet<>();
     private static final long KEEP_MATCH_MS=60_000;
     private String matchKey="";private String savedChannelId="";
     private long channelStartAt,lastProgressAt,lastPos=-1,lastHeartbeatAt,lastLoadLogAt;
@@ -123,6 +126,7 @@ public final class PlayerActivity extends Activity {
         list.add(first);index=0;
         data=new LiveData(this,account);
         matchKey=str(EXTRA_MATCH_KEY);
+        for(String id:str(EXTRA_NO_SAVE).split(","))if(!id.isEmpty())noSave.add(id);
         final String given=str(EXTRA_SECTION);
         if(given.isEmpty()){
             // Opened from a match: find the section the channel belongs to, so CH+/CH- have a list to move through.
@@ -174,6 +178,7 @@ public final class PlayerActivity extends Activity {
             @Override public void onVideoSizeChanged(VideoSize size){fit(size);}
             @Override public void onPlayerError(PlaybackException e){
                 log("توقف: "+describe(e)+" · "+playerState());
+                if(isDecoderError(e)){main.post(()->decoderFailed());return;}
                 if(e.errorCode==PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW){   // fell behind the live edge: jump back to it, not a failure
                     try{player.seekToDefaultPosition();player.prepare();player.setPlayWhenReady(true);lastProgressAt=android.os.SystemClock.elapsedRealtime();log("عودة إلى البث المباشر: seekToDefaultPosition + prepare");return;}
                     catch(RuntimeException x){log("تعذّر الرجوع للبث المباشر: "+x.getClass().getSimpleName());}
@@ -190,7 +195,7 @@ public final class PlayerActivity extends Activity {
                 int http=httpCode(error);
                 log("تعذّر تحميل جزء"+(canceled?" (ملغى)":"")+": "+causes(error)+(http>0?" HTTP "+http:"")+" · "+playerState());
             }
-            @Override public void onVideoCodecError(AnalyticsListener.EventTime t,Exception e){log("خطأ decoder للفيديو: "+e.getClass().getSimpleName());}
+            @Override public void onVideoCodecError(AnalyticsListener.EventTime t,Exception e){log("خطأ decoder للفيديو: "+e.getClass().getSimpleName());main.post(()->decoderFailed());}
             @Override public void onAudioCodecError(AnalyticsListener.EventTime t,Exception e){log("خطأ decoder للصوت: "+e.getClass().getSimpleName());}
         });
         playCurrent();
@@ -301,9 +306,9 @@ public final class PlayerActivity extends Activity {
         // opened from a match and still watching this channel after a minute: it is the channel that carries the match
         if(!matchKey.isEmpty()&&pictured&&index>=0&&index<list.size()&&channelStartAt!=0&&now-channelStartAt>KEEP_MATCH_MS){
             LiveData.Channel cur=list.get(index);
-            if(!cur.id.equals(savedChannelId)){
+            if(!cur.id.equals(savedChannelId)&&!noSave.contains(cur.id)){   // a channel the viewer chose, not the one the app proposed
                 savedChannelId=cur.id;MatchChannels.pickMatch(PlayerActivity.this,matchKey,cur);
-                log("حُفظت "+cur.name+" كقناة المباراة بعد أكثر من دقيقة مشاهدة");
+                log("حُفظت "+cur.name+" كقناة المباراة (اخترتها بنفسك وشاهدتها أكثر من دقيقة)");
             }
         }
         long freezeLimit=pictured?FREEZE_MS:FIRST_PICTURE_MS;   // the first picture may wait for the larger start buffer
@@ -425,10 +430,34 @@ public final class PlayerActivity extends Activity {
         final int mine=generation;
         main.postDelayed(()->{if(mine==generation)playCurrent();},failures<=1?300:2000);
     }
+    private boolean decoderHandled;
+    private static boolean isDecoderError(PlaybackException e){
+        switch(e.errorCode){
+            case PlaybackException.ERROR_CODE_DECODER_INIT_FAILED:case PlaybackException.ERROR_CODE_DECODING_FAILED:
+            case PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES:case PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED:return true;
+        }
+        for(Throwable t=e;t!=null;t=t.getCause())if(t.getClass().getSimpleName().contains("Decoder"))return true;
+        return false;
+    }
+    /** This device cannot decode the channel: it is marked unsupported (never linked to a match again) and its HD copy opens instead. */
+    private void decoderFailed(){
+        if(isFinishing()||decoderHandled||index<0||index>=list.size())return;
+        decoderHandled=true;
+        LiveData.Channel cur=list.get(index);
+        MatchChannels.markUnsupported(this,cur.id);
+        LiveData.Channel alt=MatchChannels.hdSibling(this,list,cur);
+        if(alt==null){log("القناة "+cur.name+" غير مدعومة على الجهاز (decoder) ولا توجد نسخة HD منها");statusNow("هذه القناة غير مدعومة على الجهاز");return;}
+        log("القناة "+cur.name+" غير مدعومة على الجهاز (decoder): الانتقال إلى "+alt.name);
+        switchTo(list.indexOf(alt));
+    }
     private void zap(int by){
         if(list.size()<2)return;
+        switchTo((index+by+list.size())%list.size());
+    }
+    private void switchTo(int to){
+        if(to<0||to>=list.size())return;
         leaveChannel();
-        index=(index+by+list.size())%list.size();
+        index=to;decoderHandled=false;
         attempt=0;failures=0;
         channelStartAt=android.os.SystemClock.elapsedRealtime();freezes.clear();instants.clear();gaveUp=false;backoffStep=0;healthySince=0;posMovedAt=android.os.SystemClock.elapsedRealtime();pictured=false;hlsForm=0;currentExt="";reconnectT0=0;releaseHold();
         log("تغيير القناة");

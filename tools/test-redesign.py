@@ -656,7 +656,12 @@ with tempfile.TemporaryDirectory() as temp:
     sug = wait_label('beIN SPORTS 7', 'the suggested channel in the sports list')
     assert any('مقترحة' in l for l in sug), 'The feed\'s channel must be highlighted as suggested: ' + str(sug)
     assert 'beIN SPORTS 7' in focused_label(), 'The suggested channel takes the focus: ' + focused_label()
-    keys('BACK', pause=1.5)
+    # item 2: watching the channel the app itself proposed is not the viewer's choice: never saved for the match
+    keys('DPAD_CENTER', pause=2); front('PlayerActivity')
+    time.sleep(66)
+    saved = adb('shell', 'cat', folder + '/ouswis-live.xml')
+    assert 'eng.1:8010' not in saved, 'The app\'s own proposal must not be saved after a minute: ' + saved[:600]
+    keys('BACK', pause=1.5); keys('BACK', pause=1.5)
     note('PASS: Moldova v Kazakhstan -> beIN SPORTS 5 (HD copy of two), Egypt v Malawi -> beIN Sports 1; a channel the guide contradicts (Spain v Greece) is not offered; a feed-only one (Tunisia v Libya) says اختر القناة and is highlighted, with the focus, in the sports list.')
     eri = wait_label('سورينام ضد إريتريا', 'the Suriname v Eritrea match (in no guide)')
     for _ in range(40):

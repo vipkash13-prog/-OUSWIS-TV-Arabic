@@ -73,6 +73,7 @@ public final class LiveActivity extends Activity {
     /** Ids (comma separated) of channels worth highlighting for a match the guide could not confirm. */
     static final String EXTRA_SUGGESTED="suggested";
     private final java.util.Set<String> suggested=new java.util.HashSet<>();
+    private String appFocus="";   // the channel the list focused by itself: playing it is accepting the app's proposal
     private String matchKey="";
     private boolean pendingFocus;
     private int previewGeneration;
@@ -181,7 +182,10 @@ public final class LiveActivity extends Activity {
     void play(LiveData.Channel c,String section){
         releasePreview();     // the full-screen player is the only one now
         // the pick is saved by the player once it has been watched for over a minute, not at the first press
-        startActivity(PlayerActivity.intent(this,c,section).putExtra(PlayerActivity.EXTRA_MATCH_KEY,matchKey));
+        java.util.Set<String> mine=new java.util.HashSet<>(suggested);
+        if(!appFocus.isEmpty())mine.add(appFocus);
+        startActivity(PlayerActivity.intent(this,c,section).putExtra(PlayerActivity.EXTRA_MATCH_KEY,matchKey)
+                .putExtra(PlayerActivity.EXTRA_NO_SAVE,android.text.TextUtils.join(",",mine)));
     }
     void askSearch(String current,java.util.function.Consumer<String> done){
         EditText input=new EditText(this);input.setSingleLine(true);input.setText(current);
@@ -272,7 +276,7 @@ public final class LiveActivity extends Activity {
                     pendingFocus=false;sel=MatchChannels.firstSports(shown());
                     List<LiveData.Channel> sh=shown();   // a suggested channel (the feed's broadcaster, the league's pick) comes first when this section has it
                     for(int i=0;i<sh.size();i++)if(suggested.contains(sh.get(i).id)){sel=i;break;}
-                    top=Math.max(0,sel-2);}   // the first beIN or SSC channel
+                    appFocus=sh.get(sel).id;top=Math.max(0,sel-2);}   // the first beIN or SSC channel
                 invalidate();wantGuide();schedulePreview();});
         }
         /** Programme lines under visible rows and the guide card of the selected channel. */
