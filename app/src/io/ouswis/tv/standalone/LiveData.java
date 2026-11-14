@@ -138,29 +138,53 @@ final class LiveData {
     void loadChannels(String category,Runnable changed){
         if(FAVORITES.equals(category)||RECENT.equals(category)){main.post(changed);return;}
         synchronized(channels){if(channels.containsKey(category)){main.post(changed);return;}}
+        synchronized(waiting){
+            List<Runnable> w=waiting.get(category);
+            if(w!=null){w.add(changed);return;}   // already on its way: one request, every screen is told
+            w=new ArrayList<>();w.add(changed);waiting.put(category,w);
+        }
         io.execute(()->{
-            boolean fresh=false;
+            boolean fresh=false,ok=false;
             try{
                 File f=file("cat-"+key()+"-"+category.replaceAll("[^A-Za-z0-9_-]",""));
                 if(f.exists()){
                     JSONObject o=new JSONObject(new String(Files.readAllBytes(f.toPath()),StandardCharsets.UTF_8));
                     putChannels(category,parse(o.getJSONArray("items")));
                     fresh=System.currentTimeMillis()-o.optLong("at")<DAY;
-                    main.post(changed);
+                    ok=true;
+                    main.post(()->tell(category,false));
                 }
             }catch(Exception ignored){}
-            if(fresh)return;
+            if(fresh){done(category);return;}
             try{
                 JSONArray rows=new JSONArray(XtreamAccount.get(account.api("get_live_streams","category_id="+XtreamAccount.enc(category))));
                 List<Channel> list=parse(rows);
-                putChannels(category,list);
+                putChannels(category,list);ok=true;
                 JSONArray slim=new JSONArray();for(Channel c:list)slim.put(c.json());
                 JSONObject o=new JSONObject().put("at",System.currentTimeMillis()).put("items",slim);
                 Files.write(file("cat-"+key()+"-"+category.replaceAll("[^A-Za-z0-9_-]","")).toPath(),o.toString().getBytes(StandardCharsets.UTF_8));
                 MatchChannels.invalidate();
             }catch(Exception e){AppLog.w("live channels failed");}
-            main.post(changed);
+            final boolean got=ok;
+            synchronized(channels){if(!channels.containsKey(category))failedCats.add(category);else failedCats.remove(category);}
+            main.post(()->{done(category);});
+            // nothing came and nothing was kept: try again by itself (3 times), so a section is never left empty for good
+            if(!got){
+                int n;synchronized(waiting){Integer t=tries.get(category);n=t==null?1:t+1;tries.put(category,n);}
+                if(n<=3)main.postDelayed(()->{synchronized(channels){if(channels.containsKey(category))return;}loadChannels(category,changed);},4000L*n);
+            }else synchronized(waiting){tries.remove(category);}
         });
+    }
+    private final java.util.Map<String,List<Runnable>> waiting=new java.util.HashMap<>();
+    private final java.util.Map<String,Integer> tries=new java.util.HashMap<>();
+    private final java.util.Set<String> failedCats=java.util.Collections.synchronizedSet(new java.util.HashSet<>());
+    /** The last attempt for this section found nothing: the screen says so instead of "loading" for ever. */
+    boolean channelsFailed(String category){return failedCats.contains(category);}
+    private void done(String category){tell(category,true);}
+    private void tell(String category,boolean last){
+        List<Runnable> w;
+        synchronized(waiting){w=last?waiting.remove(category):waiting.get(category);if(w==null)return;w=new ArrayList<>(w);}
+        for(Runnable r:w)r.run();
     }
     private void putChannels(String category,List<Channel> list){
         synchronized(channels){channels.put(category,list);}

@@ -342,7 +342,8 @@ public final class LiveActivity extends Activity {
             if(list.isEmpty()){
                 List<LiveData.Category> ss=secs;
                 boolean loading=cat>=2&&cat<ss.size()&&data.cached(ss.get(cat).id)==null;
-                Design.center(c,loading?"جارٍ تحميل القنوات…":cat==0?"لا توجد قنوات مفضلة: اضغط OK مطوّلاً على قناة":cat==1?"لا توجد قنوات حديثة":"لا توجد قنوات",1214,560,small);
+                boolean failedLoad=loading&&data.channelsFailed(ss.get(cat).id);
+                Design.center(c,failedLoad?"تعذّر تحميل القنوات · تُعاد المحاولة تلقائياً":loading?"جارٍ تحميل القنوات…":cat==0?"لا توجد قنوات مفضلة: اضغط OK مطوّلاً على قناة":cat==1?"لا توجد قنوات حديثة":"لا توجد قنوات",1214,560,small);
             }
             int rows=9;
             if(sel<top)top=sel;if(sel>=top+rows)top=sel-rows+1;if(top<0)top=0;
