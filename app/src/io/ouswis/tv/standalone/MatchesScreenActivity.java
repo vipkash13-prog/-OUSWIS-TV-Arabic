@@ -91,7 +91,7 @@ public final class MatchesScreenActivity extends Activity {
         if(!foreground||loading)return;
         loading=true;
         io.execute(()->{
-            MatchStore.refresh();   // the shared source: a failed or smaller answer never empties the list
+            MatchStore.refresh(getApplicationContext());   // the shared source: a failed or smaller answer never empties the list
             main.post(()->{
                 loading=false;
                 syncFromStore();
@@ -301,9 +301,9 @@ public final class MatchesScreenActivity extends Activity {
                 }
                 LiveData.Channel ch=channelFor(m);
                 if(done){goldText.setAlpha(alpha);Design.center(c,"ملخص",cx,top+130,goldText);goldText.setAlpha(255);}
-                else if(ch!=null)Design.center(c,(m.live()?"▶ ":"")+Design.fit(MatchChannels.shortName(ch.name),goldText,cardW-270),cx,top+130,goldText);
+                else if(ch!=null)Design.center(c,(m.live()?"▶ ":"")+Design.fit(MatchChannels.shortName(ch.name)+(MatchChannels.unconfirmed(m)?" · غير مؤكدة":""),goldText,cardW-270),cx,top+130,goldText);
                 else if(MatchChannels.resolved(getContext(),m)){small.setAlpha(200);Design.center(c,"اختر القناة",cx,top+130,small);small.setAlpha(255);}
-                a11y.add(card,m.home+" ضد "+m.away+" · "+m.competition+" · "+(m.live()?"مباشر "+scoreText(m):done?"انتهت "+scoreText(m):timeOf(m.kickoffMillis))+(ch!=null&&!done?" · "+MatchChannels.shortName(ch.name):!done&&MatchChannels.resolved(getContext(),m)?" · اختر القناة":""),focused,true);
+                a11y.add(card,m.home+" ضد "+m.away+" · "+m.competition+" · "+(m.live()?"مباشر "+scoreText(m):done?"انتهت "+scoreText(m):timeOf(m.kickoffMillis))+(ch!=null&&!done?" · "+MatchChannels.shortName(ch.name)+(MatchChannels.unconfirmed(m)?" · غير مؤكدة":""):!done&&MatchChannels.resolved(getContext(),m)?" · اختر القناة":""),focused,true);
                 if(focused)Design.focusRing(c,card,22,1,p);
             }
             panel(c,list);

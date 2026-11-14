@@ -175,8 +175,8 @@ public final class LiveActivity extends Activity {
 
     void play(LiveData.Channel c,String section){
         releasePreview();     // the full-screen player is the only one now
-        if(!matchKey.isEmpty()){MatchChannels.pickMatch(this,matchKey,c);android.widget.Toast.makeText(this,"حُفظت "+c.name+" لهذه المباراة",android.widget.Toast.LENGTH_SHORT).show();}
-        startActivity(PlayerActivity.intent(this,c,section));
+        // the pick is saved by the player once it has been watched for over a minute, not at the first press
+        startActivity(PlayerActivity.intent(this,c,section).putExtra(PlayerActivity.EXTRA_MATCH_KEY,matchKey));
     }
     void askSearch(String current,java.util.function.Consumer<String> done){
         EditText input=new EditText(this);input.setSingleLine(true);input.setText(current);

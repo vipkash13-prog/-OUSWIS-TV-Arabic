@@ -26,20 +26,27 @@ final class MatchStore {
     static int answered(){synchronized(LOCK){return answered;}}
 
     /** Loads the four sections once (blocking: not on the UI thread). A call right after another one reuses its answer. */
-    static void refresh(){
+    static void refresh(android.content.Context ctx){
         synchronized(REFRESH){
             long now=System.currentTimeMillis();
             if(now-attemptAt<MIN_GAP_MS)return;
             List<MatchCarouselView.Match> fresh=new ArrayList<>();
             int ok=0,bad=0;
+            String err="";
             try{
                 for(String section:new String[]{"live","upcoming","today","yesterday"}){
                     UpcomingMatches.Result r=UpcomingMatches.load(null,section);
-                    fresh.addAll(r.matches);ok+=r.answered;bad+=r.failed;
+                    fresh.addAll(r.matches);ok+=r.answered;bad+=r.failed;if(!r.error.isEmpty())err=r.error;
                 }
-            }catch(Throwable t){bad++;}
+            }catch(Throwable t){bad++;err=t.getClass().getSimpleName();}
             attemptAt=System.currentTimeMillis();
             merge(fresh,ok,bad,attemptAt);
+            try{   // every refresh, good or bad, goes into the playback log (the HTTP code is the feed's own answer, never an address)
+                int kept=snapshot().size();
+                String what=bad==0&&ok>0?"المباريات: تحديث ناجح · "+fresh.size()+" مباراة جديدة · "+ok+" دوري · المحفوظ "+kept
+                        :"المباريات: فشل التحديث · "+(err.isEmpty()?"لا ردّ":err)+" · نجح "+ok+" وفشل "+bad+" · المحفوظ "+kept+" مباراة";
+                PlayLog.add(ctx,-1,what);
+            }catch(Throwable ignored){}
         }
     }
 

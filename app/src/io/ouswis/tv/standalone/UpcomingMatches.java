@@ -66,6 +66,8 @@ public final class UpcomingMatches {
     public static final class Result {
         public final List<MatchCarouselView.Match> matches=new ArrayList<>();
         public int answered, failed;
+        /** The last failure in words ("eng.1: HTTP 500"), for the playback log; never an address. */
+        public String error="";
         /** A failed feed must not be presented as a confirmed empty schedule. */
         public boolean unavailable(){return matches.isEmpty()&&failed>0;}
     }
@@ -122,7 +124,7 @@ public final class UpcomingMatches {
                 result.answered++;
                 for(MatchCarouselView.Match m:rows)if(seen.add(m.key))result.matches.add(m);
             }catch(InterruptedException e){Thread.currentThread().interrupt();break;}
-            catch(Exception e){result.failed++;job.cancel(true);System.err.println("Matches feed: "+e);}
+            catch(Exception e){result.failed++;job.cancel(true);System.err.println("Matches feed: "+e);Throwable c=e.getCause()!=null?e.getCause():e;result.error=c instanceof java.util.concurrent.TimeoutException?"انتهت المهلة":String.valueOf(c.getMessage()==null?c.getClass().getSimpleName():c.getMessage());}
         }
         for(Future<?> job:jobs)if(!job.isDone())job.cancel(true);
         pool.shutdownNow();

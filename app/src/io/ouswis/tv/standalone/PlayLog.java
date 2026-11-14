@@ -13,12 +13,12 @@ import java.util.Locale;
 
 /**
  * The playback log: what the player did and why it stopped, newest last, kept in a small file so the Settings page
- * "سجل التشغيل" can show the last 20 events. It never holds an address, a user name or a password: the callers pass
+ * "سجل التشغيل" can show the last 100 events. It never holds an address, a user name or a password: the callers pass
  * only codes and numbers, and {@link #clean} blanks the login if one slips into a message.
  */
 final class PlayLog {
     private PlayLog() {}
-    static final int SHOWN = 20, KEPT = 60;
+    static final int SHOWN = 100, KEPT = 300;
     private static final Object LOCK = new Object();
 
     private static File file(Context c) { return new File(c.getApplicationContext().getFilesDir(), "playlog.txt"); }

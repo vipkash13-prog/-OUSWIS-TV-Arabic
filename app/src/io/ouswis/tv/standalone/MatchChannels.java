@@ -19,6 +19,7 @@ import org.json.JSONObject;
  */
 final class MatchChannels {
     private MatchChannels(){}
+    private static final Pattern FHD=Pattern.compile("(?i)\\b(fhd|1080p?)\\b"),HD_ONLY=Pattern.compile("(?i)\\bhd\\b");
     private static final Pattern QUALITY=Pattern.compile("(?i)\\b(FHD|UHD|HD|SD|4K)\\b");
 
     /** The leagues the settings table lists: {name shown, text that identifies it in a match's competition}. */
@@ -40,7 +41,7 @@ final class MatchChannels {
     }
     private static JSONObject matchPicks(Context c){
         JSONObject j=matchPicksJson;
-        if(j==null){try{j=new JSONObject(store(c).getString("matchPicks","{}"));}catch(Exception e){j=new JSONObject();}matchPicksJson=j;}
+        if(j==null){try{j=new JSONObject(store(c).getString("matchPicks2","{}"));}catch(Exception e){j=new JSONObject();}matchPicksJson=j;}
         return j;
     }
     static LiveData.Channel picked(Context c,String competition){
@@ -69,10 +70,10 @@ final class MatchChannels {
     static void pickMatch(Context c,String matchKey,LiveData.Channel ch){
         if(matchKey==null||matchKey.isEmpty()||ch==null)return;
         try{
-            JSONObject picks=new JSONObject(store(c).getString("matchPicks","{}"));
+            JSONObject picks=new JSONObject(store(c).getString("matchPicks2","{}"));
             if(picks.length()>60)picks=new JSONObject();   // old matches don't matter
             picks.put(matchKey,ch.json());
-            store(c).edit().putString("matchPicks",picks.toString()).apply();
+            store(c).edit().putString("matchPicks2",picks.toString()).apply();
         }catch(Exception ignored){}
         matchPicksJson=null;
         clearAnswers();fire();
@@ -109,7 +110,10 @@ final class MatchChannels {
     }
     /** The files changed (a category finished downloading): earlier "no channel" answers may be wrong now. */
     static void invalidate(){clearAnswers();guideAt=0;fire();}
-    private static void clearAnswers(){confirmed.clear();merged=null;}
+    private static void clearAnswers(){confirmed.clear();unconfirmedKeys.clear();merged=null;}
+    private static final java.util.Set<String> unconfirmedKeys=java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<String,Boolean>());
+    /** True when the channel of this match comes only from the feed's broadcaster or the league's pick, not from the guide or the viewer. */
+    static boolean unconfirmed(MatchCarouselView.Match m){return m!=null&&unconfirmedKeys.contains(m.key);}
 
     // MARK: the guide decides
 
@@ -198,7 +202,8 @@ final class MatchChannels {
     }
 
     static int qualityPenalty(String name){return Titles.qualityPenalty(name);}
-    private static int rank(LiveData.Channel ch){return qualityPenalty(ch.name)*1_000_000+number(canonical(ch.name))*1000+(ch.name.hashCode()&511);}   // ties go the same way every time
+    // HD first, then FHD, then a name with no tag, then SD; 4K and H.265 last
+    private static int rank(LiveData.Channel ch){return qualityPenalty(ch.name)*1_000_000+(FHD.matcher(ch.name==null?"":ch.name).find()&&!HD_ONLY.matcher(ch.name).find()?500_000:0)+number(canonical(ch.name))*1000+(ch.name.hashCode()&511);}   // ties go the same way every time
     private static final java.util.Map<String,java.util.List<LiveData.Channel>> optionsMap=new java.util.concurrent.ConcurrentHashMap<>();
     /** Every sports channel whose programme names both teams near the kickoff, best first (HD before 4K). Uses only what the last scan read; off the UI thread. */
     static java.util.List<LiveData.Channel> guideOptions(MatchCarouselView.Match m){
@@ -260,8 +265,11 @@ final class MatchChannels {
             resolver.execute(()->{
                 try{
                     LiveData.Channel ch=fromGuide(m);
-                    if(ch==null)ch=fromBroadcast(m);
-                    if(ch==null)ch=picked(app,m.competition);
+                    if(ch==null){
+                        ch=fromBroadcast(m);
+                        if(ch==null)ch=picked(app,m.competition);
+                        if(ch!=null)unconfirmedKeys.add(m.key);   // the API's channel, not seen in the guide
+                    }
                     confirmed.put(m.key,ch==null?NONE:ch);
                     fire();
                 }catch(Throwable ignored){}finally{resolving.remove(m.key);}

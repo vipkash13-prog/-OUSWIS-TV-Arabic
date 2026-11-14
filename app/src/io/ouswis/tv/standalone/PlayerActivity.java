@@ -43,9 +43,14 @@ public final class PlayerActivity extends Activity {
     private int attempt,failures,generation;
     private boolean started;
     // Diagnostics and the freeze watch (see PlayLog): all times are SystemClock.elapsedRealtime
-    private static final long FREEZE_MS=8_000;          // no progress for this long: prepare the same channel again
-    private static final int FREEZE_TRIES=3;            // at most this many restarts ...
-    private static final long FREEZE_WINDOW_MS=120_000; // ... within this time, then a message
+    private static final long FREEZE_MS=8_000;          // no progress for this long: reconnect
+    private static final long FIRST_PICTURE_MS=25_000;  // ... but a channel that has not shown a picture yet may still be filling its start buffer
+    private static final long HEALTHY_MS=3_000;        // this long of playing resets the waiting between reconnects
+    private static final long BUFFERING_STUCK_MS=4_000;
+    private static final long HEARTBEAT_MS=60_000;
+    static final String EXTRA_MATCH_KEY="matchKey";
+    private static final long KEEP_MATCH_MS=60_000;
+    private String matchKey="";private String savedChannelId="";
     private long channelStartAt,lastProgressAt,lastPos=-1,lastHeartbeatAt,lastLoadLogAt;
     private final List<Long> freezes=new ArrayList<>();
     private boolean gaveUp;
@@ -53,7 +58,8 @@ public final class PlayerActivity extends Activity {
     private static final long STALL_MS=6_000;          // the buffer isn't being filled for this long: reconnect
     private static final long STATUS_DELAY_MS=3_000;   // "loading" shows only if a reconnect or a rebuffer lasts this long
     private static final long CLOSE_GAP_MS=250;        // the old connection is closed this long before the new one opens
-    private long reconnectT0,lastBufferedPos=-1,bufferMovedAt;
+    private long reconnectT0,lastBufferedPos=-1,bufferMovedAt,posMovedAt,healthySince;
+    private int backoffStep;                           // consecutive reconnects without a healthy run: 0, 1, 2, 4, 8, 10, 10 … seconds of waiting
     private final List<Long> instants=new ArrayList<>();
     private boolean pictured;                          // this channel has shown a picture
     private String currentExt="";
@@ -108,14 +114,15 @@ public final class PlayerActivity extends Activity {
         label=new TextView(this);label.setTextColor(Color.WHITE);label.setTextSize(30);label.setTypeface(Design.bold());
         label.setBackgroundColor(0xB0000000);label.setPadding(40,22,40,22);label.setGravity(Gravity.CENTER_VERTICAL|Gravity.RIGHT);
         root.addView(label,new FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM));
-        status=new TextView(this);status.setTextColor(Color.WHITE);status.setTextSize(26);status.setTypeface(Design.regular());
-        status.setBackgroundColor(0x99000000);status.setPadding(36,18,36,18);
-        FrameLayout.LayoutParams sp=new FrameLayout.LayoutParams(-2,-2,Gravity.CENTER);root.addView(status,sp);
+        status=new TextView(this);status.setTextColor(Color.WHITE);status.setTextSize(16);status.setTypeface(Design.regular());
+        status.setBackgroundColor(0x99000000);status.setPadding(20,8,20,8);
+        FrameLayout.LayoutParams sp=new FrameLayout.LayoutParams(-2,-2,Gravity.TOP|Gravity.LEFT);sp.setMargins(32,28,0,0);root.addView(status,sp);   // small, in the corner: it never covers the picture or stops the retries
         setContentView(root);
         String id=getIntent().getStringExtra(EXTRA_ID);
         LiveData.Channel first=new LiveData.Channel(id==null?"":id,str(EXTRA_NAME),str(EXTRA_ICON),str(EXTRA_NUM),str(EXTRA_EXT).isEmpty()?"m3u8":str(EXTRA_EXT));
         list.add(first);index=0;
         data=new LiveData(this,account);
+        matchKey=str(EXTRA_MATCH_KEY);
         final String given=str(EXTRA_SECTION);
         if(given.isEmpty()){
             // Opened from a match: find the section the channel belongs to, so CH+/CH- have a list to move through.
@@ -147,7 +154,7 @@ public final class PlayerActivity extends Activity {
         if(account==null)return;
         player=LivePlayer.create(this,true);   // the only player: the preview's is released first
         player.setVideoSurfaceView(surface);
-        channelStartAt=android.os.SystemClock.elapsedRealtime();freezes.clear();instants.clear();gaveUp=false;pictured=false;hlsForm=0;
+        channelStartAt=android.os.SystemClock.elapsedRealtime();freezes.clear();instants.clear();gaveUp=false;backoffStep=0;healthySince=0;posMovedAt=android.os.SystemClock.elapsedRealtime();pictured=false;hlsForm=0;
         log("فتح ملء الشاشة · نوع البث: "+LivePlayer.streamType(this));
         logAccountInfo();
         player.addListener(new Player.Listener(){
@@ -268,47 +275,62 @@ public final class PlayerActivity extends Activity {
         if(player==null||isFinishing())return;
         long now=android.os.SystemClock.elapsedRealtime();
         long pos=player.getCurrentPosition();
-        if(player.getPlaybackState()==Player.STATE_READY&&player.getPlayWhenReady()&&pos!=lastPos)lastProgressAt=now;
+        int st=player.getPlaybackState();
+        boolean moved=pos!=lastPos;
+        if(st==Player.STATE_READY&&player.getPlayWhenReady()&&moved){
+            lastProgressAt=now;
+            if(healthySince==0)healthySince=now;
+            if(now-healthySince>=HEALTHY_MS)backoffStep=0;   // it has played for a while: the next failure starts again at once
+        }else if(st!=Player.STATE_READY)healthySince=0;
+        if(moved)posMovedAt=now;
         lastPos=pos;
         long bp=player.getBufferedPosition();
         if(bp!=lastBufferedPos){lastBufferedPos=bp;bufferMovedAt=now;}
-        int st=player.getPlaybackState();
-        if(pictured&&!gaveUp&&started&&(st==Player.STATE_READY||st==Player.STATE_BUFFERING)&&player.getTotalBufferedDuration()<30_000&&now-bufferMovedAt>STALL_MS){
-            reconnect("توقف الإرسال: المخزون لا يمتلئ منذ "+(now-bufferMovedAt)/1000+" ث");
+        // A live server sends at the speed of the picture, so a buffer that stays at 4-6 s while the position moves is a healthy
+        // stream. Only two cases are a stopped feed: (1) the end of the buffer has not moved for 6 s and less than a second is
+        // left to play, (2) the position has not moved for 4 s while buffering and nothing arrived in those 4 s either.
+        // (ENDED is handled by the player's listener.)
+        if(pictured&&started&&(st==Player.STATE_READY||st==Player.STATE_BUFFERING)){
+            long left=bp-pos;
+            if(now-bufferMovedAt>STALL_MS&&left<1000)
+                reconnect("توقف الإرسال: نهاية المخزون ثابتة منذ "+(now-bufferMovedAt)/1000+" ث والمتبقي "+Math.max(0,left)+" مللي ثانية");
+            else if(st==Player.STATE_BUFFERING&&now-posMovedAt>BUFFERING_STUCK_MS&&now-bufferMovedAt>BUFFERING_STUCK_MS)
+                reconnect("توقف الإرسال: تحميل مؤقت بلا تقدّم منذ "+(now-posMovedAt)/1000+" ث");
         }
-        if(now-lastHeartbeatAt>=15_000){lastHeartbeatAt=now;log("نبض: "+playerState());}
-        if(!gaveUp&&started&&now-lastProgressAt>FREEZE_MS)frozen(now);
+        if(now-lastHeartbeatAt>=HEARTBEAT_MS){lastHeartbeatAt=now;log("نبض: "+playerState());}
+        // opened from a match and still watching this channel after a minute: it is the channel that carries the match
+        if(!matchKey.isEmpty()&&pictured&&index>=0&&index<list.size()&&channelStartAt!=0&&now-channelStartAt>KEEP_MATCH_MS){
+            LiveData.Channel cur=list.get(index);
+            if(!cur.id.equals(savedChannelId)){
+                savedChannelId=cur.id;MatchChannels.pickMatch(this,matchKey,cur);
+                log("حُفظت "+cur.name+" كقناة المباراة بعد أكثر من دقيقة مشاهدة");
+            }
+        }
+        long freezeLimit=pictured?FREEZE_MS:FIRST_PICTURE_MS;   // the first picture may wait for the larger start buffer
+        if(started&&now-lastProgressAt>freezeLimit)frozen(now);
         main.postDelayed(this,1000);
     }};
-    /** No progress for FREEZE_MS: prepare the same channel again, up to FREEZE_TRIES times in FREEZE_WINDOW_MS, then say so. */
+    /** No progress at all: same as a closed stream, join the channel again (with the growing wait), never give up. */
     private void frozen(long now){
-        for(int i=freezes.size()-1;i>=0;i--)if(now-freezes.get(i)>FREEZE_WINDOW_MS)freezes.remove(i);
-        if(freezes.size()>=FREEZE_TRIES){
-            gaveUp=true;
-            log("تجمّد ولم تنفع "+FREEZE_TRIES+" محاولات: "+playerState());
-            statusNow("توقّف البث. جرّب قناة أخرى أو غيّر نوع البث من الإعدادات > سجل التشغيل");
-            return;
-        }
-        freezes.add(now);
-        log("تجمّد "+FREEZE_MS/1000+" ث بلا تقدّم ("+playerState()+") — إعادة تحضير "+freezes.size()+"/"+FREEZE_TRIES);
         logAccountInfo();
-        restart(0);
+        reconnect("تجمّد بلا تقدّم ("+playerState()+")");
     }
 
     /**
-     * The server closed the stream (or stopped sending): join the same channel again at once, not counted among the
-     * freeze retries, with the last picture left on screen. Five of these within 20 seconds count as a freeze instead,
-     * so a server that refuses can't be hammered.
+     * The server closed the stream, stopped sending or the picture froze: join the same channel again, the first time at
+     * once and then after 1, 2, 4, 8 and at most 10 seconds, for as long as the screen is open. Never counted as a failure
+     * that ends the tries; a small message in the corner says so. The last picture stays on screen.
      */
     private void reconnect(String why){
-        if(player==null||isFinishing()||gaveUp)return;
+        if(player==null||isFinishing())return;
         long now=android.os.SystemClock.elapsedRealtime();
-        for(int i=instants.size()-1;i>=0;i--)if(now-instants.get(i)>20_000)instants.remove(i);
-        if(instants.size()>=5){log("إعادة اتصال متكررة (5 خلال 20 ث): "+why);instants.clear();frozen(now);return;}
-        instants.add(now);
+        long wait=backoffStep==0?0:Math.min(10_000L,1000L<<(backoffStep-1));
+        backoffStep++;
         reconnectT0=now;
-        log("إعادة اتصال فورية: "+why+" · "+playerState());
-        restart(0);
+        log((wait>0?"إعادة اتصال بعد انتظار "+wait/1000+" ث: ":"إعادة اتصال فورية: ")+why+" · "+playerState()+" · المحاولة "+backoffStep);
+        healthySince=0;
+        if(wait>0)statusNow("إعادة الاتصال… المحاولة "+backoffStep);
+        restart(wait);
     }
 
     /** Closes the old connection, waits `gap` ms, then opens the same channel again; no loading text unless it lasts. */
@@ -331,7 +353,7 @@ public final class PlayerActivity extends Activity {
         final int mine=++generation;
         final LiveData.Channel ch=list.get(index);
         long now=android.os.SystemClock.elapsedRealtime();
-        lastProgressAt=now;lastPos=-1;lastBufferedPos=-1;bufferMovedAt=now;
+        lastProgressAt=now+gap;lastPos=-1;lastBufferedPos=-1;bufferMovedAt=now+gap;posMovedAt=now+gap;   // the detectors wait while a reconnect waits
         statusLater("جارٍ إعادة الاتصال…",STATUS_DELAY_MS);
         // no stop()/clearMediaItems(): they release the video codec first and the surface can go black; setMediaItem() in openStream
         // replaces the source on the same player (the old connection is closed by it) and the last frame stays until the new one is drawn
@@ -405,7 +427,7 @@ public final class PlayerActivity extends Activity {
         leaveChannel();
         index=(index+by+list.size())%list.size();
         attempt=0;failures=0;
-        channelStartAt=android.os.SystemClock.elapsedRealtime();freezes.clear();instants.clear();gaveUp=false;pictured=false;hlsForm=0;currentExt="";reconnectT0=0;releaseHold();
+        channelStartAt=android.os.SystemClock.elapsedRealtime();freezes.clear();instants.clear();gaveUp=false;backoffStep=0;healthySince=0;posMovedAt=android.os.SystemClock.elapsedRealtime();pictured=false;hlsForm=0;currentExt="";reconnectT0=0;releaseHold();
         log("تغيير القناة");
         playCurrent();
     }

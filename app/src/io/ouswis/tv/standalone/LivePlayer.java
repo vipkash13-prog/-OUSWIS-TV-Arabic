@@ -37,7 +37,8 @@ final class LivePlayer {
         if(full){
             ActivityManager am=(ActivityManager)c.getSystemService(Context.ACTIVITY_SERVICE);
             int mb=am!=null&&am.isLowRamDevice()?24:48;
-            lb.setBufferDurationsMs(15_000,50_000,1_000,2_500).setTargetBufferBytes(mb*1024*1024).setPrioritizeTimeOverSizeThresholds(false);
+            lb.setBufferDurationsMs(20_000,60_000,8_000,10_000)   // wait for 8 s before the first picture and 10 s after a stall, even if the channel is 10-15 s behind live
+               .setTargetBufferBytes(mb*1024*1024).setPrioritizeTimeOverSizeThresholds(false);
         }else lb.setBufferDurationsMs(4_000,16_000,1_500,3_000);
         current=new ExoPlayer.Builder(c.getApplicationContext())
                 .setMediaSourceFactory(new DefaultMediaSourceFactory(new DefaultDataSource.Factory(c.getApplicationContext(),http)))
@@ -115,7 +116,7 @@ final class LivePlayer {
         if(ext.equals("m3u8")){
             b.setMimeType(MimeTypes.APPLICATION_M3U8);
             if(full)b.setLiveConfiguration(new MediaItem.LiveConfiguration.Builder()
-                    .setTargetOffsetMs(6_500).setMinOffsetMs(5_000).setMaxOffsetMs(8_000).build());
+                    .setTargetOffsetMs(12_000).setMinOffsetMs(10_000).setMaxOffsetMs(15_000).build());
         }
         return b.build();
     }

@@ -199,13 +199,16 @@ with tempfile.TemporaryDirectory() as temp:
     short_data = short_clip.read_bytes()
     CATS = [('18', 'US APPLE TV'), ('10', 'FR|TF1 HD'), ('14', 'FR| BEIN SPORTS'), ('15', 'BE| SPORT'), ('16', 'US| NEWS'), ('11', 'رياضة'), ('12', 'أخبار'), ('13', 'أفلام'), ('17', 'AR| عام')]   # the foreign ones are listed first and two of them say sport: the Arabic ones must still lead
     STREAMS = {'11': [('101', 'SSC 1 HD', 'ts'), ('102', 'SSC 2 HD', 'ts'), ('103', 'SSC 3 HD', 'ts'), ('110', 'beIN Sports 1 HD', 'ts'),
-                      ('111', 'beIN Sports 2', 'ts'), ('112', 'beIN Sports 3', 'm3u8'), ('113', 'FR| beIN SPORTS 4 HD (H.265)', 'ts'), ('120', 'AD Sports 1', 'ts'), ('105', 'beIN SPORTS XTRA 1HD', 'ts')],
+                      ('111', 'beIN Sports 2', 'ts'), ('112', 'beIN Sports 3', 'm3u8'), ('114', 'beIN SPORTS 5 HD', 'ts'), ('115', 'beIN SPORTS 6 SD', 'ts'), ('117', 'beIN SPORTS 5 SD', 'ts'), ('113', 'FR| beIN SPORTS 4 HD (H.265)', 'ts'), ('120', 'AD Sports 1', 'ts'), ('105', 'beIN SPORTS XTRA 1HD', 'ts')],
                '12': [('201', 'Al Arabiya', 'ts'), ('202', 'Sky News Arabia', 'ts')], '13': [('301', 'Movies One', 'ts')], '10': [('401', 'TF1 HD', 'ts')], '14': [], '18': [('811', 'Apple TV Test', 'ts')], '15': [], '16': [('701', 'US News 1', 'ts')], '17': [('801', 'MBC 1', 'ts')]}
     HOUR = 3600
     # guide programmes other than the default four: (title, start offset, stop offset) in seconds from now
     EPGX = {'120': [('(L) الهلال × النصر · دوري روشن', -1800, 1800), ('NBA: Philadelphia 76ers vs Boston Celtics', -1200, 6000), ('NBA Highlights', 6000, 9600)],
             '103': [('Philadelphia 76ers vs Boston Celtics - NBA', -900, 6300), ('Volleyball: Italy vs Poland', 6300, 9900), ('Live: England vs Croatia - International Friendly', 5 * HOUR, 5 * HOUR + 6000)],   # the last one: the same match shown again 5 h later
-            '110': [('Live: England vs Croatia - International Friendly', -1200, 6000), ('Studio', 6000, 9600)],
+            '110': [('Live: England vs Croatia - International Friendly', -1200, 6000), ('Studio', 6000, 9600), ('Live: Egypt vs Malawi - Africa Cup Qualifiers', 1500, 8100)],
+            '114': [('Live: Moldova vs Kazakhstan - UEFA Nations League', 1200, 7800)],   # the real home of Moldova v Kazakhstan: beIN SPORTS 5 HD
+            '117': [('Live: Moldova vs Kazakhstan - UEFA Nations League', 1200, 7800)],   # the same match on the SD copy: HD must win
+            '115': [('Highlights Show', 1200, 7800)],   # beIN SPORTS 6 SD: the channel an old stale pick had linked
             '112': [('England vs Croatia - Classic', -600, 6600), ('Spain vs Germany - Highlights', 6600, 10200)],
             '102': [('Real Madrid vs Barcelona - Replay', -600, 6600), ('ريال مدريد × برشلونة — إعادة', 6600, 10200)],
             '105': [('Live: Senegal vs Sudan - Africa Cup of Nations Qualifying', -9360, 1440), ('Brazil vs Chile - Stories', 1500, 8100)]}   # Senegal v Sudan began 2.6 h ago and the feed has no result: over; Stories: not a match
@@ -230,18 +233,18 @@ with tempfile.TemporaryDirectory() as temp:
                                 'competitions': [{'competitors': [team(home, 'home'), team(away, 'away')], 'broadcasts': []}]}
                     # the match the user reported: it is in beIN SPORTS 2 HD's guide as "غانا × الصومال"; the second one is in no guide
                     events = [ev('9001', 'Ghana', 'Somalia', 10), ev('9002', 'Suriname', 'Eritrea', 50)]
-                def fx(eid, home, away, state, offset_min, hs='0', as_='0', goals=False):
+                def fx(eid, home, away, state, offset_min, hs='0', as_='0', goals=False, bc='Sky Sports'):
                     kick = time.strftime('%Y-%m-%dT%H:%MZ', time.gmtime(time.time() + offset_min * 60))
                     team = lambda n, ha, sc: {'homeAway': ha, 'score': sc, 'team': {'id': n[:3], 'displayName': n, 'logo': ''}}
                     name = {'in': 'STATUS_FIRST_HALF', 'post': 'STATUS_FULL_TIME', 'pre': 'STATUS_SCHEDULED'}[state]
-                    comp = {'competitors': [team(home, 'home', hs), team(away, 'away', as_)], 'broadcasts': [{'names': ['Sky Sports']}]}
+                    comp = {'competitors': [team(home, 'home', hs), team(away, 'away', as_)], 'broadcasts': [{'names': [bc]}]}
                     if goals: comp['details'] = [{'scoringPlay': True, 'team': {'id': home[:3]}, 'athletesInvolved': [{'displayName': 'Salah'}], 'clock': {'displayValue': "23'"}, 'type': {'text': 'Goal'}},
                                                  {'scoringPlay': True, 'team': {'id': away[:3]}, 'athletesInvolved': [], 'clock': {}, 'type': {'text': 'Own Goal'}}]
                     return {'id': eid, 'date': kick, 'status': {'displayClock': '', 'type': {'state': state, 'name': name, 'shortDetail': 'FT' if state == 'post' else ''}}, 'competitions': [comp]}
                 lname = 'English Premier League'
                 if slug == 'eng.1' and FEED_MODE[0] == 'ok' and q.get('dates', [''])[0] == time.strftime('%Y%m', utc):
                     # a finished match with goals (today and yesterday), one tomorrow, one later today; a team name the table lacks
-                    events = [fx('8001', 'Liverpool', 'Manchester City', 'post', -240, '2', '1', goals=True), fx('8002', 'Wolverhampton Wanderers', 'Fulham FC XYZ', 'post', -1700, '0', '0'),
+                    events = [fx('8007', 'Moldova', 'Kazakhstan', 'pre', 20), fx('8008', 'Egypt', 'Malawi', 'pre', 25), fx('8009', 'Spain', 'Greece', 'pre', 40, bc='beIN Sports 3'), fx('8001', 'Liverpool', 'Manchester City', 'post', -240, '2', '1', goals=True), fx('8002', 'Wolverhampton Wanderers', 'Fulham FC XYZ', 'post', -1700, '0', '0'),
                               fx('8003', 'Arsenal', 'Chelsea', 'pre', 24 * 60 + 5), fx('8004', 'Tottenham Hotspur', 'Everton', 'pre', 150), fx('8005', 'Orléans', 'Dijon FCO', 'post', -30, '1', '0'), fx('8006', 'Rwanda', 'Malawi', 'post', -45, '0', '0')]   # finished a moment ago: on today's list whatever the hour
                 body = {'leagues': [{'name': lname if slug == 'eng.1' else 'Africa Cup of Nations Qualifying', 'logos': []}], 'events': events}
                 payload = json.dumps(body).encode(); kind = 'application/json'
@@ -270,6 +273,19 @@ with tempfile.TemporaryDirectory() as temp:
                 else:
                     body = {'user_info': {'auth': 1, 'status': 'Active', 'max_connections': '1', 'active_cons': '0', 'allowed_output_formats': ALLOWED, 'exp_date': str(int(time.time()) + 86400 * 120)}}
                 payload = json.dumps(body).encode(); kind = 'application/json'
+            elif url.path == '/live/demo/demo/998.ts':
+                # a live server: sends at display speed for 11 minutes (ffmpeg -re), so the player's buffer stays constant
+                self.send_response(200); self.send_header('Content-Type', 'video/mp2t'); self.end_headers()
+                proc = subprocess.Popen(['ffmpeg', '-v', 'error', '-re', '-f', 'lavfi', '-i', 'testsrc=s=640x360:r=10', '-t', '660', '-c:v', 'libx264', '-preset', 'ultrafast',
+                                         '-pix_fmt', 'yuv420p', '-g', '10', '-f', 'mpegts', '-muxrate', '800k', '-'], stdout=subprocess.PIPE)
+                try:
+                    while True:
+                        chunk = proc.stdout.read(4096)
+                        if not chunk: break
+                        self.wfile.write(chunk); self.wfile.flush()
+                except (BrokenPipeError, ConnectionResetError): pass
+                finally: proc.kill()
+                return
             elif url.path == '/live/demo/demo/999.ts':
                 payload = short_data; kind = 'video/mp2t'
             elif re.fullmatch(r'/live/demo/demo/[0-9]+\.ts', url.path):
@@ -523,6 +539,26 @@ with tempfile.TemporaryDirectory() as temp:
     note('PASS: when the stream ended the same channel was joined again at once (%d times), the last picture stayed (%d blank of %d frames), no loading text, back in %s ms.' % (reconnects, blank, frames, ms))
     keys('BACK', pause=1)
 
+    # 0. a healthy live stream: the server sends at display speed, so the buffer stays at a constant few seconds while the position advances.
+    # For 10 minutes that must never be taken for a stall: zero reconnects.
+    hits998 = HITS.get('998.ts', 0)
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.PlayerActivity', '-e', 'id', '998', '-e', 'name', 'Live paced', '-e', 'ext', 'ts', '-e', 'num', '998')
+    t_live = time.time(); alive = True
+    while time.time() - t_live < 600:
+        time.sleep(30)
+        front = adb('shell', 'dumpsys', 'activity', 'activities', check=False).split('topResumedActivity')[-1][:200]
+        assert 'PlayerActivity' in front, 'The player must stay open for the whole run: ' + front
+    conns = HITS.get('998.ts', 0) - hits998
+    keys('BACK', pause=1)
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.PlayLogActivity'); wait_label('سجل التشغيل', 'the playback log page after the 10 minute run')
+    time.sleep(1)
+    page = ' || '.join(labels())
+    note('10 minute paced stream: %d connection(s). Log: %s' % (conns, page[:900]))
+    assert 'إعادة اتصال' not in page and 'تجمّد' not in page and 'ENDED' not in page, 'A healthy paced stream must never be reconnected: ' + page[:900]
+    assert conns == 1, 'One connection for the whole run, not %d' % conns
+    note('PASS: a live-speed stream for 10 minutes (buffer constant): %d connection, no reconnect, no freeze event in the log.' % conns)
+    keys('BACK', pause=1)
+
     # 4d. the account allows only ts (user_info.allowed_output_formats): a channel asked as m3u8 goes straight to ts, m3u8 is never requested
     ALLOWED[:] = ['ts']
     adb('shell', 'rm', '-f', '/data/user/0/%s/files/playlog.txt' % PKG)   # a fresh log: its first lines are the open and the account
@@ -606,6 +642,14 @@ with tempfile.TemporaryDirectory() as temp:
     assert any('beIN Sports 2' in l for l in ghana) and not any('اختر القناة' in l for l in ghana), 'Ghana v Somalia must show beIN Sports 2 from its guide: ' + str(ghana)
     shot('redesign-matches-ghana.png')
     note('PASS: "غانا × الصومال" in beIN Sports 2\'s guide linked to the feed\'s "Somalia at Ghana": the card reads ' + ghana[0][-70:] + '.')
+    # item 1: each match opens on the channel whose guide names it; HD beats the SD copy; the feed's broadcaster alone is "غير مؤكدة"
+    mol = wait_label('مولدوفا ضد كازاخستان', 'Moldova v Kazakhstan', tries=60)
+    assert any('beIN SPORTS 5' in l for l in mol) and not any('SPORTS 6' in l or 'غير مؤكدة' in l or 'اختر القناة' in l for l in mol), 'Moldova v Kazakhstan must show beIN SPORTS 5 (HD): ' + str(mol)
+    egy = wait_label('مصر ضد مالاوي', 'Egypt v Malawi', tries=60)
+    assert any('beIN Sports 1' in l for l in egy) and not any('غير مؤكدة' in l for l in egy), 'Egypt v Malawi must show beIN Sports 1: ' + str(egy)
+    esp = wait_label('إسبانيا ضد اليونان', 'Spain v Greece', tries=60)
+    assert any('beIN Sports 3' in l and 'غير مؤكدة' in l for l in esp), 'A channel known only from the feed must read غير مؤكدة: ' + str(esp)
+    note('PASS: Moldova v Kazakhstan -> beIN SPORTS 5 (HD copy of two), Egypt v Malawi -> beIN Sports 1, feed-only channel marked غير مؤكدة.')
     eri = wait_label('سورينام ضد إريتريا', 'the Suriname v Eritrea match (in no guide)')
     for _ in range(40):
         eri = [l for l in labels() if 'سورينام ضد إريتريا' in l]
@@ -865,8 +909,9 @@ with tempfile.TemporaryDirectory() as temp:
         keys('DPAD_DOWN', pause=0.8)
     shot('redesign-matches-translations.png')
     before = ' | '.join(sorted(seen))
-    assert 'أورليان' in before and 'ديجون' in before and 'رواندا' in before and 'مالاوي' in before, 'The four names must be in Arabic: ' + before
-    assert not re.search(r'Orl|Dijon|Rwanda|Malawi', before), 'No English name left: ' + before
+    assert 'رواندا' in before and 'مالاوي' in before, 'The two national teams must be in Arabic: ' + before
+    assert 'Orléans' in before and 'Dijon FCO' in before, 'Small French cup clubs must stay as the feed writes them: ' + before
+    assert not re.search(r'Rwanda|Malawi|أورليان|ديجون', before), 'No translated club and no English national team: ' + before
     keys('BACK', pause=1)
     FEED_MODE[0] = 'down'
     hits_before = HITS.get('scoreboard', 0)

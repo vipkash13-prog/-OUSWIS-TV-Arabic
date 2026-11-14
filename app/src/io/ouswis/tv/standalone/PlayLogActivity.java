@@ -11,6 +11,7 @@ import android.os.Looper;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import java.util.List;
@@ -58,7 +59,11 @@ public final class PlayLogActivity extends Activity {
         lines = new LinearLayout(this);
         lines.setOrientation(LinearLayout.VERTICAL);
         lines.setPadding(0, px(18), 0, 0);
-        root.addView(lines, new LinearLayout.LayoutParams(-1, 0, 1));
+        android.widget.ScrollView scroll = new android.widget.ScrollView(this);   // 100 lines: the arrows scroll it from the buttons
+        scroll.setFocusable(true);
+        scroll.setVerticalScrollBarEnabled(false);
+        scroll.addView(lines, new FrameLayout.LayoutParams(-1, -2));
+        root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
         setContentView(root);
         typeButton.requestFocus();
         refresh();
@@ -103,10 +108,17 @@ public final class PlayLogActivity extends Activity {
         return b;
     }
 
+    /** Freezes, ENDED, reconnects and failed match updates stand out; the rest is plain. */
+    private static int colour(String line) {
+        if (line.contains("المباريات: فشل")) return 0xFFFFC857;                                     // amber: the matches update failed
+        if (line.contains("تجمّد") || line.contains("ENDED") || line.contains("إعادة اتصال")) return 0xFFFF7A7A;   // red: the stream had to be joined again
+        return Design.TEXT;
+    }
+
     private void refresh() {
         String type = LivePlayer.streamType(this);
         typeButton.setText("نوع البث: " + (LivePlayer.AUTO.equals(type) ? "تلقائي" : type + " فقط"));
-        hint.setText("آخر " + PlayLog.SHOWN + " حدثاً · يتجدد وحده · OK على نوع البث يبدّل بين تلقائي و m3u8 و ts");
+        hint.setText("آخر " + PlayLog.SHOWN + " حدث، الأحدث أولاً · يتجدد وحده · OK على نوع البث يبدّل بين تلقائي و m3u8 و ts");
         List<String> all = PlayLog.last(this, PlayLog.SHOWN);
         lines.removeAllViews();
         if (all.isEmpty()) {
@@ -115,8 +127,9 @@ public final class PlayLogActivity extends Activity {
             lines.addView(none);
             return;
         }
-        for (String line : all) {
-            TextView t = text(line, 19, Design.TEXT, Design.regular());
+        for (int i = all.size() - 1; i >= 0; i--) {   // newest first: the latest is in view without scrolling
+            String line = all.get(i);
+            TextView t = text(line, 17, colour(line), Design.regular());
             t.setTextDirection(View.TEXT_DIRECTION_RTL);   // Arabic sentences with numbers read right to left
             t.setGravity(Gravity.RIGHT);
             t.setSingleLine(true);
