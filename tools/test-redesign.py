@@ -700,7 +700,10 @@ with tempfile.TemporaryDirectory() as temp:
     note('PASS: OK on a match without a confirmed channel opened the live screen on the sports section; focus: ' + fl[:60] + '.')
     keys('DPAD_DOWN', pause=1); keys('DPAD_CENTER', pause=2); front('PlayerActivity'); time.sleep(3)
     saved = adb('shell', 'cat', folder + '/ouswis-live.xml')
-    assert 'matchPicks' in saved and 'caf.nations_qual:9002' in saved, 'A channel played from there must be saved for the match: ' + saved[:600]
+    assert 'caf.nations_qual:9002' not in saved, 'A channel watched for 3 s must NOT be saved for the match yet: ' + saved[:600]
+    time.sleep(66)   # item 1: kept for more than a minute: now it is the match's channel
+    saved = adb('shell', 'cat', folder + '/ouswis-live.xml')
+    assert 'matchPicks2' in saved and 'caf.nations_qual:9002' in saved, 'A channel watched for over a minute must be saved for the match: ' + saved[:600]
     keys('BACK', pause=1.5); keys('BACK', pause=1.5)
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.MatchesScreenActivity')
     again = wait_label('سورينام ضد إريتريا', 'the match again')
