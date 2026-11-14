@@ -46,6 +46,12 @@ def tree():
             time.sleep(1.5)
     raise RuntimeError('uiautomator never answered')
 
+def jhash(text):
+    """Java's String.hashCode as Integer.toHexString prints it: the app's subscription key."""
+    h = 0
+    for ch in text: h = (31 * h + ord(ch)) & 0xFFFFFFFF
+    return format(h, 'x')
+
 def labels():
     return [(n.get('text', '') or n.get('content-desc', '')).strip() for n in tree().iter('node') if n.get('package') == PKG]
 
@@ -204,6 +210,11 @@ with tempfile.TemporaryDirectory() as temp:
                       ('111', 'beIN Sports 2', 'ts'), ('112', 'beIN Sports 3', 'm3u8'), ('114', 'beIN SPORTS 5 HD', 'ts'), ('115', 'beIN SPORTS 6 SD', 'ts'), ('117', 'beIN SPORTS 5 SD', 'ts'), ('118', 'beIN SPORTS 7', 'ts'), ('113', 'FR| beIN SPORTS 4 HD (H.265)', 'ts'), ('120', 'AD Sports 1', 'ts'), ('105', 'beIN SPORTS XTRA 1HD', 'ts')],
                '12': [('201', 'Al Arabiya', 'ts'), ('202', 'Sky News Arabia', 'ts')], '13': [('301', 'Movies One', 'ts')], '10': [('401', 'TF1 HD', 'ts')], '14': [], '18': [('811', 'Apple TV Test', 'ts')], '15': [], '16': [('701', 'US News 1', 'ts')], '17': [('801', 'MBC 1', 'ts')]}
     HOUR = 3600
+    # a second subscription (user bob): the same channels under other numbers (5000 + the old one) and other prefixes
+    STREAMS_B = {c: [(str(int(sid) + 5000), ('8K: ' if i % 2 == 0 else 'FR| ') + n, e) for i, (sid, n, e) in enumerate(v)] for c, v in STREAMS.items()}
+    B_IDS = {sid for v in STREAMS_B.values() for sid, n, e in v}
+    REQLOG = []            # every stream request: (user, file)
+    NOT_FOUND = set()      # stream paths the provider answers 404 for
     # Norway v Wales: 4 h ahead, but never past Riyadh's midnight (the matches screen's "today" ends there)
     _riyadh_left = 86400 - ((int(time.time()) + 3 * 3600) % 86400)
     NOR_AHEAD = max(1500, min(4 * HOUR, _riyadh_left - 1200))
@@ -228,6 +239,10 @@ with tempfile.TemporaryDirectory() as temp:
         def do_GET(self):
             url = urlparse(self.path); q = parse_qs(url.query)
             HITS[url.path.rsplit('/', 1)[-1]] = HITS.get(url.path.rsplit('/', 1)[-1], 0) + 1
+            who = q.get('username', [''])[0] or (url.path.split('/')[2] if url.path.startswith('/live/') and url.path.count('/') >= 4 else '')
+            if url.path.startswith('/live/'): REQLOG.append((who, url.path.rsplit('/', 1)[-1]))
+            sid0 = q.get('stream_id', [''])[0]
+            if who == 'bob' and sid0.isdigit() and int(sid0) >= 5000: q['stream_id'] = [str(int(sid0) - 5000)]   # B's guide is A's, under B's numbers
             if url.path.startswith('/apis/site/v2/sports/soccer/'):
                 slug = url.path.split('/')[6]
                 if FEED_MODE[0] == 'down' and slug != 'eng.1':
@@ -265,7 +280,9 @@ with tempfile.TemporaryDirectory() as temp:
                     cat = q.get('category_id', [''])[0]
                     if cat in FAIL_CATS:
                         self.send_response(500); self.end_headers(); return
-                    body = [{'num': int(s), 'name': n, 'stream_id': s, 'category_id': cat, 'stream_icon': '', 'container_extension': e} for s, n, e in STREAMS.get(cat, [])]
+                    src = STREAMS_B if who == 'bob' else STREAMS
+                    rows = [(c, s, n, e) for c, v in src.items() for s, n, e in v] if cat == '' else [(cat, s, n, e) for s, n, e in src.get(cat, [])]
+                    body = [{'num': int(s), 'name': n, 'stream_id': s, 'category_id': c, 'stream_icon': '', 'container_extension': e} for c, s, n, e in rows]
                 elif action in ('get_short_epg', 'get_simple_data_table'):
                     now = int(time.time())
                     titles = ['الهلال × النصر · دوري روشن', 'الاستوديو التحليلي', 'أهداف الجولة', 'نشرة الرياضة']
@@ -284,6 +301,11 @@ with tempfile.TemporaryDirectory() as temp:
                 else:
                     body = {'user_info': {'auth': 1, 'status': 'Active', 'max_connections': '1', 'active_cons': ACTIVE[0], 'allowed_output_formats': ALLOWED, 'exp_date': str(int(time.time()) + 86400 * 120)}}
                 payload = json.dumps(body).encode(); kind = 'application/json'
+            elif url.path in NOT_FOUND:
+                self.send_error(404); return
+            elif url.path.startswith('/live/bob/bob/'):
+                if url.path.rsplit('/', 1)[-1].split('.')[0] not in B_IDS: self.send_error(404); return
+                payload = data; kind = 'video/mp2t'
             elif url.path == '/live/demo/demo/998.ts':
                 # a live server: sends at display speed for 11 minutes (ffmpeg -re), so the player's buffer stays constant
                 self.send_response(200); self.send_header('Content-Type', 'video/mp2t'); self.end_headers()
@@ -329,7 +351,11 @@ with tempfile.TemporaryDirectory() as temp:
     # the recents hold the real channel and two broken entries (no name; no id): they must never reach the screen
     recent = json.dumps([{'id': '101', 'name': 'SSC 1 HD', 'icon': '', 'num': '101', 'ext': 'ts'}, {'id': '900', 'name': '', 'icon': '', 'num': '9', 'ext': 'ts'},
                          {'id': '', 'name': 'Ghost', 'icon': '', 'num': '8', 'ext': 'ts'}, {'id': '901', 'name': '   ', 'icon': '', 'num': '7', 'ext': 'ts'}]).replace('"', '&quot;')
-    live = '<?xml version="1.0" encoding="utf-8"?><map><string name="last">%s</string><string name="recent">%s</string><string name="espnBase">http://127.0.0.1:%d</string></map>' % (last, recent, port)
+    favs = json.dumps([{'id': '110', 'name': 'beIN Sports 1 HD', 'icon': '', 'num': '110', 'ext': 'ts'}, {'id': '777', 'name': 'Gone Channel', 'icon': '', 'num': '777', 'ext': 'ts'},
+                       {'id': '201', 'name': 'Al Arabiya', 'icon': '', 'num': '201', 'ext': 'ts'}]).replace('"', '&quot;')   # "Gone Channel" has no match in subscription B
+    A_KEY = jhash('http://127.0.0.1:%d|demo' % port); B_KEY = jhash('http://127.0.0.1:%d|bob' % port)
+    live = ('<?xml version="1.0" encoding="utf-8"?><map><string name="last">%s</string><string name="recent">%s</string><string name="favorites">%s</string><string name="dataFor">%s</string>'
+            '<string name="espnBase">http://127.0.0.1:%d</string></map>') % (last, recent, favs, A_KEY, port)
     subprocess.run([ADB, 'shell', 'cat > %s/ouswis-live.xml' % folder], input=live.encode(), check=True)
     adb('shell', 'chown', '-R', uid + ':' + uid, folder)
     adb('logcat', '-c')
@@ -804,6 +830,20 @@ with tempfile.TemporaryDirectory() as temp:
     note('PASS: the channel played from the sports list was saved for that match and the card names it: ' + again[0][-60:] + '.')
     (OUT / 'redesign-logcat.txt').write_text(adb('logcat', '-d', '-t', '800', check=False))
 
+    # 6b-2. the provider answers 404 for the channel a match is linked to: the link goes and the sports list opens (no black screen)
+    NOT_FOUND.add('/live/demo/demo/114.ts')
+    focus_card('مولدوفا ضد كازاخستان'); keys('DPAD_CENTER', pause=2)
+    front('LiveActivity', tries=40)
+    plog = adb('shell', 'cat', '/data/user/0/%s/files/playlog.txt' % PKG, check=False)
+    assert 'الخادم لا يملك هذه القناة (HTTP 404)' in plog and 'أُلغي ربطها بالمباراة' in plog, 'A 404 must unlink the match and say so in the log: ' + plog[-600:]
+    shot('redesign-link-404.png')
+    keys('BACK', pause=1.5)
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.MatchesScreenActivity'); time.sleep(3)
+    mol = wait_label('مولدوفا ضد كازاخستان', 'Moldova v Kazakhstan after the 404')
+    assert any('اختر القناة' in l for l in mol) and not any('beIN SPORTS 5' in l for l in mol), 'After a 404 the card must ask for a channel, not name the refused one: ' + str(mol)
+    note('PASS: the linked channel answered 404: the match was unlinked (logged), the sports list opened instead of a black screen, and the card says اختر القناة.')
+    NOT_FOUND.discard('/live/demo/demo/114.ts')
+
     # 6c. every screen in and out five times, Back from the home screen five times: no crash, and the home never shows empty cards again
     adb('logcat', '-c')
     home_cards = lambda: [l for l in labels() if ' ضد ' in l and not l.startswith('تفاصيل')]
@@ -1081,20 +1121,62 @@ with tempfile.TemporaryDirectory() as temp:
     type_fields('http://127.0.0.1', '9', 'demo', 'demo')
     tap('اختبار الاتصال'); wait_label('السيرفر لا يرد', 'the silent-server result')
     keys('DPAD_UP', 'DPAD_UP', 'DPAD_UP', 'DPAD_UP', pause=0.4)
-    type_fields('http://127.0.0.1', str(port), 'demo', 'demo')
+    type_fields('http://127.0.0.1', str(port), 'bob', 'bob')   # subscription B
     tap('اختبار الاتصال'); wait_label('نجح الاتصال', 'the successful test'); shot('final-iptv-ok.png')
     note('PASS: the connection test told wrong credentials, silent server and success apart.')
     # favourites / recents / last channel exist before the save, and are gone after it
     folder = '/data/user/0/%s/shared_prefs' % PKG
     before = adb('shell', 'cat', folder + '/ouswis-live.xml', check=False)
     assert 'name="recent"' in before or 'name="last"' in before or 'name="favorites"' in before, 'Test setup: expected recents/last before the save: ' + before[:200]
+    files_dir = '/data/user/0/%s/files' % PKG
+    def data_files(): return [f for f in adb('shell', 'ls', files_dir, check=False).split() if f]
+    def a_ids_in_storage():
+        """Every channel id written anywhere in the app's data: the preferences and the cache files."""
+        blob = adb('shell', 'sh', '-c', '"cat %s/shared_prefs/*.xml %s/live-*.json %s/guide-day-*.json 2>/dev/null"' % ('/data/user/0/' + PKG, files_dir, files_dir), check=False)
+        blob = blob.replace('&quot;', '"')
+        return sorted({int(i) for i in re.findall(r'"id"\s*:\s*"(\d+)"', blob)} | {int(i) for i in re.findall(r'"(\d{3,5})"\s*:\s*\{"c"', blob)})
+    a_files = [f for f in data_files() if A_KEY in f]
+    assert a_files, 'Test setup: subscription A must have its files before the change: ' + str(data_files())
+    a_ids = a_ids_in_storage()
+    assert a_ids and max(a_ids) < 5000, 'Test setup: only A ids (below 5000) expected before the change: ' + str(a_ids[:30])
+    n_req = len(REQLOG)
     tap('حفظ', exact=True); wait_label('تم حفظ الاشتراك', 'the saved message')
-    after = adb('shell', 'cat', folder + '/ouswis-live.xml', check=False)
-    assert not any('name="%s"' % k in after for k in ('recent', 'favorites', 'last')), 'Recents/favourites/last channel must be wiped on save: ' + after[:300]
+    for _ in range(90):   # the favourites, recents and last channel come back by name, in the background
+        after = adb('shell', 'cat', folder + '/ouswis-live.xml', check=False)
+        if 'name="stash"' not in after and 'name="favorites"' in after and 'name="recent"' in after and 'name="last"' in after: break
+        time.sleep(1)
+    assert 'name="dataFor">%s<' % B_KEY in after, 'The data must now be marked as B\'s: ' + after[:400]
+    assert 'name="stash"' not in after, 'The carry-over by name did not finish: ' + after[:600]
     assert 'lastChannel' not in adb('shell', 'cat', folder + '/XtreamActivity.xml', check=False), 'The last channel must be wiped on save'
+    ids = a_ids_in_storage()
+    assert ids and min(ids) >= 5000, 'No channel number of subscription A may stay anywhere: ' + str([i for i in ids if i < 5000])
+    assert not [f for f in data_files() if A_KEY in f], 'Subscription A\'s files must be gone: ' + str(data_files())
+    live_xml = after.replace('&quot;', '"')
+    got = lambda key: sorted(int(i) for i in re.findall(r'"id":"(\d+)"', re.search(r'name="%s">(.*?)</string>' % key, live_xml, re.S)[1]))
+    assert got('favorites') == [5110, 5201], 'Favourites must come back under B\'s numbers, the channel B lacks dropped: ' + str(got('favorites')) + live_xml[:500]
+    assert got('recent') == [5101] and got('last') == [5101], 'Recents and the last channel must come back under B\'s numbers: ' + str(got('recent')) + str(got('last'))
+    assert 'Gone Channel' not in live_xml and 'Ghost' not in live_xml, 'A channel with no match in B must be dropped, and only that one'
+    plog = adb('shell', 'cat', files_dir + '/playlog.txt', check=False)
+    assert 'تغيير الاشتراك' in plog, 'The change must be logged: ' + plog[-300:]
     vault = adb('shell', 'cat', folder + '/xtream-vault.xml')
-    assert re.search(r'name="blob">[kf]:', vault) and 'demo' not in vault, 'The new login must be sealed: ' + vault
-    note('PASS: saving wiped the recents, favourites and last channel, and the new login is sealed.')
+    assert re.search(r'name="blob">[kf]:', vault) and 'bob' not in vault, 'The new login must be sealed: ' + vault
+    note('PASS: A to B: A\'s files are gone, no channel number of A is left in the preferences or the cache (%d numbers read, all B\'s), and the favourites %s, recents and last channel came back by name under B\'s numbers; the channel B lacks was dropped alone.' % (len(ids), got('favorites')))
+    # the matches follow the new subscription: Ghana v Somalia opens beIN Sports 2 of B, never a number of A
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.MatchesScreenActivity'); time.sleep(3)
+    gh = []
+    for _ in range(120):
+        gh = [l for l in labels() if 'غانا ضد الصومال' in l]
+        if any('beIN Sports 2' in l for l in gh): break
+        time.sleep(1)
+    assert any('beIN Sports 2' in l for l in gh) and not any('اختر القناة' in l or '8K' in l or 'FR|' in l for l in gh), 'With B, Ghana v Somalia must read beIN Sports 2 (prefix cleaned): ' + str(gh)
+    focus_card('غانا ضد الصومال'); keys('DPAD_CENTER', pause=2); front('PlayerActivity'); time.sleep(5)
+    new_req = REQLOG[n_req:]
+    assert ('bob', '5111.ts') in new_req, 'The match must play B\'s channel 5111: ' + str(new_req[:20])
+    assert not [r for r in new_req if r[0] == 'demo'], 'Nothing may be requested from subscription A any more: ' + str([r for r in new_req if r[0] == 'demo'])
+    assert not [r for r in new_req if r[0] == 'bob' and int(r[1].split('.')[0]) < 5000], 'Only B\'s numbers may be asked of B: ' + str(new_req)
+    note('PASS: with subscription B the match played B\'s beIN Sports 2 (5111), the card name had no 8K:/FR| prefix, and no stream of A was requested.')
+    keys('BACK', pause=1.5)
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.IptvActivity'); wait_label('تغيير الاشتراك', 'the IPTV page after the change')
     # delete: the confirmation first (cancel keeps it), then the delete
     tap('حذف الاشتراك'); wait_label('تأكيد الحذف', 'the delete confirmation')
     assert 'إلغاء' in focused_label(), 'The safe choice must hold the focus: ' + focused_label()
