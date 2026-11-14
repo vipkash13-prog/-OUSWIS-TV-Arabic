@@ -204,11 +204,14 @@ with tempfile.TemporaryDirectory() as temp:
                       ('111', 'beIN Sports 2', 'ts'), ('112', 'beIN Sports 3', 'm3u8'), ('114', 'beIN SPORTS 5 HD', 'ts'), ('115', 'beIN SPORTS 6 SD', 'ts'), ('117', 'beIN SPORTS 5 SD', 'ts'), ('118', 'beIN SPORTS 7', 'ts'), ('113', 'FR| beIN SPORTS 4 HD (H.265)', 'ts'), ('120', 'AD Sports 1', 'ts'), ('105', 'beIN SPORTS XTRA 1HD', 'ts')],
                '12': [('201', 'Al Arabiya', 'ts'), ('202', 'Sky News Arabia', 'ts')], '13': [('301', 'Movies One', 'ts')], '10': [('401', 'TF1 HD', 'ts')], '14': [], '18': [('811', 'Apple TV Test', 'ts')], '15': [], '16': [('701', 'US News 1', 'ts')], '17': [('801', 'MBC 1', 'ts')]}
     HOUR = 3600
+    # Norway v Wales: 4 h ahead, but never past Riyadh's midnight (the matches screen's "today" ends there)
+    _riyadh_left = 86400 - ((int(time.time()) + 3 * 3600) % 86400)
+    NOR_AHEAD = max(1500, min(4 * HOUR, _riyadh_left - 1200))
     LIVE_SECONDS = int(os.environ.get('OUSWIS_LIVE_SECONDS', '600'))   # the live-speed stream is watched this long: 600 = the full test
     # guide programmes other than the default four: (title, start offset, stop offset) in seconds from now
     # item: the day's guide. Norway v Wales starts in 4 hours: only get_simple_data_table lists it, on two channels (the first, beIN Sports 1 HD, is the main one)
-    EPGDAY = {'110': [('Live: Norway vs Wales - UEFA Nations League', 4 * HOUR - 600, 4 * HOUR + 6600)],
-              '114': [('مباشر: النرويج × ويلز - دوري الأمم الأوروبية', 4 * HOUR - 600, 4 * HOUR + 6600)]}
+    EPGDAY = {'110': [('Live: Norway vs Wales - UEFA Nations League', NOR_AHEAD - 600, NOR_AHEAD + 6600)],
+              '114': [('مباشر: النرويج × ويلز - دوري الأمم الأوروبية', NOR_AHEAD - 600, NOR_AHEAD + 6600)]}
     EPGX = {'120': [('(L) الهلال × النصر · دوري روشن', -1800, 1800), ('NBA: Philadelphia 76ers vs Boston Celtics', -1200, 6000), ('NBA Highlights', 6000, 9600)],
             '103': [('Philadelphia 76ers vs Boston Celtics - NBA', -900, 6300), ('Volleyball: Italy vs Poland', 6300, 9900), ('Live: England vs Croatia - International Friendly', 5 * HOUR, 5 * HOUR + 6000)],   # the last one: the same match shown again 5 h later
             '110': [('Live: England vs Croatia - International Friendly', -1200, 6000), ('Studio', 6000, 9600), ('Live: Egypt vs Malawi - Africa Cup Qualifiers', 1500, 8100)],
@@ -250,7 +253,7 @@ with tempfile.TemporaryDirectory() as temp:
                 lname = 'English Premier League'
                 if slug == 'eng.1' and FEED_MODE[0] == 'ok' and q.get('dates', [''])[0] == time.strftime('%Y%m', utc):
                     # a finished match with goals (today and yesterday), one tomorrow, one later today; a team name the table lacks
-                    events = [fx('8007', 'Moldova', 'Kazakhstan', 'pre', 20), fx('8008', 'Egypt', 'Malawi', 'pre', 25), fx('8009', 'Spain', 'Greece', 'pre', 40, bc='beIN Sports 3'), fx('8010', 'Tunisia', 'Libya', 'pre', 35, bc='beIN SPORTS 7'), fx('8011', 'Norway', 'Wales', 'pre', 4 * 60), fx('8001', 'Liverpool', 'Manchester City', 'post', -240, '2', '1', goals=True), fx('8002', 'Wolverhampton Wanderers', 'Fulham FC XYZ', 'post', -1700, '0', '0'),
+                    events = [fx('8007', 'Moldova', 'Kazakhstan', 'pre', 20), fx('8008', 'Egypt', 'Malawi', 'pre', 25), fx('8009', 'Spain', 'Greece', 'pre', 40, bc='beIN Sports 3'), fx('8010', 'Tunisia', 'Libya', 'pre', 35, bc='beIN SPORTS 7'), fx('8011', 'Norway', 'Wales', 'pre', NOR_AHEAD // 60), fx('8001', 'Liverpool', 'Manchester City', 'post', -240, '2', '1', goals=True), fx('8002', 'Wolverhampton Wanderers', 'Fulham FC XYZ', 'post', -1700, '0', '0'),
                               fx('8003', 'Arsenal', 'Chelsea', 'pre', 24 * 60 + 5), fx('8004', 'Tottenham Hotspur', 'Everton', 'pre', 150), fx('8005', 'Orléans', 'Dijon FCO', 'post', -30, '1', '0'), fx('8006', 'Rwanda', 'Malawi', 'post', -45, '0', '0')]   # finished a moment ago: on today's list whatever the hour
                 body = {'leagues': [{'name': lname if slug == 'eng.1' else 'Africa Cup of Nations Qualifying', 'logos': []}], 'events': events}
                 payload = json.dumps(body).encode(); kind = 'application/json'
