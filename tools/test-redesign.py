@@ -546,8 +546,8 @@ with tempfile.TemporaryDirectory() as temp:
     t_live = time.time(); alive = True
     while time.time() - t_live < 600:
         time.sleep(30)
-        front = adb('shell', 'dumpsys', 'activity', 'activities', check=False).split('topResumedActivity')[-1][:200]
-        assert 'PlayerActivity' in front, 'The player must stay open for the whole run: ' + front
+        top = adb('shell', 'dumpsys', 'activity', 'activities', check=False).split('topResumedActivity')[-1][:200]
+        assert 'PlayerActivity' in top, 'The player must stay open for the whole run: ' + top
     conns = HITS.get('998.ts', 0) - hits998
     keys('BACK', pause=1)
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.PlayLogActivity'); wait_label('سجل التشغيل', 'the playback log page after the 10 minute run')
