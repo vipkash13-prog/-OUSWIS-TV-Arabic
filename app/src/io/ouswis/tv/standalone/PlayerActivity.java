@@ -456,8 +456,8 @@ public final class PlayerActivity extends Activity {
     private void limitReached(){
         if(player==null||isFinishing()||index<0||index>=list.size())return;
         long now=android.os.SystemClock.elapsedRealtime();
-        if(now-limitAt<LIMIT_WAIT_MS+2_000)return;   // one wait at a time
-        limitAt=now;
+        if(limitWaiting)return;   // one wait at a time: a 509 after the wait has ended starts a new one
+        limitWaiting=true;limitAt=now;
         holdDone=false;holdPicture();
         log("تجاوز حد الاتصال (HTTP 509): إيقاف الطلبات "+LIMIT_WAIT_MS/1000+" ث ثم إعادة الاتصال · "+playerState());
         statusNow("تجاوز حد الاتصال… إعادة المحاولة بعد "+LIMIT_WAIT_MS/1000+" ث");
@@ -466,6 +466,7 @@ public final class PlayerActivity extends Activity {
         lastProgressAt=now+LIMIT_WAIT_MS+FREE_WAIT_MS;lastPos=-1;bufferMovedAt=lastProgressAt;posMovedAt=lastProgressAt;   // the detectors wait
         try{player.stop();}catch(RuntimeException x){}   // the loader stops asking now (not 200 ms later: ExoPlayer retries at once); the last picture stays
         main.postDelayed(()->{
+            limitWaiting=false;
             if(mine!=generation||player==null)return;
             afterFree(mine,()->{statusClear();openStream(ch,currentExt.isEmpty()?LivePlayer.extension(this,ch,attempt):currentExt);});
         },LIMIT_WAIT_MS);
@@ -506,6 +507,7 @@ public final class PlayerActivity extends Activity {
     private boolean tsAllowed(){java.util.Set<String> ok=LivePlayer.allowed(this);return ok==null||ok.contains("ts");}
     private boolean decoderHandled,tsOverride,zapSettle;
     private long limitAt;
+    private boolean limitWaiting;
     private static final java.util.concurrent.ExecutorService NET=java.util.concurrent.Executors.newCachedThreadPool();
     private static boolean isDecoderError(PlaybackException e){
         switch(e.errorCode){
