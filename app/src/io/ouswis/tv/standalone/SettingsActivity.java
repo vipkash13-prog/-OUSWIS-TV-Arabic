@@ -157,8 +157,8 @@ public class SettingsActivity extends Activity {
     }
 
     private static LinearLayout.LayoutParams buttonParams(float scale) {
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, Math.round(68 * scale));
-        lp.bottomMargin = Math.round(8 * scale);   // the same 76 pitch as before, with a gap between the dark cards
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, Math.round(58 * scale));
+        lp.bottomMargin = Math.round(6 * scale);   // seven cards, 64 apart: they end under the title as before
         return lp;
     }
 
