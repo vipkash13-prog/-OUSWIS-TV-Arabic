@@ -10,6 +10,10 @@ import androidx.media3.datasource.DefaultHttpDataSource;
 import androidx.media3.exoplayer.DefaultLoadControl;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
+import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy;
+import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy;
+import androidx.media3.common.C;
+import androidx.media3.datasource.HttpDataSource;
 
 /**
  * One place that builds the app's Media3 ExoPlayer for live channels, for the muted preview and for full screen. Small
@@ -18,6 +22,15 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
  */
 final class LivePlayer {
     private LivePlayer(){}
+
+    /** HTTP 509 (connection limit) is never retried by the loader at once: the player fails and PlayerActivity waits 3 s, then joins again. */
+    private static final class NoRetryOn509 extends DefaultLoadErrorHandlingPolicy{
+        @Override public long getRetryDelayMsFor(LoadErrorHandlingPolicy.LoadErrorInfo info){
+            for(Throwable t=info.exception;t!=null;t=t.getCause())
+                if(t instanceof HttpDataSource.InvalidResponseCodeException&&((HttpDataSource.InvalidResponseCodeException)t).responseCode==509)return C.TIME_UNSET;
+            return super.getRetryDelayMsFor(info);
+        }
+    }
 
     private static ExoPlayer current;   // the one player that exists: a second one is never made while another lives
     private static long releasedAt;     // when the last one was let go (its connection closes a moment after)
@@ -41,7 +54,7 @@ final class LivePlayer {
                .setTargetBufferBytes(mb*1024*1024).setPrioritizeTimeOverSizeThresholds(false);
         }else lb.setBufferDurationsMs(4_000,16_000,1_500,3_000);
         current=new ExoPlayer.Builder(c.getApplicationContext())
-                .setMediaSourceFactory(new DefaultMediaSourceFactory(new DefaultDataSource.Factory(c.getApplicationContext(),http)))
+                .setMediaSourceFactory(new DefaultMediaSourceFactory(new DefaultDataSource.Factory(c.getApplicationContext(),http)).setLoadErrorHandlingPolicy(new NoRetryOn509()))
                 .setLoadControl(lb.build()).build();
         return current;
     }
