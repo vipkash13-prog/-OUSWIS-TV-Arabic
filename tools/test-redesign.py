@@ -908,7 +908,7 @@ with tempfile.TemporaryDirectory() as temp:
     # 6d. the matches screen lost its data while the home kept it: every competition but one fails (HTTP 500) and that one
     # answers with no matches. The shared list must keep the last data, with the "update failed" line, on both screens.
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.MatchesScreenActivity'); time.sleep(3)
-    wait_label('رواندا ضد مالاوي', 'the matches loaded')
+    wait_label('غانا ضد الصومال', 'the matches loaded')
     seen = set()
     for _ in range(10):   # the grid holds eight cards: scroll so the ninth is read too, whatever the hour
         seen.update(l for l in labels() if ' ضد ' in l and not l.startswith('تفاصيل'))
