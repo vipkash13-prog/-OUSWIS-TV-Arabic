@@ -351,11 +351,9 @@ with tempfile.TemporaryDirectory() as temp:
     # the recents hold the real channel and two broken entries (no name; no id): they must never reach the screen
     recent = json.dumps([{'id': '101', 'name': 'SSC 1 HD', 'icon': '', 'num': '101', 'ext': 'ts'}, {'id': '900', 'name': '', 'icon': '', 'num': '9', 'ext': 'ts'},
                          {'id': '', 'name': 'Ghost', 'icon': '', 'num': '8', 'ext': 'ts'}, {'id': '901', 'name': '   ', 'icon': '', 'num': '7', 'ext': 'ts'}]).replace('"', '&quot;')
-    favs = json.dumps([{'id': '110', 'name': 'beIN Sports 1 HD', 'icon': '', 'num': '110', 'ext': 'ts'}, {'id': '777', 'name': 'Gone Channel', 'icon': '', 'num': '777', 'ext': 'ts'},
-                       {'id': '201', 'name': 'Al Arabiya', 'icon': '', 'num': '201', 'ext': 'ts'}]).replace('"', '&quot;')   # "Gone Channel" has no match in subscription B
     A_KEY = jhash('http://127.0.0.1:%d|demo' % port); B_KEY = jhash('http://127.0.0.1:%d|bob' % port)
-    live = ('<?xml version="1.0" encoding="utf-8"?><map><string name="last">%s</string><string name="recent">%s</string><string name="favorites">%s</string><string name="dataFor">%s</string>'
-            '<string name="espnBase">http://127.0.0.1:%d</string></map>') % (last, recent, favs, A_KEY, port)
+    live = ('<?xml version="1.0" encoding="utf-8"?><map><string name="last">%s</string><string name="recent">%s</string><string name="dataFor">%s</string>'
+            '<string name="espnBase">http://127.0.0.1:%d</string></map>') % (last, recent, A_KEY, port)
     subprocess.run([ADB, 'shell', 'cat > %s/ouswis-live.xml' % folder], input=live.encode(), check=True)
     adb('shell', 'chown', '-R', uid + ':' + uid, folder)
     adb('logcat', '-c')
@@ -1105,6 +1103,14 @@ with tempfile.TemporaryDirectory() as temp:
             for _ in range(5): keys(*['DEL'] * 12, pause=0.05)
             adb('shell', 'input', 'text', v); time.sleep(0.5)
             keys('DPAD_DOWN', pause=0.5)
+    # three favourites of subscription A, one of them (Gone Channel) with no match in B: written with the app stopped, so it reads them fresh
+    adb('shell', 'am', 'force-stop', PKG); time.sleep(2)
+    favs = json.dumps([{'id': '110', 'name': 'beIN Sports 1 HD', 'icon': '', 'num': '110', 'ext': 'ts'}, {'id': '777', 'name': 'Gone Channel', 'icon': '', 'num': '777', 'ext': 'ts'},
+                       {'id': '201', 'name': 'Al Arabiya', 'icon': '', 'num': '201', 'ext': 'ts'}]).replace('"', '&quot;')
+    cur = adb('shell', 'cat', '/data/user/0/%s/shared_prefs/ouswis-live.xml' % PKG)
+    cur = re.sub(r'<string name="favorites">.*?</string>', '', cur, flags=re.S).replace('</map>', '<string name="favorites">%s</string></map>' % favs)
+    subprocess.run([ADB, 'shell', 'cat > /data/user/0/%s/shared_prefs/ouswis-live.xml' % PKG], input=cur.encode(), check=True)
+    adb('shell', 'chown', uid + ':' + uid, '/data/user/0/%s/shared_prefs/ouswis-live.xml' % PKG)
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.IptvActivity')
     wait_label('اشتراك IPTV', 'the IPTV page')
     wait_label('نشط', 'the account status')
