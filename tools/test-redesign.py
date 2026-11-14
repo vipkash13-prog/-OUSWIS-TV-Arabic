@@ -672,10 +672,13 @@ with tempfile.TemporaryDirectory() as temp:
     guide_only = [l for l in allc if 'الهلال' in l]
     assert guide_only and not any(' مباشر' in l for l in guide_only), 'Guide-only matches must not say مباشر: ' + str(guide_only)
     assert not any('يوفنتوس' in l or 'ليون' in l.replace('اليونان', '') for l in allc), 'A guide title without Live/مباشر/(L) must not make a match: ' + str(allc)
-    sen = [l for l in allc if 'السنغال ضد السودان' in l]
+    for _ in range(6): keys('DPAD_DOWN', pause=1)   # the grid shows 8 cards: the finished ones are further down
+    scrolled = [l for l in labels() if ' ضد ' in l and not l.startswith('تفاصيل')]
+    sen = [l for l in scrolled if 'السنغال ضد السودان' in l]
     assert len(sen) == 1 and 'انتهت' in sen[0] and ' مباشر' not in sen[0], 'A match that began 2.6 h ago with no result is over: ' + str(sen)
-    last_done = max(i for i, l in enumerate(allc) if 'انتهت' in l); first_done = min(i for i, l in enumerate(allc) if 'انتهت' in l)
-    assert all('انتهت' in l for l in allc[first_done:]), 'Finished matches must come last: ' + str(allc)
+    last_done = max(i for i, l in enumerate(scrolled) if 'انتهت' in l); first_done = min(i for i, l in enumerate(scrolled) if 'انتهت' in l)
+    assert all('انتهت' in l for l in scrolled[first_done:]), 'Finished matches must come last: ' + str(scrolled)
+    for _ in range(8): keys('DPAD_UP', pause=0.5)
     live_cards = [l for l in allc if ' مباشر' in l]
     assert len(live_cards) == 2 and all(('غانا' in l or 'سورينام' in l) for l in live_cards), 'Only the feed\'s two matches are live: ' + str(live_cards)
     pairs = [frozenset(re.findall(r'^(.+?) ضد (.+?) ·', l)[0]) for l in allc if re.findall(r'^(.+?) ضد (.+?) ·', l)]
