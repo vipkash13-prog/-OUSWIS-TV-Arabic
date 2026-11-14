@@ -14,6 +14,7 @@ OUT = Path(sys.argv[1]); OUT.mkdir(parents=True, exist_ok=True)
 ADB = os.environ.get('ADB', 'adb')
 PKG = 'io.ouswis.tv.standalone'
 HITS = {}
+FAIL_CATS = set()   # categories whose channel list answers HTTP 500 (a section left empty for good in the video)
 FEED_MODE = ['ok']   # 'down': every competition but one answers HTTP 500, that one answers with no matches (what wiped the matches screen)
 ALLOWED = ['m3u8', 'ts']   # what the mock account's user_info says it may stream
 
@@ -250,6 +251,8 @@ with tempfile.TemporaryDirectory() as temp:
                     body = [{'category_id': i, 'category_name': n} for i, n in CATS]
                 elif action == 'get_live_streams':
                     cat = q.get('category_id', [''])[0]
+                    if cat in FAIL_CATS:
+                        self.send_response(500); self.end_headers(); return
                     body = [{'num': int(s), 'name': n, 'stream_id': s, 'category_id': cat, 'stream_icon': '', 'container_extension': e} for s, n, e in STREAMS.get(cat, [])]
                 elif action == 'get_short_epg':
                     now = int(time.time())
@@ -425,6 +428,24 @@ with tempfile.TemporaryDirectory() as temp:
     assert any('beIN Sports 2' in l for l in wait_label('آخر قناة شاهدتها', 'the card after a long preview')), 'The small preview must not change the last channel'
     note('PASS: 14 s on the small preview in the live screen left the last channel unchanged.')
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.LiveActivity'); wait_label('قسم', 'the live screen again')
+
+    # 3c. a section whose channel list fails to load said nothing and stayed empty: now it says so and tries again by itself
+    adb('shell', 'am', 'force-stop', PKG); adb('shell', 'sh', '-c', "'rm -f /data/user/0/%s/files/cat-*-13*'" % PKG)
+    FAIL_CATS.add('13')
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.LiveActivity'); wait_label('قسم رياضة', 'the live screen after a restart')
+    keys('DPAD_RIGHT')
+    for _ in range(14):
+        if focused_label().startswith('قسم أفلام'): break
+        keys('DPAD_DOWN', pause=0.6)
+    assert focused_label().startswith('قسم أفلام'), 'Could not reach the movies section: ' + focused_label()
+    got = wait_label('تعذّر تحميل القنوات', 'the failed-section message', tries=40)
+    shot('redesign-live-section-failed.png')
+    assert not any('جارٍ تحميل القنوات' in l for l in labels()), 'A failed section must not say "loading" for ever'
+    FAIL_CATS.clear()
+    wait_label('Movies One', 'the channel of the section after the automatic retry', tries=40)
+    shot('redesign-live-section-retried.png')
+    note('PASS: a section whose list failed said "تعذّر تحميل القنوات", then filled by itself once the server answered.')
+    keys('BACK', pause=1)
 
     # 4. a channel whose .m3u8 is refused plays through the .ts fallback
     before = HITS.get('112.m3u8', 0)
