@@ -57,7 +57,7 @@ public class SettingsActivity extends Activity {
     private SettingsView view;
     private DreamView preview;   // "Screensaver": the screensaver right here, without changing the system setting
     private FrameLayout settingsPage;
-    private Button channelsButton, matchesButton, updatesButton, channelMapButton, sectionOrderButton, iptvButton;
+    private Button channelsButton, matchesButton, updatesButton, channelMapButton, sectionOrderButton, iptvButton, playLogButton;
     private int featureReturnKey;
 
     /** Leaving Settings for the home screen is at once: no slide or fade, so the two screens are never seen together. */
@@ -95,6 +95,13 @@ public class SettingsActivity extends Activity {
         iptvButton.setTextColor(0xFFFFFFFF);
         iptvButton.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, 24 * scale);
         iptvButton.setOnClickListener(v -> startActivity(new Intent(this, IptvActivity.class)));
+        playLogButton = new Button(this);
+        playLogButton.setId(View.generateViewId());
+        playLogButton.setAllCaps(false);
+        playLogButton.setPadding(0, 0, 0, 0);
+        playLogButton.setTextColor(0xFFFFFFFF);
+        playLogButton.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, 24 * scale);
+        playLogButton.setOnClickListener(v -> startActivity(new Intent(this, PlayLogActivity.class)));
         channelMapButton = new Button(this);
         channelMapButton.setId(View.generateViewId());
         channelMapButton.setAllCaps(false);
@@ -130,17 +137,20 @@ public class SettingsActivity extends Activity {
         sectionOrderButton.setNextFocusUpId(channelMapButton.getId());
         sectionOrderButton.setNextFocusDownId(iptvButton.getId());
         iptvButton.setNextFocusUpId(sectionOrderButton.getId());
+        iptvButton.setNextFocusDownId(playLogButton.getId());
+        playLogButton.setNextFocusUpId(iptvButton.getId());
         features.addView(channelsButton, buttonParams(scale));
         features.addView(matchesButton, buttonParams(scale));
         features.addView(updatesButton, buttonParams(scale));
         features.addView(channelMapButton, buttonParams(scale));
         features.addView(sectionOrderButton, buttonParams(scale));
         features.addView(iptvButton, buttonParams(scale));
+        features.addView(playLogButton, buttonParams(scale));
         FrameLayout.LayoutParams position = new FrameLayout.LayoutParams(Math.round(400 * scale), -2, Gravity.LEFT | Gravity.BOTTOM);
         position.leftMargin = Math.round(300 * scale);
         position.bottomMargin = Math.round(84 * scale);   // the build number sits under the buttons
         settingsPage.addView(features, position);
-        for (Button b : new Button[] {channelsButton, matchesButton, updatesButton, channelMapButton, sectionOrderButton, iptvButton}) darkButton(b, scale);
+        for (Button b : new Button[] {channelsButton, matchesButton, updatesButton, channelMapButton, sectionOrderButton, iptvButton, playLogButton}) darkButton(b, scale);
         refreshFeatureLabels();
         setContentView(settingsPage);
         view.requestFocus();
@@ -176,6 +186,7 @@ public class SettingsActivity extends Activity {
         channelMapButton.setText("ربط القنوات");
         sectionOrderButton.setText("ترتيب الأقسام");
         iptvButton.setText("اشتراك IPTV");
+        playLogButton.setText("سجل التشغيل");
     }
 
     /**
@@ -251,7 +262,7 @@ public class SettingsActivity extends Activity {
         }
         // Every side button, so OK / Enter reach the focused one (the settings list took them for the two that were missing)
         boolean featureFocused = channelsButton.hasFocus() || matchesButton.hasFocus() || updatesButton.hasFocus()
-                || channelMapButton.hasFocus() || sectionOrderButton.hasFocus() || iptvButton.hasFocus();
+                || channelMapButton.hasFocus() || sectionOrderButton.hasFocus() || iptvButton.hasFocus() || playLogButton.hasFocus();
         if (event.getAction() == KeyEvent.ACTION_DOWN) {
             if (featureFocused && (event.getKeyCode() == KeyEvent.KEYCODE_DPAD_RIGHT || event.getKeyCode() == KeyEvent.KEYCODE_BACK)) {
                 featureReturnKey = event.getKeyCode();

@@ -14,6 +14,8 @@ OUT = Path(sys.argv[1]); OUT.mkdir(parents=True, exist_ok=True)
 ADB = os.environ.get('ADB', 'adb')
 PKG = 'io.ouswis.tv.standalone'
 HITS = {}
+FEED_MODE = ['ok']   # 'down': every competition but one answers HTTP 500, that one answers with no matches (what wiped the matches screen)
+ALLOWED = ['m3u8', 'ts']   # what the mock account's user_info says it may stream
 
 def adb(*args, check=True):
     return subprocess.run([ADB, *args], capture_output=True, timeout=90, check=check).stdout.decode('utf-8', 'replace').replace('\r', '')
@@ -190,6 +192,10 @@ with tempfile.TemporaryDirectory() as temp:
     subprocess.run(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', 'testsrc=s=640x360:r=10', '-t', '90',
                     '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-f', 'mpegts', str(clip)], check=True)
     data = clip.read_bytes()
+    short_clip = Path(temp) / 'short.ts'   # 5 seconds: the player reaches its end, as a server that closes the connection does
+    subprocess.run(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', 'testsrc=s=640x360:r=10', '-t', '5',
+                    '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-f', 'mpegts', str(short_clip)], check=True)
+    short_data = short_clip.read_bytes()
     CATS = [('18', 'US APPLE TV'), ('10', 'FR|TF1 HD'), ('14', 'FR| BEIN SPORTS'), ('15', 'BE| SPORT'), ('16', 'US| NEWS'), ('11', 'رياضة'), ('12', 'أخبار'), ('13', 'أفلام'), ('17', 'AR| عام')]   # the foreign ones are listed first and two of them say sport: the Arabic ones must still lead
     STREAMS = {'11': [('101', 'SSC 1 HD', 'ts'), ('102', 'SSC 2 HD', 'ts'), ('103', 'SSC 3 HD', 'ts'), ('110', 'beIN Sports 1 HD', 'ts'),
                       ('111', 'beIN Sports 2', 'ts'), ('112', 'beIN Sports 3', 'm3u8'), ('113', 'FR| beIN SPORTS 4 HD (H.265)', 'ts'), ('120', 'AD Sports 1', 'ts'), ('105', 'beIN SPORTS XTRA 1HD', 'ts')],
@@ -211,6 +217,8 @@ with tempfile.TemporaryDirectory() as temp:
             HITS[url.path.rsplit('/', 1)[-1]] = HITS.get(url.path.rsplit('/', 1)[-1], 0) + 1
             if url.path.startswith('/apis/site/v2/sports/soccer/'):
                 slug = url.path.split('/')[6]
+                if FEED_MODE[0] == 'down' and slug != 'eng.1':
+                    self.send_response(500); self.end_headers(); return
                 utc = time.gmtime()
                 events = []
                 if slug == 'caf.nations_qual' and q.get('dates', [''])[0] == time.strftime('%Y%m', utc):
@@ -230,10 +238,10 @@ with tempfile.TemporaryDirectory() as temp:
                                                  {'scoringPlay': True, 'team': {'id': away[:3]}, 'athletesInvolved': [], 'clock': {}, 'type': {'text': 'Own Goal'}}]
                     return {'id': eid, 'date': kick, 'status': {'displayClock': '', 'type': {'state': state, 'name': name, 'shortDetail': 'FT' if state == 'post' else ''}}, 'competitions': [comp]}
                 lname = 'English Premier League'
-                if slug == 'eng.1' and q.get('dates', [''])[0] == time.strftime('%Y%m', utc):
+                if slug == 'eng.1' and FEED_MODE[0] == 'ok' and q.get('dates', [''])[0] == time.strftime('%Y%m', utc):
                     # a finished match with goals (today and yesterday), one tomorrow, one later today; a team name the table lacks
                     events = [fx('8001', 'Liverpool', 'Manchester City', 'post', -240, '2', '1', goals=True), fx('8002', 'Wolverhampton Wanderers', 'Fulham FC XYZ', 'post', -1700, '0', '0'),
-                              fx('8003', 'Arsenal', 'Chelsea', 'pre', 24 * 60 + 5), fx('8004', 'Tottenham Hotspur', 'Everton', 'pre', 150)]
+                              fx('8003', 'Arsenal', 'Chelsea', 'pre', 24 * 60 + 5), fx('8004', 'Tottenham Hotspur', 'Everton', 'pre', 150), fx('8005', 'Orléans', 'Dijon FCO', 'post', -30, '1', '0'), fx('8006', 'Rwanda', 'Malawi', 'post', -45, '0', '0')]   # finished a moment ago: on today's list whatever the hour
                 body = {'leagues': [{'name': lname if slug == 'eng.1' else 'Africa Cup of Nations Qualifying', 'logos': []}], 'events': events}
                 payload = json.dumps(body).encode(); kind = 'application/json'
             elif url.path == '/player_api.php':
@@ -257,8 +265,10 @@ with tempfile.TemporaryDirectory() as temp:
                 elif q.get('username', [''])[0] == 'bad':   # a provider that refuses the login (HTTP 200, auth 0)
                     body = {'user_info': {'auth': 0, 'status': 'Disabled'}}
                 else:
-                    body = {'user_info': {'auth': 1, 'status': 'Active', 'exp_date': str(int(time.time()) + 86400 * 120)}}
+                    body = {'user_info': {'auth': 1, 'status': 'Active', 'max_connections': '1', 'active_cons': '0', 'allowed_output_formats': ALLOWED, 'exp_date': str(int(time.time()) + 86400 * 120)}}
                 payload = json.dumps(body).encode(); kind = 'application/json'
+            elif url.path == '/live/demo/demo/999.ts':
+                payload = short_data; kind = 'video/mp2t'
             elif re.fullmatch(r'/live/demo/demo/[0-9]+\.ts', url.path):
                 payload = data; kind = 'video/mp2t'
             else:
@@ -424,6 +434,96 @@ with tempfile.TemporaryDirectory() as temp:
     assert colourful(img, (0.2, 0.2, 0.8, 0.8)) > 0.2, 'The .ts fallback did not play'
     note('PASS: the refused .m3u8 was tried first, then the .ts fallback played.')
     keys('BACK', pause=1)
+
+    # 4b. the playback log (Settings > سجل التشغيل): what the player did, the provider's connection count, no login in it
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.PlayLogActivity'); wait_label('سجل التشغيل', 'the playback log page')
+    time.sleep(1)
+    log_lines = [l for l in labels() if ' | ' in l]
+    shot('redesign-playlog.png')
+    note('Playback log lines: ' + str(len(log_lines)))
+    assert any('HTTP 404' in l or 'BAD_HTTP_STATUS' in l for l in log_lines), 'The refused .m3u8 (404) must be logged with its http status: ' + str(log_lines[:12])
+    assert any('الحالة: READY' in l for l in log_lines) and any('ظهرت أول لقطة' in l for l in log_lines), 'State changes and the first frame must be logged: ' + str(log_lines[:12])
+    assert not any('demo' in l.lower() and '/live/' in l for l in log_lines), 'The log must not hold the login or the address'
+    assert len(log_lines) <= 20, 'The page shows the last 20 events only: ' + str(len(log_lines))
+    assert 'نوع البث' in focused_label(), 'The stream type button takes the focus first: ' + focused_label()
+    for expect in ('m3u8 فقط', 'ts فقط', 'تلقائي'):
+        keys('DPAD_CENTER', pause=0.8)
+        assert any(expect in l for l in labels()), 'OK on the stream type must reach ' + expect + ': ' + str([l for l in labels() if 'نوع' in l])
+    note('PASS: the playback log page lists the events (opening, states, http status, connection count) and the stream type cycles auto / m3u8 / ts.')
+    keys('DPAD_CENTER', pause=0.8); keys('DPAD_CENTER', pause=0.8)   # ts only
+    keys('BACK', pause=1)
+    before_m3u8 = HITS.get('112.m3u8', 0)
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.PlayerActivity', '-e', 'id', '112', '-e', 'name', 'beIN Sports 3', '-e', 'ext', 'm3u8', '-e', 'num', '112')
+    time.sleep(8); img = shot('redesign-player-ts-only.png')
+    assert HITS.get('112.m3u8', 0) == before_m3u8, 'With "ts only" the .m3u8 must never be asked for: ' + str(HITS)
+    assert colourful(img, (0.2, 0.2, 0.8, 0.8)) > 0.2, '"ts only" did not play'
+    note('PASS: with the stream type set to ts only, the channel played from .ts and the .m3u8 was never requested.')
+    keys('BACK', pause=1)
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.PlayLogActivity'); wait_label('سجل التشغيل', 'the playback log page again')
+    keys('DPAD_CENTER', pause=0.8)   # back to automatic
+    assert any('تلقائي' in l for l in labels()), 'The stream type must be back on automatic'
+    keys('BACK', pause=1)
+
+    # 4c. the server closes the stream (the 5 s clip ends): the same channel is joined again at once, the last picture stays, no loading text
+    hits999 = HITS.get('999.ts', 0)
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.PlayerActivity', '-e', 'id', '999', '-e', 'name', 'Short clip', '-e', 'ext', 'ts', '-e', 'num', '999')
+    time.sleep(4)
+    frames, blank = 0, 0
+    blank_at = []; t_start = time.time(); seen_picture = False
+    loading_seen = []
+    t_end = time.time() + 22
+    next_dump = time.time() + 2
+    while time.time() < t_end:
+        img = shot('redesign-reconnect-burst.png'); frames += 1
+        c_now = colourful(img, (0.2, 0.2, 0.8, 0.8))
+        if c_now >= 0.05: seen_picture = True
+        if c_now < 0.05 and seen_picture:   # frames before the very first picture are the channel opening, not a reconnect
+            blank += 1; blank_at.append('%d@%.1fs(%.2f)' % (frames, time.time() - t_start, c_now))
+            if blank == 1: img.save(OUT / 'redesign-reconnect-blank.png')
+        if time.time() >= next_dump:
+            loading_seen += [l for l in labels() if 'جارٍ' in l or 'إعادة الاتصال' in l]
+            next_dump = time.time() + 4
+        time.sleep(0.3)
+    reconnects = HITS.get('999.ts', 0) - hits999
+    note('Reconnect test: %d connections in 26 s, %d frames sampled, %d blank, loading text seen: %s; blank at %s' % (reconnects, frames, blank, loading_seen, blank_at))
+    assert reconnects >= 3, 'The 5 s clip ends again and again: the channel must be joined again each time (connections: %d)' % reconnects
+    assert blank <= 1, 'The last picture must stay on screen while reconnecting (%d of %d frames were blank)' % (blank, frames)
+    assert not loading_seen, 'No loading text may show for a reconnect that takes under 3 s: ' + str(loading_seen)
+    keys('BACK', pause=1)
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.PlayLogActivity'); wait_label('سجل التشغيل', 'the playback log page after the reconnects')
+    time.sleep(1)
+    page = ' || '.join(labels())
+    ms = [int(x) for x in re.findall(r'عاد البث بعد (\d+) مللي ثانية', page)]
+    note('Reconnect times (ms): ' + str(ms))
+    assert 'إعادة اتصال فورية' in page or ms, 'Each reconnect must be in the log: ' + page[:600]
+    assert ms and max(ms) < 3000, 'The picture must be back within 3 s of each reconnect: ' + str(ms)
+    assert 'محاولة' not in ' '.join(l for l in labels() if 'تشغيل Short' in l), 'A reconnect after ENDED must not count as a failed attempt: ' + str(labels())
+    shot('redesign-playlog-reconnect.png')
+    note('PASS: when the stream ended the same channel was joined again at once (%d times), the last picture stayed (%d blank of %d frames), no loading text, back in %s ms.' % (reconnects, blank, frames, ms))
+    keys('BACK', pause=1)
+
+    # 4d. the account allows only ts (user_info.allowed_output_formats): a channel asked as m3u8 goes straight to ts, m3u8 is never requested
+    ALLOWED[:] = ['ts']
+    adb('shell', 'rm', '-f', '/data/user/0/%s/files/playlog.txt' % PKG)   # a fresh log: its first lines are the open and the account
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.PlayerActivity', '-e', 'id', '201', '-e', 'name', 'Al Arabiya', '-e', 'ext', 'ts', '-e', 'num', '201')
+    time.sleep(5); keys('BACK', pause=1)    # reads user_info and remembers the formats
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.PlayLogActivity'); wait_label('سجل التشغيل', 'the playback log page (account)')
+    time.sleep(1)
+    page = [l for l in labels() if ' | ' in l]
+    assert any('فتح ملء الشاشة' in l for l in page), 'The log must say the full screen opened: ' + str(page[:8])
+    assert any('max_connections=1' in l and 'active_cons=0' in l and 'الصيغ المسموحة: ts' in l for l in page), 'The log must hold max_connections, active_cons and the allowed formats from user_info: ' + str(page[:8])
+    note('PASS: the log holds the opening, max_connections=1, active_cons=0 and the allowed formats (ts).')
+    keys('BACK', pause=1)
+    before = HITS.get('113.m3u8', 0)
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.PlayerActivity', '-e', 'id', '113', '-e', 'name', 'Four', '-e', 'ext', 'm3u8', '-e', 'num', '113')
+    time.sleep(7); img = shot('redesign-player-allowed-ts.png')
+    assert HITS.get('113.m3u8', 0) == before, 'The account allows only ts: m3u8 must not be requested: ' + str(HITS)
+    assert colourful(img, (0.2, 0.2, 0.8, 0.8)) > 0.2, 'The ts-only account did not play'
+    note('PASS: with allowed_output_formats = [ts], an m3u8 channel went straight to ts and m3u8 was never requested.')
+    keys('BACK', pause=1)
+    ALLOWED[:] = ['m3u8', 'ts']
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.PlayerActivity', '-e', 'id', '201', '-e', 'name', 'Al Arabiya', '-e', 'ext', 'ts', '-e', 'num', '201')
+    time.sleep(4); keys('BACK', pause=1)
 
     # 5. the league -> channel table (Settings): pick by hand, then back to the default
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.ChannelMapActivity')
@@ -733,6 +833,36 @@ with tempfile.TemporaryDirectory() as temp:
     note('home counters after the loops: ' + (st[-1] if st else 'none'))
     assert not st or 'skeletonAfterData=0' in st[-1], 'Empty cards returned after data: ' + st[-1]
     note('PASS: Back pressed 5 times from the home screen: no crash and the home returned with its matches.')
+
+    # 6d. the matches screen lost its data while the home kept it: every competition but one fails (HTTP 500) and that one
+    # answers with no matches. The shared list must keep the last data, with the "update failed" line, on both screens.
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.MatchesScreenActivity'); time.sleep(3)
+    before = ' | '.join(sorted(l for l in labels() if ' ضد ' in l and not l.startswith('تفاصيل')))
+    assert 'أورليان' in before and 'ديجون' in before and 'رواندا' in before and 'مالاوي' in before, 'The four names must be in Arabic: ' + before
+    assert not re.search(r'Orl|Dijon|Rwanda|Malawi', before), 'No English name left: ' + before
+    keys('BACK', pause=1)
+    FEED_MODE[0] = 'down'
+    hits_before = HITS.get('scoreboard', 0)
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.HomeActivity'); wait_label('غانا ضد الصومال', 'the home before the feed goes down')
+    for _ in range(40):   # the home refreshes every 60 s while a match is live; the 60 s cache of each feed must run out first
+        time.sleep(5)
+        if HITS.get('scoreboard', 0) > hits_before + 3: break
+    note('feed down: %d requests since' % (HITS.get('scoreboard', 0) - hits_before))
+    assert HITS.get('scoreboard', 0) > hits_before + 3, 'The home never asked again while the feed was down'
+    time.sleep(3)
+    assert any('غانا ضد الصومال' in l for l in labels()), 'The home must keep its matches while the feed fails'
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.MatchesScreenActivity'); time.sleep(4)
+    for _ in range(40):
+        if any('تعذّر التحديث' in l for l in labels()): break
+        time.sleep(3)
+    shot('redesign-matches-feed-down.png')
+    after = ' | '.join(sorted(l for l in labels() if ' ضد ' in l and not l.startswith('تفاصيل')))
+    assert 'غانا ضد الصومال' in after and 'ليفربول ضد مانشستر سيتي' in after, 'The matches screen must keep the last data while the update fails: ' + after
+    assert any('تعذّر التحديث' in l for l in labels()), 'The "update failed" line must show: ' + str(labels()[:20])
+    assert not any('لا توجد مباريات' in l for l in labels()), 'The list must not be emptied'
+    note('PASS: with the feed failing, the matches screen and the home kept their matches; the matches screen says تعذّر التحديث.')
+    keys('BACK', pause=1)
+    FEED_MODE[0] = 'ok'
 
     # 7. sections: order and hiding (Settings)
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.SectionOrderActivity')

@@ -189,7 +189,8 @@ final class RedesignHomeView extends View {
                 List<MatchCarouselView.Match> found=new ArrayList<>();
                 int answered=0;
                 try{
-                    for(String section:new String[]{"live","upcoming","today"}){UpcomingMatches.Result res=UpcomingMatches.load(null,section);found.addAll(res.matches);answered+=res.answered;}
+                    MatchStore.refresh();   // the one list the matches screen reads too
+                    found.addAll(MatchStore.snapshot());answered=MatchStore.answered();
                 }catch(Throwable ignored){}
                 final int answeredNow=answered;
                 final StringBuilder fresh=new StringBuilder();

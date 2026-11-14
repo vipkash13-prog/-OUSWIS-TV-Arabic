@@ -24,6 +24,8 @@ final class XtreamAccount {
     static String enc(String s){try{return URLEncoder.encode(s,"UTF-8");}catch(Exception e){return s;}}
     /** The stream address for a live channel (it holds the password: never log or store it). */
     String liveUrl(String id,String ext){return server+"/live/"+enc(user)+"/"+enc(pass)+"/"+enc(id)+"."+ext;}
+    /** The older form of the HLS address, without "/live" (some panels answer only that one). It holds the password too. */
+    String liveUrlAlt(String id,String ext){return server+"/"+enc(user)+"/"+enc(pass)+"/"+enc(id)+"."+ext;}
     String api(String action,String extra){
         return server+"/player_api.php?username="+enc(user)+"&password="+enc(pass)
                 +(action==null?"":"&action="+action)+(extra==null?"":"&"+extra);

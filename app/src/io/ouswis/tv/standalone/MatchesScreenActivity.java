@@ -64,13 +64,24 @@ public final class MatchesScreenActivity extends Activity {
         root.addView(view,new FrameLayout.LayoutParams(-1,-1));
         setContentView(root);
         view.requestFocus();
+        syncFromStore();   // what the home screen already loaded is on the screen at once
         if(account!=null)MatchChannels.prepare(this,account,()->{MatchChannels.scanGuides(this,account);view.postInvalidate();});
+    }
+    private static boolean failed;
+    /** Copies the shared list (MatchStore, the same one the home screen reads) when it differs from the one drawn. */
+    private static void syncFromStore(){
+        List<MatchCarouselView.Match> now=MatchStore.snapshot();
+        StringBuilder sig=new StringBuilder();
+        for(MatchCarouselView.Match m:now)sig.append(m.key).append('|').append(m.state).append('|').append(m.homeScore).append('-').append(m.awayScore).append('|').append(m.status).append('|').append(m.kickoffMillis).append(';');
+        if(!sig.toString().equals(loadedSig)){loadedSig=sig.toString();all.clear();all.addAll(now);}
+        updatedAt=MatchStore.updatedAt();failed=MatchStore.failed();
     }
     private static boolean anyLive(){for(MatchCarouselView.Match m:all)if(m.live())return true;return false;}
     @Override protected void onResume(){
         super.onResume();foreground=true;
-        long every=anyLive()?60_000L:30*60_000L,age=System.currentTimeMillis()-updatedAt;
-        if(updatedAt==0||age>=every)load();               // only when stale: coming back does not load again
+        syncFromStore();
+        long every=failed?2*60_000L:anyLive()?60_000L:30*60_000L,age=System.currentTimeMillis()-updatedAt;
+        if(updatedAt==0||failed||age>=every)load();               // only when stale: coming back does not load again
         else main.postDelayed(refresh,every-age);
     }
     @Override protected void onPause(){foreground=false;main.removeCallbacks(refresh);if(view!=null)view.keep();super.onPause();}
@@ -80,28 +91,12 @@ public final class MatchesScreenActivity extends Activity {
         if(!foreground||loading)return;
         loading=true;
         io.execute(()->{
-            List<MatchCarouselView.Match> merged=new ArrayList<>();
-            boolean any=false;
-            try{
-                for(String section:new String[]{"live","upcoming","today","yesterday"}){
-                    UpcomingMatches.Result r=UpcomingMatches.load(null,section);
-                    if(r.answered>0)any=true;
-                    merged.addAll(r.matches);
-                }
-            }catch(Throwable ignored){}
-            final boolean ok=any;
+            MatchStore.refresh();   // the shared source: a failed or smaller answer never empties the list
             main.post(()->{
                 loading=false;
-                if(ok){
-                    updatedAt=System.currentTimeMillis();
-                    StringBuilder sig=new StringBuilder();   // only a real change replaces the list (and so redraws the cards)
-                    for(MatchCarouselView.Match m:merged)sig.append(m.key).append('|').append(m.state).append('|').append(m.homeScore).append('-').append(m.awayScore).append('|').append(m.status).append('|').append(m.kickoffMillis).append(';');
-                    if(!sig.toString().equals(loadedSig)){loadedSig=sig.toString();all.clear();all.addAll(merged);}
-                }
-                view.dataChanged(ok);
-                if(foreground){
-                    main.postDelayed(refresh,anyLive()?60_000L:30*60_000L);
-                }
+                syncFromStore();
+                view.dataChanged(MatchStore.updatedAt()>0||!all.isEmpty());
+                if(foreground)main.postDelayed(refresh,failed?2*60_000L:anyLive()?60_000L:30*60_000L);
             });
         });
     }
@@ -235,6 +230,10 @@ public final class MatchesScreenActivity extends Activity {
             Design.right(c,"⚽ المباريات",1848,76,title);
             String dayText=Design.clock(System.currentTimeMillis(),"EEEE d MMMM");
             Design.right(c,dayText+(updatedAt>0?" · آخر تحديث "+timeOf(updatedAt):offline?" · تعذّر التحديث":" · جارٍ التحميل…"),1848,113,sub);
+            if(failed&&updatedAt>0){
+                Design.right(c,"تعذّر التحديث · تُعرض آخر بيانات محمّلة",1848,146,goldText);
+                a11y.add(1100,128,1848,152,"تعذّر التحديث · تُعرض آخر بيانات محمّلة",false,false);
+            }
             int liveCount=0;for(MatchCarouselView.Match m:MatchChannels.withGuide(all))if(m.live())liveCount++;   // the same list the cards come from: feed and guide, each match once
             a11y.add(1100,40,1848,126,"المباريات · "+dayText+(liveCount>0?" · "+liveCount+" مباشر":""),false,false);
             float chipX=72;
@@ -269,7 +268,7 @@ public final class MatchesScreenActivity extends Activity {
             int row=sel/cols;
             if(row<scroll)scroll=row;if(row>=scroll+rowsVisible)scroll=row-rowsVisible+1;
             if(list.isEmpty()){
-                Design.center(c,offline?"تعذّر تحميل المباريات. تحقق من الإنترنت":updatedAt==0?"جارٍ تحميل المباريات…":"لا توجد مباريات في هذا اليوم",1146,520,Design.text(Design.MUTED,26,Design.regular()));
+                Design.center(c,offline?"تعذّر تحميل المباريات. تحقق من الإنترنت":updatedAt==0?"جارٍ تحميل المباريات…":"لا توجد مباريات في هذا اليوم",960,520,Design.text(Design.MUTED,26,Design.regular()));
             }
             for(int i=scroll*cols;i<Math.min(list.size(),(scroll+rowsVisible)*cols);i++){
                 int rr=i/cols-scroll,cc=i%cols;
@@ -334,6 +333,7 @@ public final class MatchesScreenActivity extends Activity {
             return right-width-14;
         }
         private void panel(Canvas c,List<MatchCarouselView.Match> list){
+            if(list.isEmpty())return;   // no matches: no empty panel
             r.set(72,243,591,881);Design.card(c,r,28,1,p,0xFF141829);
             if(sel<0||sel>=list.size())return;
             MatchCarouselView.Match m=list.get(sel);
