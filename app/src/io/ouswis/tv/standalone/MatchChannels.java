@@ -111,6 +111,29 @@ final class MatchChannels {
     /** The files changed (a category finished downloading): earlier "no channel" answers may be wrong now. */
     static void invalidate(){clearAnswers();guideAt=0;fire();}
     private static void clearAnswers(){confirmed.clear();merged=null;}
+    private static volatile int epoch;   // raised when the subscription changes: a scan of the old one is thrown away
+    /** The subscription changed: nothing read for the old one stays in memory (the files and preferences are AccountData's). */
+    static void reset(){
+        epoch++;
+        guides.clear();guideChannels.clear();confirmed.clear();optionsMap.clear();
+        merged=null;mergedFor=null;leaguePicks=null;matchPicksJson=null;bad=null;guideAt=0;
+        fire();
+    }
+    /** A channel linked to this match answered 404 or 405 (the provider has no such stream): the link goes, the viewer picks. */
+    static void unlink(Context c,String matchKey,String channelId){
+        if(matchKey==null||matchKey.isEmpty())return;
+        try{
+            JSONObject picks=new JSONObject(store(c).getString("matchPicks3","{}"));
+            picks.remove(matchKey);
+            JSONObject bad=new JSONObject(store(c).getString("badLinks","{}"));
+            if(channelId!=null&&!channelId.isEmpty())bad.put(matchKey,channelId);   // the guide must not link the same channel again
+            store(c).edit().putString("matchPicks3",picks.toString()).putString("badLinks",bad.toString()).apply();
+        }catch(Exception ignored){}
+        matchPicksJson=null;
+        confirmed.put(matchKey,NONE);
+        merged=null;
+        fire();
+    }
 
     // MARK: the guide decides
 
@@ -132,6 +155,7 @@ final class MatchChannels {
     static void scanGuides(Context c,XtreamAccount a){
         if(a==null||scanning||System.currentTimeMillis()-guideAt<GUIDE_TTL)return;
         scanning=true;
+        final int ep=epoch;
         final Context app=c.getApplicationContext();
         worker.execute(()->{
             try{
@@ -143,25 +167,26 @@ final class MatchChannels {
                 final long now=System.currentTimeMillis();
                 for(LiveData.Channel ch:list)jobs.add(pool.submit(()->{
                     try{
+                        if(ep!=epoch)return;   // the subscription changed: no more requests for the old one
                         java.util.List<LiveData.Program> day=null;
                         try{day=LiveData.fetchDay(a,ch.id);}catch(Exception ignored){}
                         if(day==null||day.isEmpty())day=LiveData.fetchGuide(a,ch.id,GUIDE_PROGRAMMES);   // a provider without the day table: the next programmes
                         java.util.List<LiveData.Program> keep=new ArrayList<>();
                         for(LiveData.Program p:day)if(p.end>now-3*3600_000L&&p.start<now+30*3600_000L)keep.add(p);
-                        guides.put(ch.id,keep);guideChannels.put(ch.id,ch);
+                        if(ep==epoch){guides.put(ch.id,keep);guideChannels.put(ch.id,ch);}   // not if the subscription changed meanwhile
                     }catch(Exception ignored){}
                 }));
                 for(java.util.concurrent.Future<?> j:jobs){try{j.get(60,java.util.concurrent.TimeUnit.SECONDS);}catch(Exception ignored){}}
                 pool.shutdownNow();
-                if(!guides.isEmpty())saveGuideFile(app,a);
+                if(ep==epoch&&!guides.isEmpty())saveGuideFile(app,a);
             }catch(Throwable ignored){}
             // nothing read (no sports files yet): try again in a minute rather than in three hours
-            guideAt=guides.isEmpty()?System.currentTimeMillis()-GUIDE_TTL+60_000L:System.currentTimeMillis();scanning=false;
+            guideAt=ep!=epoch?0:guides.isEmpty()?System.currentTimeMillis()-GUIDE_TTL+60_000L:System.currentTimeMillis();scanning=false;
             clearAnswers();
             fire();
         });
     }
-    private static File guideFile(Context c,XtreamAccount a){return new File(c.getFilesDir(),"guide-day-"+Integer.toHexString((a.server+"|"+a.user).hashCode())+".json");}
+    private static File guideFile(Context c,XtreamAccount a){return new File(c.getFilesDir(),"guide-day-"+AccountData.key(a)+".json");}
     private static void saveGuideFile(Context c,XtreamAccount a){
         try{
             JSONObject root=new JSONObject(),chs=new JSONObject();
@@ -316,6 +341,11 @@ final class MatchChannels {
         return o==null?new ArrayList<LiveData.Channel>():o;
     }
     static String shortName(String name){return Titles.channelName(name);}
+    /** The player for a channel that came from a match's link: if the provider answers 404/405, the link is dropped and the sports list opens. */
+    static android.content.Intent linkedIntent(Context c,LiveData.Channel ch,MatchCarouselView.Match m){
+        return PlayerActivity.intent(c,ch,"").putExtra(PlayerActivity.EXTRA_MATCH_KEY,m.key).putExtra(PlayerActivity.EXTRA_LINKED,"1")
+                .putExtra(PlayerActivity.EXTRA_SUGGESTED,android.text.TextUtils.join(",",suggestions(c,m)));
+    }
     /** A channel the feed itself names for the match ("beIN SPORTS 2"), when the subscription has exactly that channel. */
     static LiveData.Channel fromBroadcast(MatchCarouselView.Match m){
         if(m==null||m.broadcasts.isEmpty())return null;
@@ -378,12 +408,18 @@ final class MatchChannels {
      * and the screens ask the viewer to pick one. Answers at once from memory (it is called while drawing): what has
      * to be worked out goes to a background thread, and the listeners are told when the answer is in.
      */
+    /** The channel the guide found, unless the provider already answered 404/405 for it on this match. */
+    private static LiveData.Channel notRefused(Context c,String matchKey,LiveData.Channel ch){
+        if(ch==null)return null;
+        try{if(ch.id.equals(new JSONObject(store(c).getString("badLinks","{}")).optString(matchKey)))return null;}catch(Exception ignored){}
+        return ch;
+    }
     static LiveData.Channel forMatch(Context c,XtreamAccount a,MatchCarouselView.Match m){
         if(m==null)return null;
         scanGuides(c,a);
         LiveData.Channel manual=matchPick(c,m.key);
         if(manual!=null&&!contradicts(manual,m)&&!isUnsupported(c,manual.id))return manual;
-        if(!m.epgChannelId.isEmpty())return guideChannels.get(m.epgChannelId);
+        if(!m.epgChannelId.isEmpty())return notRefused(c,m.key,guideChannels.get(m.epgChannelId));
         Object got=confirmed.get(m.key);
         if(got!=null)return got==NONE?null:(LiveData.Channel)got;
         if(a!=null&&!guideReady())return null;   // the scan decides first
@@ -392,7 +428,7 @@ final class MatchChannels {
             resolver.execute(()->{
                 try{
                     // only the guide confirms a channel: the feed's broadcaster and the league's pick are suggestions (see suggestions)
-                    LiveData.Channel ch=fromGuide(m);
+                    LiveData.Channel ch=notRefused(app,m.key,fromGuide(m));
                     confirmed.put(m.key,ch==null?NONE:ch);
                     fire();
                 }catch(Throwable ignored){}finally{resolving.remove(m.key);}

@@ -429,14 +429,14 @@ public final class MatchesScreenActivity extends Activity {
             MatchCarouselView.Match m=list.get(Math.min(sel,list.size()-1));
             LiveData.Channel ch=channelFor(m);
             if(area==1){
-                if(ch!=null)watch(ch);else openSports(m);
+                if(ch!=null)watch(ch,m,true);else openSports(m);
                 return;
             }
             List<LiveData.Channel> opts=extraOptions(m,ch);
             int favoriteSlot=(ch!=null?1:0)+opts.size();
-            if(panelFocus==0&&ch!=null){watch(ch);return;}
+            if(panelFocus==0&&ch!=null){watch(ch,m,true);return;}
             int first=ch!=null?1:0;
-            if(panelFocus>=first&&panelFocus<first+opts.size()){watch(opts.get(panelFocus-first));return;}
+            if(panelFocus>=first&&panelFocus<first+opts.size()){watch(opts.get(panelFocus-first),m,false);return;}
             if(panelFocus==favoriteSlot+1){chooseChannel(m);return;}
             if(panelFocus==favoriteSlot){
                 Set<String> s=saved();
@@ -459,8 +459,8 @@ public final class MatchesScreenActivity extends Activity {
         private void openSports(MatchCarouselView.Match m){
             getContext().startActivity(new Intent(getContext(),LiveActivity.class).putExtra(LiveActivity.EXTRA_MATCH_KEY,m.key).putExtra(LiveActivity.EXTRA_SUGGESTED,android.text.TextUtils.join(",",MatchChannels.suggestions(getContext(),m))));
         }
-        private void watch(LiveData.Channel ch){
-            getContext().startActivity(PlayerActivity.intent(getContext(),ch,""));
+        private void watch(LiveData.Channel ch,MatchCarouselView.Match m,boolean fromLink){
+            getContext().startActivity(fromLink?MatchChannels.linkedIntent(getContext(),ch,m):PlayerActivity.intent(getContext(),ch,""));
         }
         /** A channel picked by hand is kept for the match's league: every match of it opens that channel from now on. */
         private void chooseChannel(MatchCarouselView.Match m){

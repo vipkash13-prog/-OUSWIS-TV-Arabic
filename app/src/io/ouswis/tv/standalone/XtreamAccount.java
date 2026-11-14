@@ -18,7 +18,10 @@ final class XtreamAccount {
     /** The sealed login (AccountVault); a plain-text one from an older version is moved there. Null when nobody has signed in. */
     static XtreamAccount read(Context c){
         String[] v=AccountVault.load(c);
-        return v==null?null:new XtreamAccount(v[0],v[1],v[2]);
+        if(v==null)return null;
+        XtreamAccount a=new XtreamAccount(v[0],v[1],v[2]);
+        AccountData.sync(c,a);   // data made for another subscription goes before anyone reads it
+        return a;
     }
     static SharedPreferences prefs(Context c){return c.getSharedPreferences("XtreamActivity",Context.MODE_PRIVATE);}
     static String enc(String s){try{return URLEncoder.encode(s,"UTF-8");}catch(Exception e){return s;}}

@@ -219,8 +219,7 @@ public class IptvActivity extends Activity {
         Button yes = button("تأكيد الحذف");
         no.setOnClickListener(x -> show(INFO));
         yes.setOnClickListener(x -> {
-            AccountVault.clear(this);
-            wipeOldData(this);
+            AccountVault.clear(this);   // wipes everything of the subscription (AccountData)
             statusDone = false;
             show(INFO);
         });
@@ -297,8 +296,7 @@ public class IptvActivity extends Activity {
         String base = address();
         if (base == null) return;
         String user = fUser.getText().toString().trim(), pass = fPass.getText().toString();
-        wipeOldData(this);                       // the old subscription's data goes first
-        AccountVault.save(this, base, user, pass);   // sealed, as before
+        AccountVault.save(this, base, user, pass);   // sealed; another subscription than the data's: AccountData switches it (favourites carried by name)
         XtreamAccount a = XtreamAccount.read(this);
         if (a == null) { say("تعذّر حفظ الاشتراك", BAD); return; }
         statusDone = false;
@@ -317,19 +315,6 @@ public class IptvActivity extends Activity {
         });
     }
     private String loadNote;
-
-    /** Everything tied to the old subscription: channels, categories, guide, recents, favourites and the last channel. */
-    static void wipeOldData(Context c) {
-        File[] files = c.getFilesDir().listFiles();
-        if (files != null) for (File f : files) {
-            String n = f.getName();
-            if (n.startsWith("live-") || n.startsWith("xtream-catalog-cache")) f.delete();
-        }
-        c.getApplicationContext().getSharedPreferences("ouswis-live", Context.MODE_PRIVATE).edit()
-                .remove("recent").remove("favorites").remove("last").commit();
-        XtreamAccount.prefs(c).edit().remove("lastChannel").remove("lastChannelName").commit();
-        MatchChannels.invalidate();
-    }
 
     // MARK: views
 

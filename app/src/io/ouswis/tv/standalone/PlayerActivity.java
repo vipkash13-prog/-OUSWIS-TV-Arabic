@@ -49,11 +49,13 @@ public final class PlayerActivity extends Activity {
     private static final long BUFFERING_STUCK_MS=4_000;
     private static final long HEARTBEAT_MS=60_000;
     static final String EXTRA_MATCH_KEY="matchKey";
+    /** "1" when the channel came from the match's link (the guide or a saved pick), not from the viewer browsing: a 404/405 then unlinks it. */
+    static final String EXTRA_LINKED="linked",EXTRA_SUGGESTED="suggested";
     /** Ids (comma separated) the app itself proposed for the match: watching one of them is not the viewer's choice and is never saved. */
     static final String EXTRA_NO_SAVE="noSave";
     private final java.util.Set<String> noSave=new java.util.HashSet<>();
     private static final long KEEP_MATCH_MS=60_000;
-    private String matchKey="";private String savedChannelId="";
+    private String matchKey="";private String savedChannelId="";private boolean linked,unlinked;private String suggestedIds="";
     private long channelStartAt,lastProgressAt,lastPos=-1,lastHeartbeatAt,lastLoadLogAt;
     private final List<Long> freezes=new ArrayList<>();
     private boolean gaveUp;
@@ -128,7 +130,7 @@ public final class PlayerActivity extends Activity {
         LiveData.Channel first=new LiveData.Channel(id==null?"":id,str(EXTRA_NAME),str(EXTRA_ICON),str(EXTRA_NUM),str(EXTRA_EXT).isEmpty()?"m3u8":str(EXTRA_EXT));
         list.add(first);index=0;
         data=new LiveData(this,account);
-        matchKey=str(EXTRA_MATCH_KEY);
+        matchKey=str(EXTRA_MATCH_KEY);linked="1".equals(str(EXTRA_LINKED));suggestedIds=str(EXTRA_SUGGESTED);
         for(String nsId:str(EXTRA_NO_SAVE).split(","))if(!nsId.isEmpty())noSave.add(nsId);
         final String given=str(EXTRA_SECTION);
         if(given.isEmpty()){
@@ -182,6 +184,8 @@ public final class PlayerActivity extends Activity {
             @Override public void onPlayerError(PlaybackException e){
                 log("توقف: "+describe(e)+" · "+playerState());
                 if(isDecoderError(e)){main.post(()->decoderFailed());return;}
+                final int http0=httpCode(e);
+                if((http0==404||http0==405)&&linked&&!pictured){main.post(()->linkRefused(http0));return;}
                 if(httpCode(e)==509){main.post(()->limitReached());return;}
                 if(e.errorCode==PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW){   // fell behind the live edge: jump back to it, not a failure
                     try{player.seekToDefaultPosition();player.prepare();player.setPlayWhenReady(true);lastProgressAt=android.os.SystemClock.elapsedRealtime();log("عودة إلى البث المباشر: seekToDefaultPosition + prepare");return;}
@@ -194,6 +198,8 @@ public final class PlayerActivity extends Activity {
         player.addAnalyticsListener(new AnalyticsListener(){
             @Override public void onLoadError(AnalyticsListener.EventTime t,LoadEventInfo info,MediaLoadData data,java.io.IOException error,boolean canceled){
                 long now=android.os.SystemClock.elapsedRealtime();
+                final int http1=httpCode(error);
+                if((http1==404||http1==405)&&linked&&!pictured){main.post(()->linkRefused(http1));return;}
                 if(httpCode(error)==509){main.post(()->limitReached());return;}   // the connection limit: stop asking, wait, then join again
                 if(now-lastLoadLogAt<3_000)return;   // a bad stretch would fill the log
                 lastLoadLogAt=now;
@@ -451,6 +457,19 @@ public final class PlayerActivity extends Activity {
         statusLater("إعادة الاتصال…",STATUS_DELAY_MS);
         final int mine=generation;
         main.postDelayed(()->{if(mine==generation)playCurrent();},failures<=1?300:2000);
+    }
+    /** The provider has no such stream (404/405) for the channel a match was linked to: the link goes and the sports list opens, never a black screen. */
+    private void linkRefused(int code){
+        if(unlinked||isFinishing()||index<0||index>=list.size())return;
+        unlinked=true;generation++;
+        final String failed=list.get(index).id;
+        log("الخادم لا يملك هذه القناة (HTTP "+code+"): أُلغي ربطها بالمباراة، اختر القناة");
+        MatchChannels.unlink(this,matchKey,failed);
+        try{player.stop();}catch(RuntimeException ignored){}
+        StringBuilder ids=new StringBuilder();
+        for(String id:suggestedIds.split(","))if(!id.isEmpty()&&!id.equals(failed)){if(ids.length()>0)ids.append(',');ids.append(id);}
+        startActivity(new android.content.Intent(this,LiveActivity.class).putExtra(LiveActivity.EXTRA_MATCH_KEY,matchKey).putExtra(LiveActivity.EXTRA_SUGGESTED,ids.toString()));
+        finish();
     }
     /** The provider refused the connection (HTTP 509): the old one is still counted. Stop asking at once, wait 3 s, then join again. */
     private void limitReached(){

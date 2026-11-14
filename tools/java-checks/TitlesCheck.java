@@ -50,6 +50,9 @@ public final class TitlesCheck {
         eq("SSC 2",Titles.channelName("AR: SSC 2 FHD"));
         eq("beIN Sports 2",Titles.channelName("beIN Sports 2"));
         eq("AD Sports 1",Titles.channelName("AD Sports 1"));
+        eq("beIN SPORTS 2",Titles.channelName("8K: beIN SPORTS 2 FHD"));
+        eq("beIN SPORTS 2",Titles.channelName("8K: FR| beIN SPORTS 2 HD"));
+        eq("beIN SPORTS 2",Titles.channelName("NX| BEIN SPORTS 2 HD").replace("BEIN","beIN"));
         is(true,Titles.qualityPenalty("beIN SPORTS 1 HD")<Titles.qualityPenalty("beIN SPORTS 1 4K"),"HD before 4K");
         is(true,Titles.qualityPenalty("beIN SPORTS 1 FHD")<Titles.qualityPenalty("beIN SPORTS 1 H.265"),"FHD before H.265");
         is(true,Titles.qualityPenalty("beIN SPORTS 1 HD")<Titles.qualityPenalty("beIN SPORTS 1"),"HD before unmarked");

@@ -53,6 +53,7 @@ final class AccountVault {
             app.getSharedPreferences(FILE,Context.MODE_PRIVATE).edit().putString(BLOB,blob).apply();
             cached=new String[]{server,user,pass};cachedSet=true;
             wipePlain(app);
+            XtreamAccount.read(app);   // another subscription than the data on the TV was made for: that data goes now
         }catch(Exception e){
             // Never fall back to writing the password in the clear: say it didn't save.
             android.util.Log.w("OUSWIS","Could not seal the Xtream login");
@@ -65,6 +66,7 @@ final class AccountVault {
         Context app=c.getApplicationContext()!=null?c.getApplicationContext():c;
         app.getSharedPreferences(FILE,Context.MODE_PRIVATE).edit().clear().apply();
         wipePlain(app);cached=null;cachedSet=true;
+        AccountData.wipeAll(app);   // the subscription is gone: so is everything of it
     }
 
     private static void migrate(Context app){

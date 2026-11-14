@@ -707,7 +707,7 @@ final class RedesignHomeView extends View {
                 MatchCarouselView.Match m=today.get(cl);
                 LiveData.Channel ch=channelFor(m);
                 if(ch==null)start(new Intent(ctx,LiveActivity.class).putExtra(LiveActivity.EXTRA_MATCH_KEY,m.key).putExtra(LiveActivity.EXTRA_SUGGESTED,android.text.TextUtils.join(",",MatchChannels.suggestions(ctx,m))));   // not confirmed: pick it from the sports list
-                else if(m.live())start(PlayerActivity.intent(ctx,ch,""));
+                else if(m.live())start(MatchChannels.linkedIntent(ctx,ch,m));
                 else start(new Intent(ctx,MatchesScreenActivity.class));
                 break;}
             case 3:{

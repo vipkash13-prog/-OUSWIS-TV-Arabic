@@ -67,7 +67,7 @@ final class LiveData {
     }
     void shutdown(){io.shutdownNow();}
     private File file(String name){return new File(ctx.getFilesDir(),"live-"+name+".json");}
-    private String key(){return Integer.toHexString((account.server+"|"+account.user).hashCode());}
+    private String key(){return AccountData.key(account);}
 
     // MARK: categories
 

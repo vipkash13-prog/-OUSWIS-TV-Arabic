@@ -295,12 +295,12 @@ final class Titles {
         if(Pattern.compile("(?i)\\bsd\\b").matcher(n).find())return 2;
         return 1;
     }
-    private static final Pattern PREFIX=Pattern.compile("^\\s*[A-Za-z]{2,3}\\s*[|:]\\s*");
+    private static final Pattern PREFIX=Pattern.compile("^\\s*(?:[A-Za-z]{2,3}|\\d{1,2}[Kk])\\s*[|:]\\s*");
     private static final Pattern QUALITY_TAGS=Pattern.compile("(?i)[\\[(]?\\b(?:h\\.?265|hevc|x265|4k|uhd|fhd|hd|sd)\\b[\\])]?");
     /** A channel's name for a card: no "FR|" prefix, no (H.265), no HD tag: "FR| beIN SPORTS 1 HD (H.265)" reads "beIN SPORTS 1". */
     static String channelName(String name){
         if(name==null)return "";
-        String n=PREFIX.matcher(name).replaceFirst("");
+        String n=PREFIX.matcher(PREFIX.matcher(name).replaceFirst("")).replaceFirst("");   // "8K: FR| beIN…": both prefixes
         n=QUALITY_TAGS.matcher(n).replaceAll(" ").replaceAll("\\(\\s*\\)","").replaceAll("\\s{2,}"," ").trim();
         return n.isEmpty()?name.trim():n;
     }
