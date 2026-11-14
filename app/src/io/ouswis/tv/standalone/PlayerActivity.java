@@ -302,7 +302,7 @@ public final class PlayerActivity extends Activity {
         if(!matchKey.isEmpty()&&pictured&&index>=0&&index<list.size()&&channelStartAt!=0&&now-channelStartAt>KEEP_MATCH_MS){
             LiveData.Channel cur=list.get(index);
             if(!cur.id.equals(savedChannelId)){
-                savedChannelId=cur.id;MatchChannels.pickMatch(this,matchKey,cur);
+                savedChannelId=cur.id;MatchChannels.pickMatch(PlayerActivity.this,matchKey,cur);
                 log("حُفظت "+cur.name+" كقناة المباراة بعد أكثر من دقيقة مشاهدة");
             }
         }
