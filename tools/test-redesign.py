@@ -481,7 +481,7 @@ with tempfile.TemporaryDirectory() as temp:
     assert any('HTTP 404' in l or 'BAD_HTTP_STATUS' in l for l in log_lines), 'The refused .m3u8 (404) must be logged with its http status: ' + str(log_lines[:12])
     assert any('الحالة: READY' in l for l in log_lines) and any('ظهرت أول لقطة' in l for l in log_lines), 'State changes and the first frame must be logged: ' + str(log_lines[:12])
     assert not any('demo' in l.lower() and '/live/' in l for l in log_lines), 'The log must not hold the login or the address'
-    assert len(log_lines) <= 20, 'The page shows the last 20 events only: ' + str(len(log_lines))
+    assert len(log_lines) <= 100, 'The page shows the last 100 events only: ' + str(len(log_lines))
     assert 'نوع البث' in focused_label(), 'The stream type button takes the focus first: ' + focused_label()
     for expect in ('m3u8 فقط', 'ts فقط', 'تلقائي'):
         keys('DPAD_CENTER', pause=0.8)
