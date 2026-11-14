@@ -256,7 +256,7 @@ with tempfile.TemporaryDirectory() as temp:
                         return {'id': eid, 'date': kick, 'status': {'displayClock': "%d'" % minutes_ago, 'type': {'state': 'in', 'name': 'STATUS_FIRST_HALF', 'shortDetail': "%d'" % minutes_ago}},
                                 'competitions': [{'competitors': [team(home, 'home'), team(away, 'away')], 'broadcasts': []}]}
                     # the match the user reported: it is in beIN SPORTS 2 HD's guide as "غانا × الصومال"; the second one is in no guide
-                    events = [ev('9001', 'Ghana', 'Somalia', 10), ev('9002', 'Suriname', 'Eritrea', 50)]
+                    events = [ev('9001', 'Ghana', 'Somalia', 10), ev('9002', 'Suriname', 'Eritrea', 80)]
                 def fx(eid, home, away, state, offset_min, hs='0', as_='0', goals=False, bc='Sky Sports'):
                     kick = time.strftime('%Y-%m-%dT%H:%MZ', time.gmtime(time.time() + offset_min * 60))
                     team = lambda n, ha, sc: {'homeAway': ha, 'score': sc, 'team': {'id': n[:3], 'displayName': n, 'logo': ''}}
