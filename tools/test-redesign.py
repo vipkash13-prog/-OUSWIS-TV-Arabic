@@ -671,7 +671,7 @@ with tempfile.TemporaryDirectory() as temp:
     assert len(eng) == 1 and ' مباشر' not in eng[0] and '0 - 0' not in eng[0] and 'انتهت' not in eng[0], 'A guide-only match is never live, has no score, and shows once (its later repeat is ignored): ' + str(eng)
     guide_only = [l for l in allc if 'الهلال' in l]
     assert guide_only and not any(' مباشر' in l for l in guide_only), 'Guide-only matches must not say مباشر: ' + str(guide_only)
-    assert not any('يوفنتوس' in l or 'ليون' in l for l in allc), 'A guide title without Live/مباشر/(L) must not make a match: ' + str(allc)
+    assert not any('يوفنتوس' in l or 'ليون' in l.replace('اليونان', '') for l in allc), 'A guide title without Live/مباشر/(L) must not make a match: ' + str(allc)
     sen = [l for l in allc if 'السنغال ضد السودان' in l]
     assert len(sen) == 1 and 'انتهت' in sen[0] and ' مباشر' not in sen[0], 'A match that began 2.6 h ago with no result is over: ' + str(sen)
     last_done = max(i for i, l in enumerate(allc) if 'انتهت' in l); first_done = min(i for i, l in enumerate(allc) if 'انتهت' in l)
