@@ -41,7 +41,7 @@ final class MatchChannels {
     }
     private static JSONObject matchPicks(Context c){
         JSONObject j=matchPicksJson;
-        if(j==null){try{j=new JSONObject(store(c).getString("matchPicks2","{}"));}catch(Exception e){j=new JSONObject();}matchPicksJson=j;}
+        if(j==null){try{j=new JSONObject(store(c).getString("matchPicks3","{}"));}catch(Exception e){j=new JSONObject();}matchPicksJson=j;}
         return j;
     }
     static LiveData.Channel picked(Context c,String competition){
@@ -70,10 +70,10 @@ final class MatchChannels {
     static void pickMatch(Context c,String matchKey,LiveData.Channel ch){
         if(matchKey==null||matchKey.isEmpty()||ch==null)return;
         try{
-            JSONObject picks=new JSONObject(store(c).getString("matchPicks2","{}"));
+            JSONObject picks=new JSONObject(store(c).getString("matchPicks3","{}"));
             if(picks.length()>60)picks=new JSONObject();   // old matches don't matter
             picks.put(matchKey,ch.json());
-            store(c).edit().putString("matchPicks2",picks.toString()).apply();
+            store(c).edit().putString("matchPicks3",picks.toString()).apply();
         }catch(Exception ignored){}
         matchPicksJson=null;
         clearAnswers();fire();
@@ -110,10 +110,7 @@ final class MatchChannels {
     }
     /** The files changed (a category finished downloading): earlier "no channel" answers may be wrong now. */
     static void invalidate(){clearAnswers();guideAt=0;fire();}
-    private static void clearAnswers(){confirmed.clear();unconfirmedKeys.clear();merged=null;}
-    private static final java.util.Set<String> unconfirmedKeys=java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<String,Boolean>());
-    /** True when the channel of this match comes only from the feed's broadcaster or the league's pick, not from the guide or the viewer. */
-    static boolean unconfirmed(MatchCarouselView.Match m){return m!=null&&unconfirmedKeys.contains(m.key);}
+    private static void clearAnswers(){confirmed.clear();merged=null;}
 
     // MARK: the guide decides
 
@@ -212,7 +209,7 @@ final class MatchChannels {
         long now=System.currentTimeMillis(),kick=m.kickoffMillis;
         for(java.util.Map.Entry<String,java.util.List<LiveData.Program>> e:guides.entrySet()){
             LiveData.Channel ch=guideChannels.get(e.getKey());
-            if(ch==null||out.contains(ch))continue;
+            if(ch==null||out.contains(ch)||(bad!=null&&bad.contains(ch.id)))continue;
             for(LiveData.Program p:e.getValue()){
                 if(p.end<now)continue;
                 if(kick>0&&Math.abs(p.start-kick)>KICK_WINDOW)continue;   // the programme starts within 30 minutes of the kickoff
@@ -245,6 +242,52 @@ final class MatchChannels {
         }
         return null;
     }
+    /** True when the guide says this channel shows another match around the kickoff: the channel is wrong for this one. */
+    static boolean contradicts(LiveData.Channel ch,MatchCarouselView.Match m){
+        java.util.List<LiveData.Program> ps=ch==null||m==null?null:guides.get(ch.id);
+        if(ps==null||m.kickoffMillis<=0)return false;
+        long kick=m.kickoffMillis;
+        for(LiveData.Program p:ps){
+            if(p.end<=kick||p.start>kick+KICK_WINDOW)continue;   // not the programme on at the kickoff
+            if(Titles.sameMatch(p.title,m.homeEn,m.home,m.awayEn,m.away))return false;
+            if(Titles.parseMatch(Titles.stripLive(p.title))!=null)return true;
+        }
+        return false;
+    }
+    /** The ids of channels worth highlighting in the sports list for a match the guide could not confirm: the feed's broadcaster and the league's pick, unless the guide contradicts them. */
+    static java.util.List<String> suggestions(Context c,MatchCarouselView.Match m){
+        java.util.List<String> out=new ArrayList<>();
+        if(m==null)return out;
+        LiveData.Channel[] cand={fromBroadcast(m),picked(c,m.competition)};
+        for(LiveData.Channel ch:cand)if(ch!=null&&!out.contains(ch.id)&&!contradicts(ch,m)&&!isUnsupported(c,ch.id))out.add(ch.id);
+        return out;
+    }
+    // MARK: channels this device cannot decode
+    private static volatile java.util.Set<String> bad;
+    private static java.util.Set<String> bad(Context c){
+        java.util.Set<String> s=bad;
+        if(s==null){s=java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<String,Boolean>());
+            for(String id:store(c).getString("badDecoder","").split(","))if(!id.isEmpty())s.add(id);bad=s;}
+        return s;
+    }
+    static boolean isUnsupported(Context c,String id){return id!=null&&bad(c).contains(id);}
+    static void markUnsupported(Context c,String id){
+        if(id==null||id.isEmpty())return;
+        java.util.Set<String> s=bad(c);s.add(id);
+        store(c).edit().putString("badDecoder",android.text.TextUtils.join(",",s)).apply();
+        clearAnswers();
+    }
+    /** The best other copy of the same channel (same name without its quality tag) that this device can decode: HD first. */
+    static LiveData.Channel hdSibling(Context c,java.util.List<LiveData.Channel> list,LiveData.Channel cur){
+        LiveData.Channel best=null;
+        String want=canonical(cur.name);
+        for(LiveData.Channel x:list){
+            if(x.id.equals(cur.id)||isUnsupported(c,x.id)||!canonical(x.name).equals(want))continue;
+            if(qualityPenalty(x.name)>=3)continue;   // not another 4K / H.265
+            if(best==null||rank(x)<rank(best))best=x;
+        }
+        return best;
+    }
     /**
      * The channel for a match, only when confirmed: the one the viewer played for this very match, a guide match's own
      * channel, the guide, the feed's own broadcaster, or the channel picked by hand for its league. Otherwise null,
@@ -255,7 +298,7 @@ final class MatchChannels {
         if(m==null)return null;
         scanGuides(c,a);
         LiveData.Channel manual=matchPick(c,m.key);
-        if(manual!=null)return manual;
+        if(manual!=null&&!contradicts(manual,m)&&!isUnsupported(c,manual.id))return manual;
         if(!m.epgChannelId.isEmpty())return guideChannels.get(m.epgChannelId);
         Object got=confirmed.get(m.key);
         if(got!=null)return got==NONE?null:(LiveData.Channel)got;
@@ -264,12 +307,8 @@ final class MatchChannels {
             final Context app=c.getApplicationContext();
             resolver.execute(()->{
                 try{
+                    // only the guide confirms a channel: the feed's broadcaster and the league's pick are suggestions (see suggestions)
                     LiveData.Channel ch=fromGuide(m);
-                    if(ch==null){
-                        ch=fromBroadcast(m);
-                        if(ch==null)ch=picked(app,m.competition);
-                        if(ch!=null)unconfirmedKeys.add(m.key);   // the API's channel, not seen in the guide
-                    }
                     confirmed.put(m.key,ch==null?NONE:ch);
                     fire();
                 }catch(Throwable ignored){}finally{resolving.remove(m.key);}

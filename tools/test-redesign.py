@@ -199,9 +199,10 @@ with tempfile.TemporaryDirectory() as temp:
     short_data = short_clip.read_bytes()
     CATS = [('18', 'US APPLE TV'), ('10', 'FR|TF1 HD'), ('14', 'FR| BEIN SPORTS'), ('15', 'BE| SPORT'), ('16', 'US| NEWS'), ('11', 'رياضة'), ('12', 'أخبار'), ('13', 'أفلام'), ('17', 'AR| عام')]   # the foreign ones are listed first and two of them say sport: the Arabic ones must still lead
     STREAMS = {'11': [('101', 'SSC 1 HD', 'ts'), ('102', 'SSC 2 HD', 'ts'), ('103', 'SSC 3 HD', 'ts'), ('110', 'beIN Sports 1 HD', 'ts'),
-                      ('111', 'beIN Sports 2', 'ts'), ('112', 'beIN Sports 3', 'm3u8'), ('114', 'beIN SPORTS 5 HD', 'ts'), ('115', 'beIN SPORTS 6 SD', 'ts'), ('117', 'beIN SPORTS 5 SD', 'ts'), ('113', 'FR| beIN SPORTS 4 HD (H.265)', 'ts'), ('120', 'AD Sports 1', 'ts'), ('105', 'beIN SPORTS XTRA 1HD', 'ts')],
+                      ('111', 'beIN Sports 2', 'ts'), ('112', 'beIN Sports 3', 'm3u8'), ('114', 'beIN SPORTS 5 HD', 'ts'), ('115', 'beIN SPORTS 6 SD', 'ts'), ('117', 'beIN SPORTS 5 SD', 'ts'), ('118', 'beIN SPORTS 7', 'ts'), ('113', 'FR| beIN SPORTS 4 HD (H.265)', 'ts'), ('120', 'AD Sports 1', 'ts'), ('105', 'beIN SPORTS XTRA 1HD', 'ts')],
                '12': [('201', 'Al Arabiya', 'ts'), ('202', 'Sky News Arabia', 'ts')], '13': [('301', 'Movies One', 'ts')], '10': [('401', 'TF1 HD', 'ts')], '14': [], '18': [('811', 'Apple TV Test', 'ts')], '15': [], '16': [('701', 'US News 1', 'ts')], '17': [('801', 'MBC 1', 'ts')]}
     HOUR = 3600
+    LIVE_SECONDS = int(os.environ.get('OUSWIS_LIVE_SECONDS', '600'))   # the live-speed stream is watched this long: 600 = the full test
     # guide programmes other than the default four: (title, start offset, stop offset) in seconds from now
     EPGX = {'120': [('(L) الهلال × النصر · دوري روشن', -1800, 1800), ('NBA: Philadelphia 76ers vs Boston Celtics', -1200, 6000), ('NBA Highlights', 6000, 9600)],
             '103': [('Philadelphia 76ers vs Boston Celtics - NBA', -900, 6300), ('Volleyball: Italy vs Poland', 6300, 9900), ('Live: England vs Croatia - International Friendly', 5 * HOUR, 5 * HOUR + 6000)],   # the last one: the same match shown again 5 h later
@@ -244,7 +245,7 @@ with tempfile.TemporaryDirectory() as temp:
                 lname = 'English Premier League'
                 if slug == 'eng.1' and FEED_MODE[0] == 'ok' and q.get('dates', [''])[0] == time.strftime('%Y%m', utc):
                     # a finished match with goals (today and yesterday), one tomorrow, one later today; a team name the table lacks
-                    events = [fx('8007', 'Moldova', 'Kazakhstan', 'pre', 20), fx('8008', 'Egypt', 'Malawi', 'pre', 25), fx('8009', 'Spain', 'Greece', 'pre', 40, bc='beIN Sports 3'), fx('8001', 'Liverpool', 'Manchester City', 'post', -240, '2', '1', goals=True), fx('8002', 'Wolverhampton Wanderers', 'Fulham FC XYZ', 'post', -1700, '0', '0'),
+                    events = [fx('8007', 'Moldova', 'Kazakhstan', 'pre', 20), fx('8008', 'Egypt', 'Malawi', 'pre', 25), fx('8009', 'Spain', 'Greece', 'pre', 40, bc='beIN Sports 3'), fx('8010', 'Tunisia', 'Libya', 'pre', 35, bc='beIN SPORTS 7'), fx('8001', 'Liverpool', 'Manchester City', 'post', -240, '2', '1', goals=True), fx('8002', 'Wolverhampton Wanderers', 'Fulham FC XYZ', 'post', -1700, '0', '0'),
                               fx('8003', 'Arsenal', 'Chelsea', 'pre', 24 * 60 + 5), fx('8004', 'Tottenham Hotspur', 'Everton', 'pre', 150), fx('8005', 'Orléans', 'Dijon FCO', 'post', -30, '1', '0'), fx('8006', 'Rwanda', 'Malawi', 'post', -45, '0', '0')]   # finished a moment ago: on today's list whatever the hour
                 body = {'leagues': [{'name': lname if slug == 'eng.1' else 'Africa Cup of Nations Qualifying', 'logos': []}], 'events': events}
                 payload = json.dumps(body).encode(); kind = 'application/json'
@@ -276,7 +277,7 @@ with tempfile.TemporaryDirectory() as temp:
             elif url.path == '/live/demo/demo/998.ts':
                 # a live server: sends at display speed for 11 minutes (ffmpeg -re), so the player's buffer stays constant
                 self.send_response(200); self.send_header('Content-Type', 'video/mp2t'); self.end_headers()
-                proc = subprocess.Popen(['ffmpeg', '-v', 'error', '-re', '-f', 'lavfi', '-i', 'testsrc=s=640x360:r=10', '-t', '660', '-c:v', 'libx264', '-preset', 'ultrafast',
+                proc = subprocess.Popen(['ffmpeg', '-v', 'error', '-re', '-f', 'lavfi', '-i', 'testsrc=s=640x360:r=10', '-t', str(LIVE_SECONDS + 60), '-c:v', 'libx264', '-preset', 'ultrafast',
                                          '-pix_fmt', 'yuv420p', '-g', '10', '-f', 'mpegts', '-muxrate', '800k', '-'], stdout=subprocess.PIPE)
                 try:
                     while True:
@@ -544,8 +545,8 @@ with tempfile.TemporaryDirectory() as temp:
     hits998 = HITS.get('998.ts', 0)
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.PlayerActivity', '-e', 'id', '998', '-e', 'name', 'Live paced', '-e', 'ext', 'ts', '-e', 'num', '998')
     t_live = time.time(); alive = True
-    while time.time() - t_live < 600:
-        time.sleep(30)
+    while time.time() - t_live < LIVE_SECONDS:
+        time.sleep(min(30, max(1, LIVE_SECONDS - (time.time() - t_live))))
         top = adb('shell', 'dumpsys', 'activity', 'activities', check=False).split('topResumedActivity')[-1][:200]
         assert 'PlayerActivity' in top, 'The player must stay open for the whole run: ' + top
     conns = HITS.get('998.ts', 0) - hits998
@@ -648,8 +649,15 @@ with tempfile.TemporaryDirectory() as temp:
     egy = wait_label('مصر ضد مالاوي', 'Egypt v Malawi', tries=60)
     assert any('beIN Sports 1' in l for l in egy) and not any('غير مؤكدة' in l for l in egy), 'Egypt v Malawi must show beIN Sports 1: ' + str(egy)
     esp = wait_label('إسبانيا ضد اليونان', 'Spain v Greece', tries=60)
-    assert any('beIN Sports 3' in l and 'غير مؤكدة' in l for l in esp), 'A channel known only from the feed must read غير مؤكدة: ' + str(esp)
-    note('PASS: Moldova v Kazakhstan -> beIN SPORTS 5 (HD copy of two), Egypt v Malawi -> beIN Sports 1, feed-only channel marked غير مؤكدة.')
+    assert any('اختر القناة' in l for l in esp) and not any('beIN' in l for l in esp), 'The feed says beIN Sports 3 but its guide shows another match then: it must not be offered: ' + str(esp)
+    tun = wait_label('تونس ضد ليبيا', 'Tunisia v Libya', tries=60)
+    assert any('اختر القناة' in l for l in tun) and not any('beIN' in l for l in tun), 'A channel only the feed names is not shown on the card: ' + str(tun)
+    focus_card('تونس ضد ليبيا'); keys('DPAD_CENTER', pause=2); front('LiveActivity')
+    sug = wait_label('beIN SPORTS 7', 'the suggested channel in the sports list')
+    assert any('مقترحة' in l for l in sug), 'The feed\'s channel must be highlighted as suggested: ' + str(sug)
+    assert 'beIN SPORTS 7' in focused_label(), 'The suggested channel takes the focus: ' + focused_label()
+    keys('BACK', pause=1.5)
+    note('PASS: Moldova v Kazakhstan -> beIN SPORTS 5 (HD copy of two), Egypt v Malawi -> beIN Sports 1; a channel the guide contradicts (Spain v Greece) is not offered; a feed-only one (Tunisia v Libya) says اختر القناة and is highlighted, with the focus, in the sports list.')
     eri = wait_label('سورينام ضد إريتريا', 'the Suriname v Eritrea match (in no guide)')
     for _ in range(40):
         eri = [l for l in labels() if 'سورينام ضد إريتريا' in l]

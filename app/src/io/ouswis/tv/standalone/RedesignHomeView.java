@@ -574,9 +574,9 @@ final class RedesignHomeView extends View {
             }
             LiveData.Channel ch=channelFor(m);
             boolean known=MatchChannels.resolved(getContext(),m);   // until it is known the line stays empty: no "اختر القناة" that then turns into a name
-            if(ch!=null&&!done)Design.center(c,(m.live()?"▶ ":"")+Design.fit(MatchChannels.shortName(ch.name)+(MatchChannels.unconfirmed(m)?" · غير مؤكدة":""),goldText15,360),cx,575,goldText15);
+            if(ch!=null&&!done)Design.center(c,(m.live()?"▶ ":"")+Design.fit(MatchChannels.shortName(ch.name),goldText15,360),cx,575,goldText15);
             else if(!done&&known)Design.center(c,"اختر القناة",cx,575,tx(Design.MUTED,15,Design.regular()));
-            a11y.add(box,m.home+" ضد "+m.away+" · "+(m.live()?"مباشر "+scoreText(m):done?"انتهت "+scoreText(m):fmt("h:mm a",m.kickoffMillis))+(ch!=null&&!done?" · "+MatchChannels.shortName(ch.name)+(MatchChannels.unconfirmed(m)?" · غير مؤكدة":""):!done&&known?" · اختر القناة":""),focus(2,i),true);
+            a11y.add(box,m.home+" ضد "+m.away+" · "+(m.live()?"مباشر "+scoreText(m):done?"انتهت "+scoreText(m):fmt("h:mm a",m.kickoffMillis))+(ch!=null&&!done?" · "+MatchChannels.shortName(ch.name):!done&&known?" · اختر القناة":""),focus(2,i),true);
             if(focus(2,i))Design.focusRing(c,box,22,1,p);
         }
     }
@@ -706,7 +706,7 @@ final class RedesignHomeView extends View {
                 if(cl>=n){start(new Intent(ctx,MatchesScreenActivity.class));break;}
                 MatchCarouselView.Match m=today.get(cl);
                 LiveData.Channel ch=channelFor(m);
-                if(ch==null)start(new Intent(ctx,LiveActivity.class).putExtra(LiveActivity.EXTRA_MATCH_KEY,m.key));   // not confirmed: pick it from the sports list
+                if(ch==null)start(new Intent(ctx,LiveActivity.class).putExtra(LiveActivity.EXTRA_MATCH_KEY,m.key).putExtra(LiveActivity.EXTRA_SUGGESTED,android.text.TextUtils.join(",",MatchChannels.suggestions(ctx,m))));   // not confirmed: pick it from the sports list
                 else if(m.live())start(PlayerActivity.intent(ctx,ch,""));
                 else start(new Intent(ctx,MatchesScreenActivity.class));
                 break;}

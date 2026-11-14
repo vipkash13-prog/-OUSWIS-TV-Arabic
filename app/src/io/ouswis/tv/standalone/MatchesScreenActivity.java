@@ -301,9 +301,9 @@ public final class MatchesScreenActivity extends Activity {
                 }
                 LiveData.Channel ch=channelFor(m);
                 if(done){goldText.setAlpha(alpha);Design.center(c,"ملخص",cx,top+130,goldText);goldText.setAlpha(255);}
-                else if(ch!=null)Design.center(c,(m.live()?"▶ ":"")+Design.fit(MatchChannels.shortName(ch.name)+(MatchChannels.unconfirmed(m)?" · غير مؤكدة":""),goldText,cardW-270),cx,top+130,goldText);
+                else if(ch!=null)Design.center(c,(m.live()?"▶ ":"")+Design.fit(MatchChannels.shortName(ch.name),goldText,cardW-270),cx,top+130,goldText);
                 else if(MatchChannels.resolved(getContext(),m)){small.setAlpha(200);Design.center(c,"اختر القناة",cx,top+130,small);small.setAlpha(255);}
-                a11y.add(card,m.home+" ضد "+m.away+" · "+m.competition+" · "+(m.live()?"مباشر "+scoreText(m):done?"انتهت "+scoreText(m):timeOf(m.kickoffMillis))+(ch!=null&&!done?" · "+MatchChannels.shortName(ch.name)+(MatchChannels.unconfirmed(m)?" · غير مؤكدة":""):!done&&MatchChannels.resolved(getContext(),m)?" · اختر القناة":""),focused,true);
+                a11y.add(card,m.home+" ضد "+m.away+" · "+m.competition+" · "+(m.live()?"مباشر "+scoreText(m):done?"انتهت "+scoreText(m):timeOf(m.kickoffMillis))+(ch!=null&&!done?" · "+MatchChannels.shortName(ch.name):!done&&MatchChannels.resolved(getContext(),m)?" · اختر القناة":""),focused,true);
                 if(focused)Design.focusRing(c,card,22,1,p);
             }
             panel(c,list);
@@ -457,7 +457,7 @@ public final class MatchesScreenActivity extends Activity {
         }
         /** No confirmed channel: the live screen opens on the sports section, on its first beIN or SSC channel; a channel played there is kept for this match. */
         private void openSports(MatchCarouselView.Match m){
-            getContext().startActivity(new Intent(getContext(),LiveActivity.class).putExtra(LiveActivity.EXTRA_MATCH_KEY,m.key));
+            getContext().startActivity(new Intent(getContext(),LiveActivity.class).putExtra(LiveActivity.EXTRA_MATCH_KEY,m.key).putExtra(LiveActivity.EXTRA_SUGGESTED,android.text.TextUtils.join(",",MatchChannels.suggestions(getContext(),m))));
         }
         private void watch(LiveData.Channel ch){
             getContext().startActivity(PlayerActivity.intent(getContext(),ch,""));

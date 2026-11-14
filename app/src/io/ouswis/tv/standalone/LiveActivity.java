@@ -70,6 +70,9 @@ public final class LiveActivity extends Activity {
     private boolean foreground;
     /** Set when a match without a confirmed channel opened this screen: the sports section, on its first beIN or SSC channel. */
     static final String EXTRA_MATCH_KEY="matchKey";
+    /** Ids (comma separated) of channels worth highlighting for a match the guide could not confirm. */
+    static final String EXTRA_SUGGESTED="suggested";
+    private final java.util.Set<String> suggested=new java.util.HashSet<>();
     private String matchKey="";
     private boolean pendingFocus;
     private int previewGeneration;
@@ -87,6 +90,8 @@ public final class LiveActivity extends Activity {
         }
         String mk=getIntent()==null?null:getIntent().getStringExtra(EXTRA_MATCH_KEY);
         matchKey=mk==null?"":mk;pendingFocus=!matchKey.isEmpty();
+        String sg=getIntent()==null?null:getIntent().getStringExtra(EXTRA_SUGGESTED);
+        if(sg!=null)for(String id:sg.split(","))if(!id.isEmpty())suggested.add(id);
         data=new LiveData(this,account);
         FrameLayout root=new FrameLayout(this);
         view=new LiveView(this);
@@ -263,7 +268,11 @@ public final class LiveActivity extends Activity {
         private void ensureLoaded(){
             List<LiveData.Category> s=sections();
             if(cat>=0&&cat<s.size())data.loadChannels(s.get(cat).id,()->{
-                if(pendingFocus&&cat==sportsSection()&&!shown().isEmpty()){pendingFocus=false;sel=MatchChannels.firstSports(shown());top=Math.max(0,sel-2);}   // the first beIN or SSC channel
+                if(pendingFocus&&cat==sportsSection()&&!shown().isEmpty()){
+                    pendingFocus=false;sel=MatchChannels.firstSports(shown());
+                    List<LiveData.Channel> sh=shown();   // a suggested channel (the feed's broadcaster, the league's pick) comes first when this section has it
+                    for(int i=0;i<sh.size();i++)if(suggested.contains(sh.get(i).id)){sel=i;break;}
+                    top=Math.max(0,sel-2);}   // the first beIN or SSC channel
                 invalidate();wantGuide();schedulePreview();});
         }
         /** Programme lines under visible rows and the guide card of the selected channel. */
@@ -368,9 +377,11 @@ public final class LiveActivity extends Activity {
                     String t=ch.name.length()>6?ch.name.substring(0,6):ch.name;
                     badgeText.setTextSize(15);badgeText.setColor(Design.GOLD);Design.center(c,t.trim(),1403,y+46,badgeText);
                 }
-                Design.right(c,Design.fit(ch.name,name,400),1351,y+36,name);
+                boolean hint=suggested.contains(ch.id);
+                if(hint){badgeText.setTextSize(15);badgeText.setColor(Design.GOLD);Design.left(c,"مقترحة",940,y+36,badgeText);}
+                Design.right(c,Design.fit(ch.name,name,hint?300:400),1351,y+36,name);
                 LiveData.Program nowProg=LiveData.current(data.guide(ch.id),now);
-                a11y.add(917,y,1511,y+80,(ch.num.isEmpty()?String.valueOf(i+1):ch.num)+" · "+ch.name+(nowProg!=null?" · "+nowProg.shown:"")+(data.isFavorite(ch.id)?" ★":""),focused,true);
+                a11y.add(917,y,1511,y+80,(ch.num.isEmpty()?String.valueOf(i+1):ch.num)+" · "+ch.name+(nowProg!=null?" · "+nowProg.shown:"")+(data.isFavorite(ch.id)?" ★":"")+(suggested.contains(ch.id)?" · مقترحة":""),focused,true);
                 LiveData.Program prog=LiveData.current(data.guide(ch.id),now);
                 muted.setTextSize(16);
                 if(prog!=null){

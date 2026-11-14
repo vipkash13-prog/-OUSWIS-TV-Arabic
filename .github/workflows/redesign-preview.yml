@@ -4,6 +4,10 @@ on:
     branches: ['feature/redesign-live-matches']
     paths: ['app/**', 'build.sh', 'tools/test-redesign.py', '.github/workflows/redesign-preview.yml']
   workflow_dispatch:
+    inputs:
+      live_seconds:
+        description: 'Seconds the live-speed stream is watched (600 = the full 10 minute test; a round that does not touch the player may use a short one)'
+        default: '600'
 permissions:
   contents: write
 jobs:
@@ -27,6 +31,8 @@ jobs:
           sudo chmod 666 /dev/kvm
       - name: Emulator run, 1920x1080
         uses: reactivecircus/android-emulator-runner@v2
+        env:
+          OUSWIS_LIVE_SECONDS: ${{ inputs.live_seconds || '600' }}
         with:
           api-level: 34
           target: default
