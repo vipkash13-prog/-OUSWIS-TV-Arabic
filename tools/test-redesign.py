@@ -789,7 +789,7 @@ with tempfile.TemporaryDirectory() as temp:
     assert 'caf.nations_qual:9002' not in saved, 'A channel watched for 3 s must NOT be saved for the match yet: ' + saved[:600]
     time.sleep(66)   # item 1: kept for more than a minute: now it is the match's channel
     saved = adb('shell', 'cat', folder + '/ouswis-live.xml')
-    assert 'matchPicks2' in saved and 'caf.nations_qual:9002' in saved, 'A channel watched for over a minute must be saved for the match: ' + saved[:600]
+    assert 'matchPicks3' in saved and 'caf.nations_qual:9002' in saved, 'A channel watched for over a minute must be saved for the match: ' + saved[:600]
     keys('BACK', pause=1.5); keys('BACK', pause=1.5)
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.MatchesScreenActivity')
     again = wait_label('سورينام ضد إريتريا', 'the match again')
