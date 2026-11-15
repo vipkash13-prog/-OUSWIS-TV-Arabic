@@ -1188,8 +1188,8 @@ with tempfile.TemporaryDirectory() as temp:
     assert not [r for r in new_req if r[0] == 'demo'], 'Nothing may be requested from subscription A any more: ' + str([r for r in new_req if r[0] == 'demo'])
     assert not [r for r in new_req if r[0] == 'bob' and int(r[1].split('.')[0]) < 5000], 'Only B\'s numbers may be asked of B: ' + str(new_req)
     note('PASS: with subscription B the match played B\'s beIN Sports 2 (5111), the card name had no 8K:/FR| prefix, and no stream of A was requested.')
-    keys('BACK', pause=1.5)
-    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.IptvActivity'); wait_label('تغيير الاشتراك', 'the IPTV page after the change')
+    keys('BACK', pause=1.5); keys('BACK', pause=1.5)
+    adb('shell', 'am', 'start', '-W', '-f', '0x10008000', '-n', PKG + '/.IptvActivity'); wait_label('تغيير الاشتراك', 'the IPTV page after the change')   # a fresh task: the player may still be closing
     # delete: the confirmation first (cancel keeps it), then the delete
     tap('حذف الاشتراك'); wait_label('تأكيد الحذف', 'the delete confirmation')
     assert 'إلغاء' in focused_label(), 'The safe choice must hold the focus: ' + focused_label()
