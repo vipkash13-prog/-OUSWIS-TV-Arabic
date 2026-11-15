@@ -1171,6 +1171,20 @@ with tempfile.TemporaryDirectory() as temp:
     keys('BACK', pause=1)
     FEED_MODE[0] = 'ok'
 
+    # 6e. the matches screen left open 15 minutes: the periodic refresh must keep running and write its lines in the playback log
+    adb('shell', 'rm', '-f', '/data/user/0/%s/files/playlog.txt' % PKG)
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.MatchesScreenActivity'); time.sleep(3)
+    wait_label('مولدوفا ضد كازاخستان · الدوري الإنجليزي', 'the matches before the 15 minute wait', tries=60)
+    time.sleep(15 * 60)
+    plog = adb('shell', 'cat', '/data/user/0/%s/files/playlog.txt' % PKG, check=False)
+    lines = [l for l in plog.splitlines() if 'المباريات:' in l]
+    (OUT / 'redesign-matches-15min-playlog.txt').write_text(plog)
+    assert lines, 'After 15 minutes on the matches screen the playback log has no "المباريات:" line: ' + plog[-600:]
+    assert any('مولدوفا ضد كازاخستان' in l for l in labels()), 'The matches must still be on the screen after 15 minutes'
+    assert not any('لا توجد مباريات' in l for l in labels()), 'The list must not be empty after 15 minutes'
+    note('PASS: 15 minutes on the matches screen: %d refresh line(s) in the log, e.g. %s' % (len(lines), lines[-1][:140]))
+    keys('BACK', pause=1)
+
     # 7. sections: order and hiding (Settings)
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.SectionOrderActivity')
     wait_label('FR|TF1 HD', 'the sections list in Settings')

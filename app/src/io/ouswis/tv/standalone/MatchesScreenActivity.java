@@ -30,7 +30,7 @@ import java.util.concurrent.Executors;
 /**
  * Matches (SPEC section 3, matches.png): day and competition filters, a grid of match cards and a detail panel that
  * follows the focus. The data is the existing ESPN source (UpcomingMatches); the "watch" button only exists when the
- * viewer's own subscription has the broadcasting channel. It refreshes every 60 s while a match is live (30 min
+ * viewer's own subscription has the broadcasting channel. It refreshes every 60 s while a match is live (10 min
  * otherwise) and stops while the screen is hidden.
  */
 public final class MatchesScreenActivity extends Activity {
@@ -80,7 +80,7 @@ public final class MatchesScreenActivity extends Activity {
     @Override protected void onResume(){
         super.onResume();foreground=true;
         syncFromStore();
-        long every=failed?2*60_000L:anyLive()?60_000L:30*60_000L,age=System.currentTimeMillis()-updatedAt;
+        long every=failed?2*60_000L:anyLive()?60_000L:10*60_000L,age=System.currentTimeMillis()-updatedAt;
         if(updatedAt==0||failed||age>=every)load();               // only when stale: coming back does not load again
         else main.postDelayed(refresh,every-age);
     }
@@ -97,7 +97,7 @@ public final class MatchesScreenActivity extends Activity {
                 syncFromStore();
                 for(MatchCarouselView.Match m:all){ImageCache.get(ClubBadges.secure(m.homeLogo),()->view.postInvalidate());ImageCache.get(ClubBadges.secure(m.awayLogo),()->view.postInvalidate());}   // every day's crests are ready before a filter is chosen: no pale placeholder badge on the switch
                 view.dataChanged(MatchStore.updatedAt()>0||!all.isEmpty());
-                if(foreground)main.postDelayed(refresh,failed?2*60_000L:anyLive()?60_000L:30*60_000L);
+                if(foreground)main.postDelayed(refresh,failed?2*60_000L:anyLive()?60_000L:10*60_000L);
             });
         });
     }
