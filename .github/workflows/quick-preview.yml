@@ -55,6 +55,7 @@ jobs:
           code = base + n + int(os.environ['GITHUB_RUN_NUMBER'])
           s = re.sub(r'android:versionCode="\d+"', f'android:versionCode="{code}"', s, count=1)
           p.write_text(s)
+          assert code < 100000, 'a preview must stay below the official numbers (they start at 100000)'
           print('versionCode', code)
       - name: Check translations and build the signed APK
         run: |
