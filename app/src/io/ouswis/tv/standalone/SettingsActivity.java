@@ -61,11 +61,16 @@ public class SettingsActivity extends Activity {
     private int featureReturnKey;
 
     /** Leaving Settings for the home screen is at once: no slide or fade, so the two screens are never seen together. */
-    @Override public void finish() { super.finish(); overridePendingTransition(0, 0); }
+    @Override public void finish() {
+        super.finish();
+        overridePendingTransition(0, 0);
+        if (android.os.Build.VERSION.SDK_INT >= 34) overrideActivityTransition(OVERRIDE_TRANSITION_CLOSE, 0, 0);
+    }
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         overridePendingTransition(0, 0);
+        if (android.os.Build.VERSION.SDK_INT >= 34) overrideActivityTransition(OVERRIDE_TRANSITION_OPEN, 0, 0);   // Android 14 ignores the line above for a new task
         if (openFireHome(getIntent())) return;
         Watchdog.install(this);
         Updates.schedule(this);   // the week's update check, once (a fresh install has had no boot or update yet)

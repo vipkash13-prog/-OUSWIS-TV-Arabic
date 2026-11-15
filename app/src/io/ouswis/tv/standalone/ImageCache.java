@@ -17,7 +17,7 @@ import java.util.concurrent.Executors;
 /** Small logos and crests: downscaled to at most 128 px on decode, held in a small memory cache, loaded off the UI thread. */
 final class ImageCache {
     private ImageCache(){}
-    private static final LruCache<String,Bitmap> CACHE=new LruCache<>(160);
+    private static final LruCache<String,Bitmap> CACHE=new LruCache<>(400);
     private static final Set<String> BUSY=new HashSet<>(),FAILED=new HashSet<>();
     private static final ExecutorService POOL=Executors.newFixedThreadPool(3);
     private static final Handler MAIN=new Handler(Looper.getMainLooper());

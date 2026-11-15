@@ -659,7 +659,10 @@ final class RedesignHomeView extends View {
         }
         return super.onKeyDown(key,e);
     }
-    private void start(Intent i){getContext().startActivity(i);}
+    private void start(Intent i){
+        try{getContext().startActivity(i,android.app.ActivityOptions.makeCustomAnimation(getContext(),0,0).toBundle());}   // no slide or fade: the new screen is simply there
+        catch(RuntimeException e){getContext().startActivity(i);}
+    }
     private void activate(){
         Context ctx=getContext();
         int cl=col[row];
