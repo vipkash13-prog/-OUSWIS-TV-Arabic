@@ -29,10 +29,12 @@ def info():
     return [re.search(p,t)[1] for p in (r'(?:userId|appId)=(\d+)',r'firstInstallTime=([^\n]+)',r'versionCode=(\d+)')]
 def capture(name,redesigned=False):
     adb('shell','am','start','-W','-n',PKG+'/.HomeActivity')
-    for attempt in range(20):
+    # The prayer times and the weather come from the internet: look again every 5 s for up to 90 s (the same condition, a longer wait)
+    for attempt in range(18):
         tree=ui();text=ET.tostring(tree,encoding='unicode')
         if 'المتبقي' in text and '°' in text:break   # the redesigned home writes "32°", the old one "32°C"
-        time.sleep(1)
+        time.sleep(5)
+        adb('shell','am','start','-W','-n',PKG+'/.HomeActivity')   # the home screen asks again when it comes back to the front
     else:raise AssertionError('Expected real prayer/weather data before visual comparison; saw: '+' | '.join((n.get('text','')+n.get('content-desc','')).strip() for n in tree.iter('node') if n.get('package')==PKG and (n.get('text','')+n.get('content-desc','')).strip())[:900]+' | logcat: '+' / '.join(l[-160:] for l in adb('logcat','-d','-t','4000').splitlines() if 'ouswis' in l.lower() and any(k in l for k in ('weather','Weather','meteo','prayer','Prayer','offline','failed')))[:900])
     png=adb('exec-out','screencap','-p',binary=True)
     assert Image.open(BytesIO(png)).size==(3840,2160),'A real native 4K screenshot is required'
