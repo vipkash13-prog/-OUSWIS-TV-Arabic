@@ -12,6 +12,9 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -134,6 +137,100 @@ public final class UpcomingMatches {
         return result;
     }
 
+    /** What a whole refresh found: the matches of the competitions that answered, and for each that did not, why. */
+    static final class Full {
+        final List<MatchCarouselView.Match> matches=new ArrayList<>();
+        final Set<String> ok=new LinkedHashSet<>();
+        final Map<String,String> failed=new LinkedHashMap<>();   // competition -> "HTTP 503", "انتهت المهلة"...
+        /** The calling thread was interrupted (a screen closed): what was read is not a result and must be thrown away. */
+        boolean aborted;
+    }
+    private static final int PARALLEL=5;   // requests at once (4 to 6)
+
+    /** "HTTP 503", "انتهت المهلة": the reason in words for the playback log, never an address. */
+    static String reason(Throwable t){
+        Throwable c=t instanceof java.util.concurrent.ExecutionException&&t.getCause()!=null?t.getCause():t;
+        if(c instanceof java.util.concurrent.TimeoutException||c instanceof java.net.SocketTimeoutException)return "انتهت المهلة";
+        String m=String.valueOf(c.getMessage());
+        int i=m.indexOf("HTTP ");
+        if(i>=0)return m.substring(i).trim();
+        if(m.contains("missing events"))return "رد ناقص";
+        return c.getClass().getSimpleName();
+    }
+
+    /** One competition-month; a failure is tried once more after a moment (a 4xx other than 429 is not). */
+    private static JSONObject readFeedRetry(String league,String month) throws Exception {
+        try{return readFeed(league,month);}
+        catch(InterruptedException e){throw e;}
+        catch(Exception first){
+            String m=String.valueOf(first.getMessage());
+            boolean client=m.contains("HTTP 4")&&!m.contains("HTTP 429");
+            if(client||Thread.currentThread().isInterrupted())throw first;
+            Thread.sleep(1500);
+            return readFeed(league,month);
+        }
+    }
+
+    /**
+     * Every competition once (its months are read once, and the four sections are made from the same answers), at most
+     * {@link #PARALLEL} requests at once. A competition that fails is named with its reason and has no matches in the
+     * result; it is never counted as answered.
+     */
+    static Full loadAll(String[] selected){
+        final String[] leagues=selected==null?LEAGUES:selected;
+        final long now=System.currentTimeMillis();
+        java.util.Calendar calendar=java.util.Calendar.getInstance(TimeZone.getTimeZone("Asia/Riyadh"));
+        calendar.setTimeInMillis(now);
+        calendar.set(java.util.Calendar.HOUR_OF_DAY,0);calendar.set(java.util.Calendar.MINUTE,0);
+        calendar.set(java.util.Calendar.SECOND,0);calendar.set(java.util.Calendar.MILLISECOND,0);
+        final long todayStart=calendar.getTimeInMillis();
+        final long yesterdayStart=todayStart-24L*60*60*1000;
+        final long tomorrowStart=todayStart+24L*60*60*1000;
+        SimpleDateFormat day=new SimpleDateFormat("yyyyMMdd",Locale.US);
+        day.setTimeZone(TimeZone.getTimeZone("UTC"));
+        final String from=day.format(new Date(now-2L*24*60*60*1000)),to=day.format(new Date(now+14L*24*60*60*1000));
+        Full out=new Full();
+        ExecutorService pool=Executors.newFixedThreadPool(PARALLEL);
+        Map<String,Future<List<JSONObject>>> jobs=new LinkedHashMap<>();
+        for(final String league:leagues){
+            if(league==null||!league.matches("[a-z0-9._]+"))continue;
+            jobs.put(league,pool.submit(()->{
+                List<JSONObject> roots=new ArrayList<>();
+                for(String month:queryMonths(from,to))roots.add(readFeedRetry(league,month));
+                return roots;
+            }));
+        }
+        Map<String,List<JSONObject>> roots=new LinkedHashMap<>();
+        long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(50);
+        for(Map.Entry<String,Future<List<JSONObject>>> job:jobs.entrySet()){
+            try{
+                roots.put(job.getKey(),job.getValue().get(Math.max(1,deadline-System.nanoTime()),TimeUnit.NANOSECONDS));
+                out.ok.add(job.getKey());
+            }catch(InterruptedException e){
+                out.aborted=true;Thread.currentThread().interrupt();break;
+            }catch(Exception e){
+                job.getValue().cancel(true);
+                out.failed.put(job.getKey(),reason(e));
+                System.err.println("Matches feed "+job.getKey()+": "+out.failed.get(job.getKey()));
+            }
+        }
+        for(Future<?> job:jobs.values())if(!job.isDone())job.cancel(true);
+        pool.shutdownNow();
+        if(out.aborted)return out;
+        for(String section:new String[]{"live","upcoming","today","yesterday"}){
+            List<MatchCarouselView.Match> list=new ArrayList<>();
+            HashSet<String> seen=new HashSet<>();
+            for(Map.Entry<String,List<JSONObject>> e:roots.entrySet())
+                for(JSONObject root:e.getValue())
+                    for(MatchCarouselView.Match m:parseFeed(root,e.getKey(),section,now,todayStart,yesterdayStart,tomorrowStart))
+                        if(seen.add(m.key))list.add(m);
+            Collections.sort(list,(a,b)->Long.compare(a.kickoffMillis,b.kickoffMillis));
+            if("today".equals(section)||"yesterday".equals(section))Collections.reverse(list);
+            out.matches.addAll(list);
+        }
+        return out;
+    }
+
     private static final class CachedFeed {
         final String json; final long at;
         CachedFeed(String json){this.json=json;at=System.currentTimeMillis();}
@@ -181,7 +278,7 @@ public final class UpcomingMatches {
             }
             JSONObject root=new JSONObject(raw.toString());
             if(root.optJSONArray("events")==null)throw new java.io.IOException(league+": missing events");
-            if(FEEDS.size()>48)FEEDS.clear();
+            if(FEEDS.size()>240)FEEDS.clear();   // the 35 competitions x 3 months of one refresh all fit: the four sections share them
             FEEDS.put(key,new CachedFeed(raw.toString()));
             return root;
         }finally{c.disconnect();}
