@@ -776,7 +776,7 @@ with tempfile.TemporaryDirectory() as temp:
     shot('redesign-matches-tomorrow.png')
     assert any('beIN Sports 2' in l for l in por) and not any('اختر القناة' in l for l in por), 'Tomorrow\'s Portugal v Morocco must carry beIN Sports 2 from the day guide: ' + str(por)
     assert ger and all('اختر القناة' in l and 'beIN' not in l and 'SSC' not in l for l in ger), 'Tomorrow\'s Germany v Japan is in no guide: it must ask to pick the channel: ' + str(ger)
-    keys('DPAD_RIGHT', 'DPAD_CENTER', pause=1); keys('BACK', pause=1)   # back to today's tab
+    keys('DPAD_RIGHT', 'DPAD_CENTER', pause=1)   # back to today's tab, on the matches screen the next checks read
     note('PASS: tomorrow tab: Portugal v Morocco (in the day guide, past the old 30 h limit when run before 17:30 Riyadh) carries beIN Sports 2; Germany v Japan (no guide) says اختر القناة.')
     # item 1: each match opens on the channel whose guide names it; HD beats the SD copy; the feed's broadcaster alone is "غير مؤكدة"
     mol = wait_label('مولدوفا ضد كازاخستان', 'Moldova v Kazakhstan', tries=60)
