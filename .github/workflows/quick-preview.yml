@@ -1,0 +1,81 @@
+name: OUSWIS TV quick preview (signed, no emulator tests)
+# A fast branch preview for trying a build on a real device: same signing key, same build and the same offline unit checks as
+# "OUSWIS TV signed APK", but without the emulator install/update and 4K tests. It never replaces them: the full workflow stays.
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: ouswis-quick-preview
+  cancel-in-progress: false
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Android SDK
+        shell: bash
+        run: |
+          set +o pipefail
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$RUNNER_TEMP/sdk" "build-tools;34.0.0" "platforms;android-34" > /dev/null
+          echo "ANDROID_HOME=$RUNNER_TEMP/sdk" >> "$GITHUB_ENV"
+      - name: Restore the permanent repository signing key
+        env:
+          KEY_PASS: ${{ secrets.OUSWIS_SIGNING_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KEY_PASS" || { echo "OUSWIS_SIGNING_PASSWORD is required. No replacement key will be generated."; exit 1; }
+          test -s signing/ouswis-release.jks.b64 || { echo "Permanent signing key is missing. Restore it; do not create a new one."; exit 1; }
+          umask 077
+          base64 --decode signing/ouswis-release.jks.b64 > "$RUNNER_TEMP/ouswis-official.keystore"
+          derived=$(printf '%s' "$KEY_PASS" | sha256sum | cut -d ' ' -f1)
+          echo "::add-mask::$derived"
+          echo "FREEMYTV_KEYSTORE=$RUNNER_TEMP/ouswis-official.keystore" >> "$GITHUB_ENV"
+          echo "FREEMYTV_KEYSTORE_PASS=$derived" >> "$GITHUB_ENV"
+      - name: Version code above every earlier preview
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: python
+        run: |
+          import os, re, subprocess
+          from pathlib import Path
+          # the signed-APK workflow numbers its previews base + its run number: this one goes just above its latest
+          n = int(subprocess.check_output(['gh','run','list','--repo',os.environ['GITHUB_REPOSITORY'],'--workflow','ouswis-build.yml','--limit','1','--json','number','--jq','.[0].number'], text=True).strip())
+          p = Path('app/AndroidManifest.xml')
+          s = p.read_text()
+          base = int(re.search(r'android:versionCode="(\d+)"', s)[1])
+          code = base + n + int(os.environ['GITHUB_RUN_NUMBER'])
+          s = re.sub(r'android:versionCode="\d+"', f'android:versionCode="{code}"', s, count=1)
+          p.write_text(s)
+          print('versionCode', code)
+      - name: Check translations and build the signed APK
+        run: |
+          set -euo pipefail
+          python3 tools/translate.py --check
+          node tests/ArabicI18nTest.js
+          ./build.sh --generic --release
+          python3 tools/verify-release-apk.py FreeMyTV.apk
+          bash tools/test-remote.sh
+          bash tools/test-order.sh
+          bash tools/test-video-fit.sh
+          bash tools/test-xtream-catalog.sh
+          bash tools/test-home-enhancements.sh
+          bash tools/test-saudi-dates.sh
+      - name: Publish as a pre-release (never the latest release)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          cp FreeMyTV.apk OUSWIS-TV-preview.apk
+          tag="preview-${GITHUB_RUN_ID}"
+          gh release create "$tag" OUSWIS-TV-preview.apk --prerelease --target "$GITHUB_SHA" --title "OUSWIS TV quick preview (not an official release)" \
+            --notes "Quick branch preview, signed with the repository key. Offline unit checks only: the emulator install/update and 4K tests were not run for this file."
+          echo "https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/OUSWIS-TV-preview.apk" >> "$GITHUB_STEP_SUMMARY"
+      - name: Remove runner signing key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/ouswis-official.keystore"
