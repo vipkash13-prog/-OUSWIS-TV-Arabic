@@ -59,8 +59,18 @@ final class Wallpaper {
             @Override protected void onSizeChanged(int w,int h,int ow,int oh){wall=inner(getContext(),w,h);}
             @Override protected void onDraw(Canvas c){if(wall!=null)c.drawBitmap(wall,0,0,null);else c.drawColor(0xFF0B0D1A);}
         },new android.widget.FrameLayout.LayoutParams(-1,-1));
+        noHighlight(content);
         f.addView(content,new android.widget.FrameLayout.LayoutParams(-1,-1));
         return f;
+    }
+
+    /** The system's translucent focus highlight would lift every dark colour on the wallpaper (about +28 on a whole scroll view): off on all of the content. */
+    private static void noHighlight(android.view.View v){
+        v.setDefaultFocusHighlightEnabled(false);
+        if(v instanceof android.view.ViewGroup){
+            android.view.ViewGroup g=(android.view.ViewGroup)v;
+            for(int i=0;i<g.getChildCount();i++)noHighlight(g.getChildAt(i));
+        }
     }
 
     /** No slide or fade when this screen opens or closes, on any Android (14 ignores overridePendingTransition for a new task). */
