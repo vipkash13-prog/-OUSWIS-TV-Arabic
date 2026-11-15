@@ -528,7 +528,7 @@ final class RedesignHomeView extends View {
             r.set(left,466,right,592);RectF box=ring(r,focus(2,i));
             boolean done=!m.live()&&!m.upcoming();
             Design.card(c,box,22,1,p,CARD_DARK);   // a live card is the regular card: only the red badge says it is live
-            crest(c,m.homeLogo,m.home,right-67,516,26);crest(c,m.awayLogo,m.away,left+67,516,26);
+            crest(c,m.homeLogo,m.home,m.homeEn,right-67,516,26);crest(c,m.awayLogo,m.away,m.awayEn,left+67,516,26);
             Paint team=tx(Design.TEXT,17,Design.regular());
             Design.center(c,Design.fitShrink(m.home,team,140),right-67,566,team);
             Design.center(c,Design.fitShrink(m.away,team,140),left+67,566,team);
@@ -560,8 +560,8 @@ final class RedesignHomeView extends View {
     private String minute(MatchCarouselView.Match m){
         String d=m.status==null?"":m.status.replaceAll("[^0-9+]","");return d.isEmpty()?"مباشر":d+"'";   // the minute, or just the word: never a bare mark
     }
-    private void crest(Canvas c,String url,String name,float cx,float cy,float radius){
-        Bitmap b=ImageCache.get(url,this::postInvalidate);
+    private void crest(Canvas c,String url,String name,String nameEn,float cx,float cy,float radius){
+        Bitmap b=ClubBadges.get(url,nameEn,this::postInvalidate);
         if(b!=null){
             p.setStyle(Paint.Style.FILL);p.setShader(null);p.setColor(0x14FFFFFF);c.drawCircle(cx,cy,radius,p);
             float s=Math.min(radius*1.5f/b.getWidth(),radius*1.5f/b.getHeight());

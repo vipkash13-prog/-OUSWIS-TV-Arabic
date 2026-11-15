@@ -20,6 +20,12 @@ ACTIVE = ['0']   # user_info.active_cons: the provider's count of open connectio
 REQT = {}   # when each stream file was asked for
 UINFO = []   # when user_info was asked for
 T997 = []   # when 997.ts was asked for: its first two answers are HTTP 509 (the connection limit)
+SDB = []   # the team names TheSportsDB (the mock) was asked for
+SDB_NOW = [0, 0]   # searches in flight now, the most at once
+LOGO_FEED = {'Egypt': '/logo/feed.png', 'Malawi': '/logo/missing.png'}   # the feed's own logo: Egypt's loads (green), Malawi's answers 404 -> the fallback
+SDB_HAS = ('Malawi', 'Kazakhstan')   # the mock TheSportsDB has a badge (magenta) for these only
+def png(rgb):
+    b = BytesIO(); Image.new('RGBA', (200, 200), rgb + (255,)).save(b, 'PNG'); return b.getvalue()
 ALLOWED = ['m3u8', 'ts']   # what the mock account's user_info says it may stream
 
 def adb(*args, check=True):
@@ -266,7 +272,7 @@ with tempfile.TemporaryDirectory() as temp:
                     events = [ev('9001', 'Ghana', 'Somalia', 10), ev('9002', 'Suriname', 'Eritrea', 80)]
                 def fx(eid, home, away, state, offset_min, hs='0', as_='0', goals=False, bc='Sky Sports'):
                     kick = time.strftime('%Y-%m-%dT%H:%MZ', time.gmtime(time.time() + offset_min * 60))
-                    team = lambda n, ha, sc: {'homeAway': ha, 'score': sc, 'team': {'id': n[:3], 'displayName': n, 'logo': ''}}
+                    team = lambda n, ha, sc: {'homeAway': ha, 'score': sc, 'team': {'id': n[:3], 'displayName': n, 'logo': ('http://127.0.0.1:%d' % server.server_port + LOGO_FEED[n]) if n in LOGO_FEED else ''}}
                     name = {'in': 'STATUS_FIRST_HALF', 'post': 'STATUS_FULL_TIME', 'pre': 'STATUS_SCHEDULED'}[state]
                     comp = {'competitors': [team(home, 'home', hs), team(away, 'away', as_)], 'broadcasts': [{'names': [bc]}]}
                     if goals: comp['details'] = [{'scoringPlay': True, 'team': {'id': home[:3]}, 'athletesInvolved': [{'displayName': 'Salah'}], 'clock': {'displayValue': "23'"}, 'type': {'text': 'Goal'}},
@@ -309,6 +315,15 @@ with tempfile.TemporaryDirectory() as temp:
                     UINFO.append(time.time())
                     body = {'user_info': {'auth': 1, 'status': 'Active', 'max_connections': '1', 'active_cons': ACTIVE[0], 'allowed_output_formats': ALLOWED, 'exp_date': str(int(time.time()) + 86400 * 120)}}
                 payload = json.dumps(body).encode(); kind = 'application/json'
+            elif url.path == '/logo/feed.png':
+                payload = png((0, 200, 0)); kind = 'image/png'
+            elif url.path.startswith('/badge/'):
+                payload = png((255, 0, 255)); kind = 'image/png'
+            elif url.path.endswith('/searchteams.php'):
+                name = q.get('t', [''])[0]; SDB.append(name); SDB_NOW[0] += 1; SDB_NOW[1] = max(SDB_NOW[1], SDB_NOW[0]); time.sleep(0.25)
+                teams = [{'strTeam': name, 'strSport': 'Soccer', 'strBadge': 'http://127.0.0.1:%d/badge/%s.png' % (server.server_port, name)}] if name in SDB_HAS else None
+                SDB_NOW[0] -= 1
+                payload = json.dumps({'teams': teams}).encode(); kind = 'application/json'
             elif url.path in NOT_FOUND:
                 self.send_error(404); return
             elif url.path.startswith('/live/bob/bob/'):
@@ -361,7 +376,7 @@ with tempfile.TemporaryDirectory() as temp:
                          {'id': '', 'name': 'Ghost', 'icon': '', 'num': '8', 'ext': 'ts'}, {'id': '901', 'name': '   ', 'icon': '', 'num': '7', 'ext': 'ts'}]).replace('"', '&quot;')
     A_KEY = jhash('http://127.0.0.1:%d|demo' % port); B_KEY = jhash('http://127.0.0.1:%d|bob' % port)
     live = ('<?xml version="1.0" encoding="utf-8"?><map><string name="last">%s</string><string name="recent">%s</string><string name="dataFor">%s</string>'
-            '<string name="espnBase">http://127.0.0.1:%d</string></map>') % (last, recent, A_KEY, port)
+            '<string name="espnBase">http://127.0.0.1:%d</string><string name="sportsDbBase">http://127.0.0.1:%d</string></map>') % (last, recent, A_KEY, port, port)
     subprocess.run([ADB, 'shell', 'cat > %s/ouswis-live.xml' % folder], input=live.encode(), check=True)
     adb('shell', 'chown', '-R', uid + ':' + uid, folder)
     adb('logcat', '-c')
@@ -773,6 +788,24 @@ with tempfile.TemporaryDirectory() as temp:
     assert any('beIN Sports 2' in l for l in ghana) and not any('اختر القناة' in l for l in ghana), 'Ghana v Somalia must show beIN Sports 2 from its guide: ' + str(ghana)
     shot('redesign-matches-ghana.png')
     note('PASS: "غانا × الصومال" in beIN Sports 2\'s guide linked to the feed\'s "Somalia at Ghana": the card reads ' + ghana[0][-70:] + '.')
+    # club crests: the feed's own logo first; TheSportsDB only for a team whose feed logo is missing or does not load, once, in the background
+    focus_card('مصر ضد مالاوي'); time.sleep(3)
+    cr = shot('redesign-matches-crests.png').convert('RGB')
+    def share(box, test):
+        px = [cr.getpixel((x, y)) for x in range(box[0], box[2], 2) for y in range(box[1], box[3], 2)]
+        return sum(1 for p in px if test(p)) / len(px)
+    green = share((450, 358, 490, 398), lambda p: p[1] > 150 and p[0] < 90 and p[2] < 90)
+    magenta = share((138, 358, 178, 398), lambda p: p[0] > 180 and p[2] > 180 and p[1] < 90)
+    assert green > 0.4, 'Egypt\'s crest must be the feed\'s own logo (green): ' + str(green)
+    assert magenta > 0.4, 'Malawi\'s feed logo answers 404: its crest must come from TheSportsDB (magenta): ' + str(magenta)
+    assert 'Egypt' not in SDB, 'TheSportsDB must not be asked for a team whose feed logo loads: ' + str(SDB)
+    assert SDB.count('Malawi') == 1 and SDB.count('Kazakhstan') == 1, 'A team is looked up once: ' + str(SDB)
+    assert SDB_NOW[1] <= 4, 'At most 4 requests at once: ' + str(SDB_NOW[1])
+    asked = len(SDB)
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.HomeActivity'); time.sleep(3)
+    focus_card('مصر ضد مالاوي'); time.sleep(2)
+    assert len(SDB) == asked, 'Nothing is asked again for a team already answered (a badge or no badge): ' + str(SDB[asked:])
+    note('PASS: crests: feed logo shown (green %.2f), TheSportsDB fallback shown (magenta %.2f) for the team whose feed logo 404s; lookups %s, at most %d at once, none repeated.' % (green, magenta, sorted(set(SDB)), SDB_NOW[1]))
     # tomorrow's matches: the day guide (get_simple_data_table) lists Portugal v Morocco tomorrow evening, so it carries beIN Sports 2;
     # Germany v Japan is in no guide: it stays "اختر القناة" until a guide names it
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.MatchesScreenActivity'); time.sleep(3)

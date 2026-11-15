@@ -227,6 +227,7 @@ public final class UpcomingMatches {
                     JSONObject team=t.optJSONObject("team");
                     String name=team==null?"":team.optString("displayName");
                     String id=team==null?"":team.optString("id"),logo=team==null?"":team.optString("logo");
+                    if(logo.isEmpty()&&team!=null){JSONArray ls=team.optJSONArray("logos");JSONObject l0=ls==null?null:ls.optJSONObject(0);if(l0!=null)logo=l0.optString("href");}   // the same feed's other field for it
                     if("home".equals(t.optString("homeAway"))){home=name;homeId=id;homeLogo=logo;hs=t.optString("score");}
                     else if("away".equals(t.optString("homeAway"))){away=name;awayId=id;awayLogo=logo;as=t.optString("score");}
                 }
