@@ -730,6 +730,12 @@ with tempfile.TemporaryDirectory() as temp:
         time.sleep(1)
     img = shot('redesign-matches.png'); keys('DPAD_DOWN'); keys('DPAD_LEFT'); shot('redesign-matches-focus.png')
     no_crash('Matches')
+    # the matches screen draws the supplied inner wallpaper with no dark layer over it: its edges equal the file's own pixels
+    inner_ref = Image.open(Path(__file__).resolve().parent.parent / 'app' / 'assets' / 'backgrounds' / 'ouswis_bg_stars_inner_1080p.webp').convert('RGB').resize(img.size)
+    spots_bg = [(30, 300), (30, 700), (1890, 300), (1890, 700), (960, 1068), (960, 8)]
+    off_bg = [(sp, img.getpixel(sp), inner_ref.getpixel(sp)) for sp in spots_bg if max(abs(p - q) for p, q in zip(img.getpixel(sp), inner_ref.getpixel(sp))) > 28]
+    assert len(off_bg) <= 1, 'The matches screen background must be the supplied inner wallpaper, not darkened further: ' + str(off_bg)
+    note('PASS: matches screen background equals the supplied inner wallpaper at %d of %d edge spots.' % (len(spots_bg) - len(off_bg), len(spots_bg)))
     cards = [l for l in labels() if ' ضد ' in l and not l.startswith('تفاصيل')]
     # the guide of the sports channels names one match (الهلال × النصر): it is a match on the screen, with its channel
     guide_card = wait_label('الهلال ضد النصر', 'the match found only in the guide')

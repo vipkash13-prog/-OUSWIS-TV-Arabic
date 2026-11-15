@@ -12,6 +12,7 @@ from io import BytesIO
 from PIL import Image
 
 ADB=os.environ.get('ADB','adb'); PKG='io.ouswis.tv.standalone'
+WALL=Path(__file__).resolve().parent.parent/'app'/'assets'/'backgrounds'/'ouswis_bg_stars_1080p.webp'
 OUT=Path(sys.argv[1]); OUT.mkdir(parents=True,exist_ok=True)
 def adb(*args,binary=False):
     r=subprocess.run([ADB,*args],capture_output=True,check=True,timeout=90)
@@ -84,8 +85,11 @@ try:
     (OUT/('gold-home-ar-'+suffix+'.png')).write_bytes(png)
     (OUT/('gold-home-ar-'+suffix+'.xml')).write_bytes(ET.tostring(tree))
     nodes=mine(tree)
-    # night background (SPEC #0B0D1A) away from the wallpaper's top third
-    r,g,b=im.getpixel((int(960*k),int(1000*k)));assert max(r,g,b)<60,('Background must be the dark night colour',(r,g,b))
+    # the home wallpaper is the supplied starry one, centre-cropped, with no dark layer drawn over it: the empty bottom strip equals the file's own pixels
+    ref=Image.open(WALL).convert('RGB').resize((w,h))
+    for px,py in ((960,1000),(300,1010),(1700,1010)):
+        got=im.getpixel((int(px*k),int(py*k)));want=ref.getpixel((int(px*k),int(py*k)))
+        assert max(abs(a-b) for a,b in zip(got,want))<=28,('The home background must be the supplied wallpaper, not darkened further',(px,py),got,want)
     # the six shortcuts exist, once each, and run right to left in the SPEC order
     order=['البث المباشر','المباريات','كل التطبيقات','الأخيرة','التحديثات','الإعدادات']
     xs=[]
@@ -98,9 +102,10 @@ try:
     chips=[n for n in nodes if label(n).startswith('الطقس')]
     assert chips and bounds(chips[0])[3]<h*0.2,'Weather must be a chip in the top bar'
     assert not any('الرطوبة' in label(n) for n in nodes),'The big weather panel must be gone'
-    # the supplied wallpaper under everything: its pale crescent moon sits near 1533,127 of 1920x1080, which the old gold wallpaper never had there
-    moon=max(max(im.getpixel((int((1533+dx)*k),int((127+dy)*k)))) for dx in range(-40,41,4) for dy in range(-40,41,4))
-    assert moon>150,('The supplied wallpaper must be drawn (its moon is near 1533,127)',moon)
+    # the supplied wallpaper under everything: the top half matches the file (the cards and the top bar cover some of it, the sky is open)
+    top=[(x,y) for x in range(40,1900,60) for y in range(8,380,40)]
+    near=sum(1 for x,y in top if max(abs(a-b) for a,b in zip(im.getpixel((int(x*k),int(y*k))),ref.getpixel((int(x*k),int(y*k)))))<=28)
+    assert near>=0.45*len(top),('The supplied wallpaper must be drawn',near,len(top))
     # the last-channel card is 153 dp (229.5 reference px) tall and stays above the matches heading
     hero=[n for n in nodes if label(n).startswith('آخر قناة') or label(n).startswith('ابدأ المشاهدة')]
     assert hero,'The last-channel card must be a control'
