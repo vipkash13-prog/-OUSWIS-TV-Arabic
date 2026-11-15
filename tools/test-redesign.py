@@ -766,7 +766,7 @@ with tempfile.TemporaryDirectory() as temp:
     # tomorrow's matches: the day guide (get_simple_data_table) lists Portugal v Morocco tomorrow evening, so it carries beIN Sports 2;
     # Germany v Japan is in no guide: it stays "اختر القناة" until a guide names it
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.MatchesScreenActivity'); time.sleep(3)
-    tap('غداً', exact=True)
+    keys('DPAD_UP', 'DPAD_UP', 'DPAD_UP', 'DPAD_UP', 'DPAD_UP', 'DPAD_UP', pause=0.4); keys('DPAD_LEFT', 'DPAD_CENTER', pause=1)   # up to the day chips, RTL: left of today is tomorrow
     por = wait_label('البرتغال ضد المغرب', 'Portugal v Morocco on the tomorrow tab', tries=60)
     for _ in range(30):
         por = [l for l in labels() if 'البرتغال ضد المغرب' in l]
@@ -776,7 +776,7 @@ with tempfile.TemporaryDirectory() as temp:
     shot('redesign-matches-tomorrow.png')
     assert any('beIN Sports 2' in l for l in por) and not any('اختر القناة' in l for l in por), 'Tomorrow\'s Portugal v Morocco must carry beIN Sports 2 from the day guide: ' + str(por)
     assert ger and all('اختر القناة' in l and 'beIN' not in l and 'SSC' not in l for l in ger), 'Tomorrow\'s Germany v Japan is in no guide: it must ask to pick the channel: ' + str(ger)
-    tap('اليوم', exact=True); keys('BACK', pause=1)
+    keys('DPAD_RIGHT', 'DPAD_CENTER', pause=1); keys('BACK', pause=1)   # back to today's tab
     note('PASS: tomorrow tab: Portugal v Morocco (in the day guide, past the old 30 h limit when run before 17:30 Riyadh) carries beIN Sports 2; Germany v Japan (no guide) says اختر القناة.')
     # item 1: each match opens on the channel whose guide names it; HD beats the SD copy; the feed's broadcaster alone is "غير مؤكدة"
     mol = wait_label('مولدوفا ضد كازاخستان', 'Moldova v Kazakhstan', tries=60)
