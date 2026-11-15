@@ -2,8 +2,6 @@ package io.ouswis.tv.standalone;
 
 import android.app.Activity;
 import android.content.Intent;
-import android.graphics.Bitmap;
-import android.graphics.Canvas;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.StateListDrawable;
 import android.net.Uri;
@@ -12,8 +10,6 @@ import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
 import android.view.Gravity;
-import android.view.View;
-import android.widget.FrameLayout;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -36,22 +32,13 @@ public final class UpdatesActivity extends Activity {
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
-        overridePendingTransition(0, 0);
+        Wallpaper.noTransition(this);
         getWindow().getDecorView().setSystemUiVisibility(5894);
         // Always the dark look, whatever the system's light or dark setting: the inner wallpaper, light text, a dark button.
-        FrameLayout page = new FrameLayout(this);
-        page.addView(new View(this) {
-            private Bitmap wall;
-            @Override protected void onSizeChanged(int w, int h, int ow, int oh) { wall = Wallpaper.inner(getContext(), w, h); }
-            @Override protected void onDraw(Canvas c) {
-                if (wall != null) c.drawBitmap(wall, 0, 0, null); else c.drawColor(0xFF0B0D1A);
-            }
-        }, new FrameLayout.LayoutParams(-1, -1));
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.CENTER);
         root.setPadding(24, 16, 24, 16);
-        page.addView(root, new FrameLayout.LayoutParams(-1, -1));
         TextView heading = new TextView(this);
         heading.setText("OUSWIS TV 1.0  •  " + Ui.tr("Updates"));
         heading.setTextColor(0xFFF5F5F7);
@@ -69,7 +56,7 @@ public final class UpdatesActivity extends Activity {
         action.setBackground(buttonLook());
         action.setOnClickListener(v -> act());
         root.addView(action);
-        setContentView(page);
+        setContentView(Wallpaper.behind(this, root));
         action.requestFocus();
         check();
     }
@@ -86,7 +73,7 @@ public final class UpdatesActivity extends Activity {
         return d;
     }
 
-    @Override public void finish() { super.finish(); overridePendingTransition(0, 0); }
+    @Override public void finish() { super.finish(); Wallpaper.noTransition(this); }
 
     private void refresh() {
         org.json.JSONObject state = Updates.state(this);

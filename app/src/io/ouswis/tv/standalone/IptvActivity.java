@@ -54,7 +54,7 @@ public class IptvActivity extends Activity {
     private boolean testing;
     private int generation;
 
-    @Override public void finish() { super.finish(); overridePendingTransition(0, 0); }
+    @Override public void finish() { super.finish(); Wallpaper.noTransition(this); }
 
     /** Leaving for Settings shows no animation, so the two screens never overlap for a moment. */
     @Override protected void onPause() {
@@ -88,15 +88,13 @@ public class IptvActivity extends Activity {
         page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
         page.setGravity(Gravity.CENTER_HORIZONTAL);
-        page.setBackgroundColor(BG);
         page.setPadding(px(480), px(70), px(480), px(40));
         page.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
         ScrollView scroll = new ScrollView(this);
-        scroll.setBackgroundColor(BG);
         scroll.setFillViewport(true);
         scroll.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
         scroll.addView(page, new ScrollView.LayoutParams(-1, -1));
-        setContentView(scroll);
+        setContentView(Wallpaper.behind(this, scroll));
         Button first = null;
         if (to == INFO) first = buildInfo();
         else if (to == EDIT) buildEdit();

@@ -27,15 +27,16 @@ public final class PlayLogActivity extends Activity {
     private Button typeButton;
     private TextView hint;
     private float k;
+    @Override public void finish() { super.finish(); Wallpaper.noTransition(this); }
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
+        Wallpaper.noTransition(this);
         Ui.init(this);
         getWindow().getDecorView().setSystemUiVisibility(5894);
         k = Math.max(getResources().getDisplayMetrics().widthPixels, getResources().getDisplayMetrics().heightPixels) / 1920f;
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(Design.BG);
         root.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
         root.setPadding(px(96), px(40), px(96), px(24));
         TextView title = text("سجل التشغيل", 34, Design.TEXT, Design.bold());
@@ -64,7 +65,7 @@ public final class PlayLogActivity extends Activity {
         scroll.setVerticalScrollBarEnabled(false);
         scroll.addView(lines, new FrameLayout.LayoutParams(-1, -2));
         root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
-        setContentView(root);
+        setContentView(Wallpaper.behind(this, root));
         typeButton.requestFocus();
         refresh();
     }

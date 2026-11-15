@@ -23,12 +23,14 @@ public final class ChannelMapActivity extends Activity {
     private ListView list;
     private Adapter adapter;
 
+    @Override public void finish(){super.finish();Wallpaper.noTransition(this);}
     @Override protected void onCreate(Bundle b){
         super.onCreate(b);
+        Wallpaper.noTransition(this);
         Ui.init(this);
         getWindow().getDecorView().setSystemUiVisibility(5894);
         android.widget.LinearLayout root=new android.widget.LinearLayout(this);
-        root.setOrientation(android.widget.LinearLayout.VERTICAL);root.setBackgroundColor(Design.BG);
+        root.setOrientation(android.widget.LinearLayout.VERTICAL);
         root.setPadding(96,54,96,40);root.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
         TextView title=new TextView(this);title.setText("ربط القنوات بالدوريات");title.setTextColor(Design.TEXT);title.setTextSize(34);
         title.setTypeface(Design.bold());title.setGravity(Gravity.RIGHT);root.addView(title);
@@ -38,7 +40,7 @@ public final class ChannelMapActivity extends Activity {
         adapter=new Adapter();list.setAdapter(adapter);
         list.setOnItemClickListener((p,v,pos,id)->choose(pos));
         root.addView(list,new android.widget.LinearLayout.LayoutParams(-1,0,1));
-        setContentView(root);
+        setContentView(Wallpaper.behind(this, root));
         list.requestFocus();
     }
     @Override protected void onResume(){super.onResume();adapter.notifyDataSetChanged();}
