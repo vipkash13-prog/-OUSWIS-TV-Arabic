@@ -95,6 +95,7 @@ public final class MatchesScreenActivity extends Activity {
             main.post(()->{
                 loading=false;
                 syncFromStore();
+                for(MatchCarouselView.Match m:all){ImageCache.get(m.homeLogo,()->view.postInvalidate());ImageCache.get(m.awayLogo,()->view.postInvalidate());}   // every day's crests are ready before a filter is chosen: no pale placeholder badge on the switch
                 view.dataChanged(MatchStore.updatedAt()>0||!all.isEmpty());
                 if(foreground)main.postDelayed(refresh,failed?2*60_000L:anyLive()?60_000L:30*60_000L);
             });

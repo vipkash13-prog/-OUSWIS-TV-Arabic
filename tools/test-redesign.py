@@ -545,7 +545,11 @@ with tempfile.TemporaryDirectory() as temp:
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.PlayLogActivity'); wait_label('سجل التشغيل', 'the playback log page')
     time.sleep(1)
     log_lines = [l for l in labels() if ' | ' in l]
-    shot('redesign-playlog.png')
+    pl = shot('redesign-playlog.png')
+    pl_ref = Image.open(Path(__file__).resolve().parent.parent / 'app' / 'assets' / 'backgrounds' / 'ouswis_bg_stars_inner_1080p.webp').convert('RGB').resize(pl.size)
+    pl_off = [(q, pl.getpixel(q), pl_ref.getpixel(q)) for q in [(1890, 300), (1890, 700), (960, 1068), (960, 8), (30, 700)] if max(abs(p - r) for p, r in zip(pl.getpixel(q), pl_ref.getpixel(q))) > 28]
+    assert len(pl_off) <= 1, 'The playback log must draw the dark inner wallpaper: ' + str(pl_off)
+    note('PASS: the playback log page draws the dark inner wallpaper (%d spots off).' % len(pl_off))
     note('Playback log lines: ' + str(len(log_lines)))
     assert any('HTTP 404' in l or 'BAD_HTTP_STATUS' in l for l in log_lines), 'The refused .m3u8 (404) must be logged with its http status: ' + str(log_lines[:12])
     assert any('الحالة: READY' in l for l in log_lines) and any('ظهرت أول لقطة' in l for l in log_lines), 'State changes and the first frame must be logged: ' + str(log_lines[:12])
@@ -1051,7 +1055,17 @@ with tempfile.TemporaryDirectory() as temp:
         assert any(name in h for h in held), 'The side button ' + name + ' should hold the focus: ' + str(held)
         adb('shell', 'input', 'keyevent', '23'); time.sleep(2.5)
         front(activity)
-        shot('final-side-' + str(i) + '-' + activity + '.png')
+        side_img = shot('final-side-' + str(i) + '-' + activity + '.png')
+        if activity in ('LiveActivity', 'MatchesScreenActivity', 'UpdatesActivity', 'ChannelMapActivity', 'SectionOrderActivity', 'IptvActivity'):   # the same dark inner wallpaper on every inner screen, Updates included
+            ref = Image.open(Path(__file__).resolve().parent.parent / 'app' / 'assets' / 'backgrounds' / 'ouswis_bg_stars_inner_1080p.webp').convert('RGB').resize(side_img.size)
+            sp = [(1890, 300), (1890, 700), (960, 1068), (960, 8), (30, 700)] if activity != 'UpdatesActivity' else [(1890, 300), (1890, 700), (960, 1068), (960, 8), (1890, 900)]
+            off = [(q, side_img.getpixel(q), ref.getpixel(q)) for q in sp if max(abs(p - r) for p, r in zip(side_img.getpixel(q), ref.getpixel(q))) > 28]
+            assert len(off) <= 1, activity + ' must draw the dark inner wallpaper: ' + str(off)
+            note('PASS: ' + activity + ' background equals the dark inner wallpaper at ' + str(len(sp) - len(off)) + ' of ' + str(len(sp)) + ' spots.')
+        if activity == 'UpdatesActivity':
+            lum_u = [sum(side_img.getpixel((x, y))) / 3 for x in range(0, 1920, 40) for y in range(0, 1080, 40)]
+            assert sum(lum_u) / len(lum_u) < 60 and sum(1 for v in lum_u if v > 200) / len(lum_u) < 0.03, 'Updates must be dark for an OLED: mean ' + str(round(sum(lum_u) / len(lum_u)))
+            note('PASS: Updates is dark (mean brightness ' + str(round(sum(lum_u) / len(lum_u))) + ').')
         no_crash('Settings button ' + name)
         keys('BACK', pause=1.5)
     note('PASS: all six Settings side buttons opened with OK (keyevent 23): ' + ', '.join(a for _, a in side) + '.')

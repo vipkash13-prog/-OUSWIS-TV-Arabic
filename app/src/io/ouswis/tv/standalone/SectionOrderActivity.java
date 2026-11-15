@@ -26,12 +26,14 @@ public final class SectionOrderActivity extends Activity {
     private Adapter adapter;
     private ListView list;
 
+    @Override public void finish(){super.finish();Wallpaper.noTransition(this);}
     @Override protected void onCreate(Bundle b){
         super.onCreate(b);
+        Wallpaper.noTransition(this);
         Ui.init(this);
         getWindow().getDecorView().setSystemUiVisibility(5894);
         android.widget.LinearLayout root=new android.widget.LinearLayout(this);
-        root.setOrientation(android.widget.LinearLayout.VERTICAL);root.setBackgroundColor(Design.BG);
+        root.setOrientation(android.widget.LinearLayout.VERTICAL);
         root.setPadding(96,54,96,40);root.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
         TextView title=new TextView(this);title.setText("ترتيب الأقسام وإخفاؤها");title.setTextColor(Design.TEXT);title.setTextSize(34);
         title.setTypeface(Design.bold());title.setGravity(Gravity.RIGHT);root.addView(title);
@@ -41,7 +43,7 @@ public final class SectionOrderActivity extends Activity {
         adapter=new Adapter();list.setAdapter(adapter);
         list.setOnItemClickListener((p,v,pos,id)->{if(pos==0)resetDefault();else choose(pos-1);});
         root.addView(list,new android.widget.LinearLayout.LayoutParams(-1,0,1));
-        setContentView(root);
+        setContentView(Wallpaper.behind(this, root));
         list.requestFocus();
         XtreamAccount account=XtreamAccount.read(this);
         if(account==null){Toast.makeText(this,"سجّل دخول Xtream أولاً من البث المباشر",Toast.LENGTH_LONG).show();return;}

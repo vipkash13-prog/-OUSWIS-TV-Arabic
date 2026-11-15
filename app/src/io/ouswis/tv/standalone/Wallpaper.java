@@ -50,4 +50,25 @@ final class Wallpaper {
             return null;
         }
     }
+
+    /** The inner wallpaper under a plain screen's content (Updates, Play log, IPTV, Section order, Channel map). The content must have no background of its own. */
+    static android.view.View behind(final android.app.Activity a,android.view.View content){
+        android.widget.FrameLayout f=new android.widget.FrameLayout(a);
+        f.addView(new android.view.View(a){
+            private Bitmap wall;
+            @Override protected void onSizeChanged(int w,int h,int ow,int oh){wall=inner(getContext(),w,h);}
+            @Override protected void onDraw(Canvas c){if(wall!=null)c.drawBitmap(wall,0,0,null);else c.drawColor(0xFF0B0D1A);}
+        },new android.widget.FrameLayout.LayoutParams(-1,-1));
+        f.addView(content,new android.widget.FrameLayout.LayoutParams(-1,-1));
+        return f;
+    }
+
+    /** No slide or fade when this screen opens or closes, on any Android (14 ignores overridePendingTransition for a new task). */
+    static void noTransition(android.app.Activity a){
+        a.overridePendingTransition(0,0);
+        if(android.os.Build.VERSION.SDK_INT>=34){
+            a.overrideActivityTransition(android.app.Activity.OVERRIDE_TRANSITION_OPEN,0,0);
+            a.overrideActivityTransition(android.app.Activity.OVERRIDE_TRANSITION_CLOSE,0,0);
+        }
+    }
 }

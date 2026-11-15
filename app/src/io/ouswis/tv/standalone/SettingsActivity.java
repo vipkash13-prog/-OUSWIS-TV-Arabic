@@ -61,11 +61,19 @@ public class SettingsActivity extends Activity {
     private int featureReturnKey;
 
     /** Leaving Settings for the home screen is at once: no slide or fade, so the two screens are never seen together. */
-    @Override public void finish() { super.finish(); overridePendingTransition(0, 0); }
+    @Override public void finish() {
+        super.finish();
+        Wallpaper.noTransition(this);
+    }
+    /** Every page Settings opens (IPTV, play log, section order, channel map, updates) appears at once too. */
+    @Override public void startActivity(Intent intent) {
+        try { super.startActivity(intent, android.app.ActivityOptions.makeCustomAnimation(this, 0, 0).toBundle()); }
+        catch (RuntimeException e) { super.startActivity(intent); }
+    }
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        overridePendingTransition(0, 0);
+        Wallpaper.noTransition(this);   // Android 14 ignores overridePendingTransition for a new task
         if (openFireHome(getIntent())) return;
         Watchdog.install(this);
         Updates.schedule(this);   // the week's update check, once (a fresh install has had no boot or update yet)

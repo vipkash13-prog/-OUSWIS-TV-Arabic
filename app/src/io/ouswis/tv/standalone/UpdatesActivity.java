@@ -2,7 +2,8 @@ package io.ouswis.tv.standalone;
 
 import android.app.Activity;
 import android.content.Intent;
-import android.graphics.Color;
+import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.StateListDrawable;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
@@ -31,30 +32,48 @@ public final class UpdatesActivity extends Activity {
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
+        Wallpaper.noTransition(this);
         getWindow().getDecorView().setSystemUiVisibility(5894);
+        // Always the dark look, whatever the system's light or dark setting: the inner wallpaper, light text, a dark button.
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.CENTER);
         root.setPadding(24, 16, 24, 16);
-        root.setBackgroundColor(Ui.pageBackground(this));
         TextView heading = new TextView(this);
         heading.setText("OUSWIS TV 1.0  •  " + Ui.tr("Updates"));
-        heading.setTextColor(Ui.pageInk(this));
+        heading.setTextColor(0xFFF5F5F7);
         heading.setTextSize(22);
         root.addView(heading);
         status = new TextView(this);
-        status.setTextColor(Ui.pageInk(this));
+        status.setTextColor(0xFFF5F5F7);
         status.setTextSize(18);
         status.setPadding(0, 20, 0, 20);
         root.addView(status);
         action = new Button(this);
         action.setAllCaps(false);
+        action.setTextColor(0xFFF5F5F7);
+        action.setStateListAnimator(null);
+        action.setBackground(buttonLook());
         action.setOnClickListener(v -> act());
         root.addView(action);
-        setContentView(root);
+        setContentView(Wallpaper.behind(this, root));
         action.requestFocus();
         check();
     }
+
+    /** A dark button; the focused one gets the white ring the rest of the app uses. */
+    private static StateListDrawable buttonLook() {
+        GradientDrawable on = new GradientDrawable();
+        on.setColor(0xFF1E2440); on.setCornerRadius(22); on.setStroke(4, 0xFFFFFFFF);
+        GradientDrawable off = new GradientDrawable();
+        off.setColor(0xFF151A2E); off.setCornerRadius(22); off.setStroke(1, 0x33FFFFFF);
+        StateListDrawable d = new StateListDrawable();
+        d.addState(new int[] {android.R.attr.state_focused}, on);
+        d.addState(new int[] {}, off);
+        return d;
+    }
+
+    @Override public void finish() { super.finish(); Wallpaper.noTransition(this); }
 
     private void refresh() {
         org.json.JSONObject state = Updates.state(this);

@@ -171,14 +171,14 @@ public class AllAppsActivity extends Activity {
             try{
                 rc.drawColor(CARD);   // a banner with transparency sits on a dark card
                 banner.setBounds(0,0,TILE_W,TILE_H);banner.draw(rc);
-                ok=!blank(raw)&&whiteShare(raw)<0.5f&&lightShare(raw)<LIGHT_LIMIT;   // a banner that is mostly white is no banner: the icon on the dark card instead
+                ok=!blank(raw)&&!tooLight(raw);   // a banner that is mostly white is no banner: the icon on the dark card instead
             }catch(Throwable t){ok=false;}
         }
         String how="banner";
         if(!ok){
             how=drawIcon(c,pm,pkg,name,raw,rc);
         }
-        if(whiteShare(raw)>=0.5f||lightShare(raw)>=LIGHT_LIMIT){   // whatever was drawn, a white card on an OLED is never shown
+        if(tooLight(raw)){   // whatever was drawn, a white card on an OLED is never shown
             rc.drawColor(CARD);
             Paint lp=Design.text(Design.TEXT,64,Design.bold());
             String n=name==null?"":name.trim();if(n.length()>3&&n.startsWith("ال"))n=n.substring(2);
@@ -250,6 +250,25 @@ public class AllAppsActivity extends Activity {
     }
 
     /** Share of a 40x24 grid of samples that are opaque and near white: 0.5 or more is a white card. */
+    /**
+     * A card that glares on an OLED: a fifth of it bright (luminance 130 and up), or a pale grey or pastel (bright and
+     * nearly colourless) fourth of it, or a mean luminance of 105 and up, or mostly near white. Such a card becomes the dark one with the icon.
+     */
+    static boolean tooLight(Bitmap b){
+        int bright=0,pale=0,n=0,seen=0;double sum=0;
+        for(int i=0;i<40;i++)for(int j=0;j<24;j++){
+            int px=b.getPixel(Math.min(b.getWidth()-1,(int)((i+0.5f)*b.getWidth()/40)),Math.min(b.getHeight()-1,(int)((j+0.5f)*b.getHeight()/24)));
+            n++;
+            if((px>>>24)<128)continue;
+            int r=px>>16&255,g=px>>8&255,bl=px&255;
+            double luma=0.299*r+0.587*g+0.114*bl;
+            seen++;sum+=luma;
+            if(luma>=130)bright++;
+            if(luma>=110&&Math.max(r,Math.max(g,bl))-Math.min(r,Math.min(g,bl))<40)pale++;
+        }
+        float lightShare=bright/(float)n,paleShare=pale/(float)n,mean=seen==0?0:(float)(sum/seen);
+        return lightShare>=0.20f||paleShare>=0.25f||mean>=105f||whiteShare(b)>=0.30f;
+    }
     /** The share of samples that are bright (luminance 150 and up: white, light grey, yellow). */
     static float lightShare(Bitmap b){
         int light=0,n=0;
