@@ -17,6 +17,8 @@ HITS = {}
 FAIL_CATS = set()   # categories whose channel list answers HTTP 500 (a section left empty for good in the video)
 FEED_MODE = ['ok']   # 'down': every competition but one answers HTTP 500, that one answers with no matches (what wiped the matches screen)
 ACTIVE = ['0']   # user_info.active_cons: the provider's count of open connections (a test raises it to look like an old connection still counted)
+REQT = {}   # when each stream file was asked for
+UINFO = []   # when user_info was asked for
 T997 = []   # when 997.ts was asked for: its first two answers are HTTP 509 (the connection limit)
 ALLOWED = ['m3u8', 'ts']   # what the mock account's user_info says it may stream
 
@@ -240,7 +242,7 @@ with tempfile.TemporaryDirectory() as temp:
             url = urlparse(self.path); q = parse_qs(url.query)
             HITS[url.path.rsplit('/', 1)[-1]] = HITS.get(url.path.rsplit('/', 1)[-1], 0) + 1
             who = q.get('username', [''])[0] or (url.path.split('/')[2] if url.path.startswith('/live/') and url.path.count('/') >= 4 else '')
-            if url.path.startswith('/live/'): REQLOG.append((who, url.path.rsplit('/', 1)[-1]))
+            if url.path.startswith('/live/'): REQLOG.append((who, url.path.rsplit('/', 1)[-1])); REQT.setdefault(url.path.rsplit('/', 1)[-1], []).append(time.time())
             sid0 = q.get('stream_id', [''])[0]
             if who == 'bob' and sid0.isdigit() and int(sid0) >= 5000: q['stream_id'] = [str(int(sid0) - 5000)]   # B's guide is A's, under B's numbers
             if url.path.startswith('/apis/site/v2/sports/soccer/'):
@@ -299,6 +301,7 @@ with tempfile.TemporaryDirectory() as temp:
                 elif q.get('username', [''])[0] == 'bad':   # a provider that refuses the login (HTTP 200, auth 0)
                     body = {'user_info': {'auth': 0, 'status': 'Disabled'}}
                 else:
+                    UINFO.append(time.time())
                     body = {'user_info': {'auth': 1, 'status': 'Active', 'max_connections': '1', 'active_cons': ACTIVE[0], 'allowed_output_formats': ALLOWED, 'exp_date': str(int(time.time()) + 86400 * 120)}}
                 payload = json.dumps(body).encode(); kind = 'application/json'
             elif url.path in NOT_FOUND:
@@ -622,22 +625,39 @@ with tempfile.TemporaryDirectory() as temp:
     note('PASS: a live-speed stream for 10 minutes (buffer constant): %d connection, no reconnect, no freeze event in the log.' % conns)
     keys('BACK', pause=1)
 
-    # 4e. the provider still counts the old connection (active_cons=1): wait for it to drop (looking again every second, at most 8 s), then open
+    # 4e. a channel opens at once: even while the provider still counts an old connection (active_cons=1) nothing is waited for
+    # and user_info is not asked before the open (only the one diagnostic call when the screen starts)
     ACTIVE[0] = '1'
-    threading.Timer(3.0, lambda: ACTIVE.__setitem__(0, '0')).start()
+    REQT.pop('102.ts', None); n_ui = len(UINFO)
+    t_start = time.time()
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.PlayerActivity', '-e', 'id', '102', '-e', 'name', 'SSC 2 HD', '-e', 'ext', 'ts', '-e', 'num', '102')
-    time.sleep(12)
+    time.sleep(8)
+    ui_calls = len(UINFO) - n_ui
+    ACTIVE[0] = '0'
     adb('shell', 'input', 'keyevent', 'KEYCODE_BACK'); time.sleep(1)
-    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.PlayLogActivity'); wait_label('سجل التشغيل', 'the playback log page (connection wait)')
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.PlayLogActivity'); wait_label('سجل التشغيل', 'the playback log page (immediate open)')
     page = ' || '.join(labels())
-    assert 'انتظار تحرير الاتصال القديم: active_cons=1' in page, 'The wait for the old connection must be logged: ' + page[:900]
-    assert 'ظهرت أول لقطة' in page, 'The channel must open once the count dropped: ' + page[:900]
-    note('PASS: while active_cons was 1 the player waited, then opened the channel once it dropped.')
+    first = REQT.get('102.ts', [None])[0]
+    assert first is not None and first - t_start < 2.0, 'The channel must be asked for within 2 s of opening, even with active_cons=1: %s' % (None if first is None else round(first - t_start, 2))
+    assert 'انتظار تحرير الاتصال القديم' not in page and 'جاري التجهيز' not in page, 'No wait for the old connection before opening: ' + page[:900]
+    assert ui_calls <= 1, 'user_info must not be asked before each open (only the one diagnostic call), calls: %d' % ui_calls
+    assert 'ظهرت أول لقطة' in page, 'The channel must open: ' + page[:900]
+    note('PASS: with active_cons=1 the channel was asked for %.2f s after opening, no wait in the log, user_info calls: %d.' % (first - t_start, ui_calls))
     keys('BACK', pause=1)
 
-    # 4f. HTTP 509 (the connection limit): not asked again at once, a wait of 3 s, logged as such, then it plays
+    # 4f. HTTP 509 (the connection limit): the waits are 2 s then 3 s; after 1 s the dark cover (#0B0D1A, the new channel's name, no translucent box) replaces the frozen picture
     T997.clear()
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.PlayerActivity', '-e', 'id', '997', '-e', 'name', 'Limit', '-e', 'ext', 'ts', '-e', 'num', '997')
+    for _ in range(60):
+        if T997: break
+        time.sleep(0.1)
+    assert T997, 'The channel was never asked for'
+    time.sleep(max(0, T997[0] + 1.6 - time.time()))
+    cover = shot('redesign-player-cover.png')
+    w, h = cover.size
+    def near(px, ref=(11, 13, 26)): return all(abs(a - b) <= 8 for a, b in zip(px, ref))
+    spots = [(0.03, 0.05), (0.97, 0.05), (0.03, 0.95), (0.97, 0.95), (0.1, 0.2), (0.9, 0.3)]
+    off = [sp for sp in spots if not near(cover.getpixel((int(sp[0] * w), int(sp[1] * h))))]
     time.sleep(16)
     gaps = [round(b - a, 1) for a, b in zip(T997, T997[1:])]
     img = shot('redesign-player-509.png')
@@ -645,9 +665,12 @@ with tempfile.TemporaryDirectory() as temp:
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.PlayLogActivity'); wait_label('سجل التشغيل', 'the playback log page (509)')
     page = ' || '.join(labels())
     assert 'تجاوز حد الاتصال' in page, 'HTTP 509 must be logged as the connection limit: ' + page[:900]
-    assert len(T997) >= 2 and gaps[0] >= 2.8, 'After a 509 the next request must wait about 3 s, gaps: ' + str(gaps) + ' ' + page[:600]
+    assert len(T997) >= 3 and 1.8 <= gaps[0] < 2.8 and 2.8 <= gaps[1] < 4.3, 'The waits after a 509 must be 2 s then 3 s, gaps: ' + str(gaps) + ' ' + page[:600]
+    assert not off, 'After 1 s of loading the whole screen must be the dark cover #0B0D1A (no frozen picture, no translucent box), not matching: ' + str(off)
+    assert 'غطاء التحميل: Limit' in page, 'The cover must carry the new channel name: ' + page[:900]
     assert colourful(img, (0.2, 0.2, 0.8, 0.8)) > 0.2, 'The channel must play once the limit let it through: ' + str(gaps)
-    note('PASS: HTTP 509 was logged as the connection limit, the next request waited %s s, then the channel played.' % gaps)
+    assert near(img.getpixel((int(0.03 * w), int(0.05 * h)))) is False, 'The cover must be gone once the picture is up'
+    note('PASS: HTTP 509 waits were %s s (2 then 3), the cover #0B0D1A showed after 1 s on all %d spots, then the channel played.' % (gaps, len(spots)))
     keys('BACK', pause=1)
 
     # 4d. the account allows only ts (user_info.allowed_output_formats): a channel asked as m3u8 goes straight to ts, m3u8 is never requested

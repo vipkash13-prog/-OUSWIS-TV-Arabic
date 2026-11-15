@@ -63,8 +63,9 @@ public final class PlayerActivity extends Activity {
     private static final long STALL_MS=6_000;          // the buffer isn't being filled for this long: reconnect
     private static final long STATUS_DELAY_MS=3_000;   // "loading" shows only if a reconnect or a rebuffer lasts this long
     private static final long ZAP_SETTLE_MS=700;       // a channel opens only after the viewer rested on it this long: passing channels never connect
-    private static final long FREE_WAIT_MS=8_000;      // the provider still counts the old connection: wait for active_cons to drop, at most this long
-    private static final long LIMIT_WAIT_MS=3_000;     // HTTP 509 (connection limit): wait this long before asking again
+    private static final long[] LIMIT_WAITS={2_000,3_000,5_000};   // HTTP 509 (connection limit): wait this long before asking again (then 5 s each time)
+    private static final long COVER_MS=1_000;          // a channel that takes longer than this to appear is covered by the dark loading page
+    private static final int COVER_COLOR=0xFF0B0D1A;
     private static final long CLOSE_GAP_MS=250;        // the old connection is closed this long before the new one opens
     private long reconnectT0,lastBufferedPos=-1,bufferMovedAt,posMovedAt,healthySince;
     private int backoffStep;                           // consecutive reconnects without a healthy run: 0, 1, 2, 4, 8, 10, 10 … seconds of waiting
@@ -73,9 +74,35 @@ public final class PlayerActivity extends Activity {
     private String currentExt="";
     private int hlsForm;                               // 0: the usual m3u8 address, 1: the older one without /live
     private String pendingStatus;
-    private final Runnable showPending=()->{if(pendingStatus!=null){status.setText(pendingStatus);status.setVisibility(View.VISIBLE);}};
+    private final Runnable showPending=()->{if(pendingStatus!=null&&!coverUp()){status.setText(pendingStatus);status.setVisibility(View.VISIBLE);}};
     private void statusLater(String text,long ms){pendingStatus=text;main.removeCallbacks(showPending);main.postDelayed(showPending,ms);}
-    private void statusNow(String text){pendingStatus=text;main.removeCallbacks(showPending);status.setText(text);status.setVisibility(View.VISIBLE);}
+    private void statusNow(String text){pendingStatus=text;main.removeCallbacks(showPending);if(coverUp())return;status.setText(text);status.setVisibility(View.VISIBLE);}
+    // The dark loading page: after COVER_MS without a picture it hides the frozen last frame and shows the NEW channel's logo and name (no translucent box)
+    private android.widget.LinearLayout cover;
+    private android.widget.ImageView coverLogo;
+    private TextView coverName;
+    private String coverIcon="";
+    private boolean coverUp(){return cover!=null&&cover.getVisibility()==View.VISIBLE;}
+    private final Runnable showCover=()->{
+        if(cover==null||isFinishing())return;
+        status.setVisibility(View.GONE);
+        cover.setVisibility(View.VISIBLE);
+        log("غطاء التحميل: "+coverName.getText());
+    };
+    private void coverLater(LiveData.Channel ch){
+        coverIcon=ch.icon==null?"":ch.icon;
+        coverName.setText(ch.name);
+        coverLogo.setImageBitmap(null);
+        loadCoverLogo(ch.icon);
+        main.removeCallbacks(showCover);
+        if(coverUp())return;
+        main.postDelayed(showCover,COVER_MS);
+    }
+    private void loadCoverLogo(final String url){
+        android.graphics.Bitmap b=ImageCache.get(url,()->{if(!isFinishing()&&url!=null&&url.equals(coverIcon)){android.graphics.Bitmap c=ImageCache.get(url,null);if(c!=null)coverLogo.setImageBitmap(c);}});
+        if(b!=null)coverLogo.setImageBitmap(b);
+    }
+    private void coverHide(){main.removeCallbacks(showCover);if(cover!=null&&cover.getVisibility()==View.VISIBLE){cover.setVisibility(View.GONE);coverLogo.setImageBitmap(null);}}
     private void statusClear(){pendingStatus=null;main.removeCallbacks(showPending);status.setVisibility(View.GONE);}
     private final Runnable hideLabel=()->label.setVisibility(View.GONE);
     private long playingSince;   // elapsedRealtime when this channel's picture first came up; 0 until then
@@ -119,6 +146,13 @@ public final class PlayerActivity extends Activity {
         root.addView(surface,new FrameLayout.LayoutParams(-1,-1,Gravity.CENTER));
         hold=new android.widget.ImageView(this);hold.setScaleType(android.widget.ImageView.ScaleType.FIT_XY);hold.setVisibility(android.view.View.GONE);
         root.addView(hold,new FrameLayout.LayoutParams(-1,-1));
+        cover=new android.widget.LinearLayout(this);cover.setOrientation(android.widget.LinearLayout.VERTICAL);cover.setGravity(Gravity.CENTER);
+        cover.setBackgroundColor(COVER_COLOR);cover.setVisibility(View.GONE);
+        coverLogo=new android.widget.ImageView(this);coverLogo.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
+        cover.addView(coverLogo,new android.widget.LinearLayout.LayoutParams(260,260));
+        coverName=new TextView(this);coverName.setTextColor(Color.WHITE);coverName.setTextSize(32);coverName.setTypeface(Design.bold());coverName.setGravity(Gravity.CENTER);coverName.setPadding(40,28,40,0);
+        cover.addView(coverName,new android.widget.LinearLayout.LayoutParams(-2,-2));
+        root.addView(cover,new FrameLayout.LayoutParams(-1,-1));
         label=new TextView(this);label.setTextColor(Color.WHITE);label.setTextSize(30);label.setTypeface(Design.bold());
         label.setBackgroundColor(0xB0000000);label.setPadding(40,22,40,22);label.setGravity(Gravity.CENTER_VERTICAL|Gravity.RIGHT);
         root.addView(label,new FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM));
@@ -173,7 +207,7 @@ public final class PlayerActivity extends Activity {
                 if(state==Player.STATE_BUFFERING&&pictured)statusLater("جارٍ التحميل…",STATUS_DELAY_MS);   // the last picture stays; the text comes only if it lasts
                 if(state==Player.STATE_READY){statusClear();failures=0;}
             }
-            @Override public void onRenderedFirstFrame(){releaseHold();statusClear();pictureUp();pictured=true;log("ظهرت أول لقطة");}
+            @Override public void onRenderedFirstFrame(){coverHide();limitStep=0;releaseHold();statusClear();pictureUp();pictured=true;log("ظهرت أول لقطة");}
             @Override public void onPlaybackSuppressionReasonChanged(int reason){if(reason!=Player.PLAYBACK_SUPPRESSION_REASON_NONE)log("إيقاف مؤقت من النظام (السبب "+reason+")");}
             @Override public void onIsPlayingChanged(boolean playing){
                 if(!playing)return;
@@ -400,7 +434,8 @@ public final class PlayerActivity extends Activity {
         main.removeCallbacks(noteLater);playingSince=0;
         final String ext=tsOverride?"ts":LivePlayer.extension(this,ch,attempt);
         final boolean zapped=zapSettle;zapSettle=false;
-        statusLater("جارٍ الاتصال…",1_500);   // a new channel: the old picture stays a moment, then the text if it is slow
+        limitStep=0;
+        statusClear();coverLater(ch);   // a new channel: the old picture stays a moment, then the dark page with its logo and name if it is slow
         showLabel(ch);
         started=true;
         lastProgressAt=android.os.SystemClock.elapsedRealtime();lastPos=-1;bufferMovedAt=lastProgressAt;lastBufferedPos=-1;
@@ -408,8 +443,8 @@ public final class PlayerActivity extends Activity {
         if(zapped)wait=Math.max(wait,ZAP_SETTLE_MS);   // zapping: a channel connects only once the viewer rested on it
         Runnable go=()->{
             if(mine!=generation||player==null)return;
-            if(zapped&&player.getMediaItemCount()>0)player.stop();   // the old connection ends now (the held picture stays), then wait for the provider to count it out
-            afterFree(mine,()->openStream(ch,ext));
+            if(zapped&&player.getMediaItemCount()>0)player.stop();   // the old connection ends now (the held picture stays)
+            openStream(ch,ext);   // at once: the provider is only waited for when it really answers HTTP 509
         };
         if(wait>0)main.postDelayed(go,wait);else go.run();
         main.removeCallbacks(watch);main.postDelayed(watch,1000);
@@ -453,7 +488,7 @@ public final class PlayerActivity extends Activity {
         if(auto&&hlsRefused){LivePlayer.markNoHls(this,ch.id);log("m3u8 غير متاح لهذه القناة: ts مباشرة من الآن");}
         hlsForm=0;
         failures++;attempt++;
-        if(failures>6){statusNow("تعذّر تشغيل هذه القناة");return;}
+        if(failures>6){coverHide();statusNow("تعذّر تشغيل هذه القناة");return;}
         statusLater("إعادة الاتصال…",STATUS_DELAY_MS);
         final int mine=generation;
         main.postDelayed(()->{if(mine==generation)playCurrent();},failures<=1?300:2000);
@@ -471,62 +506,31 @@ public final class PlayerActivity extends Activity {
         startActivity(new android.content.Intent(this,LiveActivity.class).putExtra(LiveActivity.EXTRA_MATCH_KEY,matchKey).putExtra(LiveActivity.EXTRA_SUGGESTED,ids.toString()));
         finish();
     }
-    /** The provider refused the connection (HTTP 509): the old one is still counted. Stop asking at once, wait 3 s, then join again. */
+    /** The provider refused the connection (HTTP 509): stop asking at once, wait 2 s, then 3 s, then 5 s each time, and join again. */
     private void limitReached(){
         if(player==null||isFinishing()||index<0||index>=list.size())return;
         long now=android.os.SystemClock.elapsedRealtime();
         if(limitWaiting)return;   // one wait at a time: a 509 after the wait has ended starts a new one
         limitWaiting=true;limitAt=now;
+        final long wait=LIMIT_WAITS[Math.min(limitStep,LIMIT_WAITS.length-1)];limitStep++;
         holdDone=false;holdPicture();
-        log("تجاوز حد الاتصال (HTTP 509): إيقاف الطلبات "+LIMIT_WAIT_MS/1000+" ث ثم إعادة الاتصال · "+playerState());
-        statusNow("تجاوز حد الاتصال… إعادة المحاولة بعد "+LIMIT_WAIT_MS/1000+" ث");
+        log("تجاوز حد الاتصال (HTTP 509): إيقاف الطلبات "+wait/1000+" ث ثم إعادة الاتصال · "+playerState());
         final int mine=++generation;
         final LiveData.Channel ch=list.get(index);
-        lastProgressAt=now+LIMIT_WAIT_MS+FREE_WAIT_MS;lastPos=-1;bufferMovedAt=lastProgressAt;posMovedAt=lastProgressAt;   // the detectors wait
+        statusClear();coverLater(ch);
+        lastProgressAt=now+wait+STALL_MS;lastPos=-1;bufferMovedAt=lastProgressAt;posMovedAt=lastProgressAt;   // the detectors wait
         try{player.stop();}catch(RuntimeException x){}   // the loader stops asking now (not 200 ms later: ExoPlayer retries at once); the last picture stays
         main.postDelayed(()->{
             limitWaiting=false;
-            if(mine!=generation||player==null)return;
-            afterFree(mine,()->{statusClear();openStream(ch,currentExt.isEmpty()?LivePlayer.extension(this,ch,attempt):currentExt);});
-        },LIMIT_WAIT_MS);
-    }
-    /** The provider's count of open connections; -1 when it does not answer in 3 s. */
-    private int activeCons(final XtreamAccount a){
-        try{
-            return NET.submit(()->{
-                org.json.JSONObject u=new org.json.JSONObject(XtreamAccount.get(a.api(null,null))).getJSONObject("user_info");
-                return Integer.parseInt(String.valueOf(u.opt("active_cons")).trim());
-            }).get(3,java.util.concurrent.TimeUnit.SECONDS);
-        }catch(Exception e){return -1;}
-    }
-    /**
-     * Before opening a channel: while the provider still counts an old connection (active_cons >= 1), wait and look again every
-     * second, at most 8 s, with "جاري التجهيز" on screen; then open. An answer that does not come opens at once.
-     */
-    private void afterFree(final int mine,final Runnable open){
-        final XtreamAccount a=account;
-        new Thread(()->{
-            long t0=android.os.SystemClock.elapsedRealtime();
-            int cons,firstCons=-1;boolean waited=false;
-            while(true){
-                cons=activeCons(a);
-                if(firstCons<0)firstCons=cons;
-                if(cons<1||android.os.SystemClock.elapsedRealtime()-t0>=FREE_WAIT_MS)break;
-                if(!waited){waited=true;main.post(()->{if(mine==generation&&!isFinishing())statusNow("جاري التجهيز…");});}
-                try{Thread.sleep(1_000);}catch(InterruptedException e){break;}
-            }
-            final boolean w=waited;final int c=cons,c0=firstCons;final long took=android.os.SystemClock.elapsedRealtime()-t0;
-            main.post(()->{
-                if(mine!=generation||player==null||isFinishing())return;
-                if(w){log("انتظار تحرير الاتصال القديم: active_cons="+c0+(c==c0?"":" ← "+c)+" بعد "+took/1000+" ث");statusClear();}
-                open.run();
-            });
-        }).start();
+            if(mine!=generation||player==null||isFinishing())return;
+            openStream(ch,currentExt.isEmpty()?LivePlayer.extension(this,ch,attempt):currentExt);
+        },wait);
     }
     private boolean tsAllowed(){java.util.Set<String> ok=LivePlayer.allowed(this);return ok==null||ok.contains("ts");}
     private boolean decoderHandled,tsOverride,zapSettle;
     private long limitAt;
     private boolean limitWaiting;
+    private int limitStep;   // consecutive 509 answers: the wait is 2 s, 3 s, then 5 s; a first picture starts again
     private static final java.util.concurrent.ExecutorService NET=java.util.concurrent.Executors.newCachedThreadPool();
     private static boolean isDecoderError(PlaybackException e){
         switch(e.errorCode){
@@ -543,7 +547,7 @@ public final class PlayerActivity extends Activity {
         LiveData.Channel cur=list.get(index);
         MatchChannels.markUnsupported(this,cur.id);
         LiveData.Channel alt=MatchChannels.hdSibling(this,list,cur);
-        if(alt==null){log("القناة "+cur.name+" غير مدعومة على الجهاز (decoder) ولا توجد نسخة HD منها");statusNow("هذه القناة غير مدعومة على الجهاز");return;}
+        if(alt==null){log("القناة "+cur.name+" غير مدعومة على الجهاز (decoder) ولا توجد نسخة HD منها");coverHide();statusNow("هذه القناة غير مدعومة على الجهاز");return;}
         log("القناة "+cur.name+" غير مدعومة على الجهاز (decoder): الانتقال إلى "+alt.name);
         switchTo(list.indexOf(alt));
     }
