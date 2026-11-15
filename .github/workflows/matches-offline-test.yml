@@ -1,0 +1,23 @@
+name: Matches offline test
+on:
+  push:
+    branches: ['feature/**']
+    paths: ['app/src/io/ouswis/tv/standalone/MatchStore.java', 'app/src/io/ouswis/tv/standalone/UpcomingMatches.java', 'tests/MatchesFeedTest.java', '.github/workflows/matches-offline-test.yml']
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - name: Android SDK
+        shell: bash
+        run: |
+          set +o pipefail
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$RUNNER_TEMP/sdk" "build-tools;34.0.0" "platforms;android-34" > /dev/null
+          echo "ANDROID_HOME=$RUNNER_TEMP/sdk" >> "$GITHUB_ENV"
+      - name: Build
+        run: ./build.sh --generic 2>&1 | tail -20
+      - name: Feed and refresh rules (no real network)
+        run: bash tools/test-matches-feed.sh
