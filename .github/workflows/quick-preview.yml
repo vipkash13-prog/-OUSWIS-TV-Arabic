@@ -2,6 +2,9 @@ name: OUSWIS TV quick preview (signed, no emulator tests)
 # A fast branch preview for trying a build on a real device: same signing key, same build and the same offline unit checks as
 # "OUSWIS TV signed APK", but without the emulator install/update and 4K tests. It never replaces them: the full workflow stays.
 on:
+  push:
+    branches: [feature/round-unified]
+    paths: ['.github/workflows/quick-preview.yml']
   workflow_dispatch:
 permissions:
   contents: write
