@@ -194,7 +194,13 @@ public final class MatchesScreenActivity extends Activity {
         /** The other channels that carry the match (at most two, the chosen one left out). */
         private List<LiveData.Channel> extraOptions(MatchCarouselView.Match m,LiveData.Channel chosen){
             List<LiveData.Channel> out=new ArrayList<>();
-            for(LiveData.Channel o:MatchChannels.options(m)){if(chosen!=null&&o.id.equals(chosen.id))continue;out.add(o);if(out.size()==2)break;}
+            java.util.Set<String> shown=new java.util.HashSet<>();   // one entry per name as it reads after cleaning (HD, SD, prefixes): the best-ranked copy, which comes first
+            if(chosen!=null)shown.add(MatchChannels.shortName(chosen.name).trim().toLowerCase(java.util.Locale.ROOT));
+            for(LiveData.Channel o:MatchChannels.options(m)){
+                if(chosen!=null&&o.id.equals(chosen.id))continue;
+                if(!shown.add(MatchChannels.shortName(o.name).trim().toLowerCase(java.util.Locale.ROOT)))continue;
+                out.add(o);if(out.size()==2)break;
+            }
             return out;
         }
         private LiveData.Channel channelFor(MatchCarouselView.Match m){

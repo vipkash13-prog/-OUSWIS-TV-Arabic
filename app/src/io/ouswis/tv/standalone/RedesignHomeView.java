@@ -501,12 +501,12 @@ final class RedesignHomeView extends View {
     }
 
     private void drawMatches(Canvas c){
-        Design.right(c,"مباريات اليوم",1842,448,section);
+        Design.right(c,"مباريات اليوم",1842,434,section);
         goldText.setTextSize(20);
         boolean linkFocus=focus(2,Math.min(today.size(),4));
-        Design.left(c,"عرض الكل ←",78,446,linkFocus?tx(0xFFFFFFFF,22,Design.bold()):goldText);
-        a11y.add(1500,420,1842,456,"مباريات اليوم",false,false);
-        a11y.add(70,420,200,456,"عرض الكل",linkFocus,true);
+        Design.left(c,"عرض الكل ←",78,432,linkFocus?tx(0xFFFFFFFF,22,Design.bold()):goldText);
+        a11y.add(1500,410,1842,446,"مباريات اليوم",false,false);
+        a11y.add(70,410,200,446,"عرض الكل",linkFocus,true);
         int n=Math.min(4,today.size());
         if(today.isEmpty()){
             if(everHadData)skeletonAfterData++;

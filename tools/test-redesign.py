@@ -787,6 +787,11 @@ with tempfile.TemporaryDirectory() as temp:
     # item 1: each match opens on the channel whose guide names it; HD beats the SD copy; the feed's broadcaster alone is "غير مؤكدة"
     mol = wait_label('مولدوفا ضد كازاخستان', 'Moldova v Kazakhstan', tries=60)
     assert any('beIN SPORTS 5' in l for l in mol) and not any('SPORTS 6' in l or 'غير مؤكدة' in l or 'اختر القناة' in l for l in mol), 'Moldova v Kazakhstan must show beIN SPORTS 5 (HD): ' + str(mol)
+    # the details panel lists each channel once: beIN SPORTS 5 HD and its SD copy read the same after cleaning, so only one is offered
+    focus_card('مولدوفا ضد كازاخستان'); time.sleep(1)
+    watch5 = [l for l in labels() if l.startswith('شاهد على') and 'beIN SPORTS 5' in l]
+    assert len(watch5) == 1, 'The details panel must offer beIN SPORTS 5 once (HD and SD read the same): ' + str(watch5)
+    note('PASS: the details panel offers beIN SPORTS 5 once, not once per HD/SD copy.')
     egy = wait_label('مصر ضد مالاوي', 'Egypt v Malawi', tries=60)
     assert any('beIN Sports 1' in l for l in egy) and not any('غير مؤكدة' in l for l in egy), 'Egypt v Malawi must show beIN Sports 1: ' + str(egy)
     esp = wait_label('إسبانيا ضد اليونان', 'Spain v Greece', tries=60)
