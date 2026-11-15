@@ -63,8 +63,9 @@ with zipfile.ZipFile(OLD) as old,zipfile.ZipFile(NEW) as new:
     names={n for n in old.namelist() if n.startswith('assets/')}
     # The owner replaced the wallpaper (Nov 12: ouswis_bg_1080p.webp, with a 4K copy) and asked for the old flag/gold wallpaper
     # and the gold frame to go; every other asset must stay byte-identical.
-    ADDED={'assets/fonts/Tajawal-OFL.txt','assets/backgrounds/ouswis_bg_1080p.webp','assets/backgrounds/ouswis_bg_4k.webp','assets/backgrounds/ouswis_bg_inner_1080p.webp'}
-    REMOVED={'assets/themes/gold-sunset.png','assets/themes/gold-frame.png'}
+    # Nov 15: the starry wallpapers (home and inner, already dark inside the picture) replaced the three earlier ones.
+    ADDED={'assets/fonts/Tajawal-OFL.txt','assets/backgrounds/ouswis_bg_stars_1080p.webp','assets/backgrounds/ouswis_bg_stars_inner_1080p.webp'}
+    REMOVED={'assets/themes/gold-sunset.png','assets/themes/gold-frame.png','assets/backgrounds/ouswis_bg_1080p.webp','assets/backgrounds/ouswis_bg_4k.webp','assets/backgrounds/ouswis_bg_inner_1080p.webp'}
     assert (names-REMOVED)|ADDED=={n for n in new.namelist() if n.startswith('assets/')},sorted(names^{n for n in new.namelist() if n.startswith('assets/')})
     # Round K dropped two unused translation keys (the Settings subtitle and the English "is on" notice): the i18n catalogues may differ.
     for n in names-REMOVED:assert n.startswith('assets/i18n/') or old.read(n)==new.read(n),'Asset changed: '+n

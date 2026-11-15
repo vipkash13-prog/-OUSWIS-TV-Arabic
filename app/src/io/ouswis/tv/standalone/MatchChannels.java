@@ -172,7 +172,8 @@ final class MatchChannels {
                         try{day=LiveData.fetchDay(a,ch.id);}catch(Exception ignored){}
                         if(day==null||day.isEmpty())day=LiveData.fetchGuide(a,ch.id,GUIDE_PROGRAMMES);   // a provider without the day table: the next programmes
                         java.util.List<LiveData.Program> keep=new ArrayList<>();
-                        for(LiveData.Program p:day)if(p.end>now-3*3600_000L&&p.start<now+30*3600_000L)keep.add(p);
+                        final long horizon=guideHorizon(now);
+                        for(LiveData.Program p:day)if(p.end>now-3*3600_000L&&p.start<horizon)keep.add(p);
                         if(ep==epoch){guides.put(ch.id,keep);guideChannels.put(ch.id,ch);}   // not if the subscription changed meanwhile
                     }catch(Exception ignored){}
                 }));
@@ -185,6 +186,14 @@ final class MatchChannels {
             clearAnswers();
             fire();
         });
+    }
+    /** How far ahead the guide's programmes are kept: to the end of Riyadh's tomorrow (and an hour past it), so "غداً" matches can be linked too; at least 30 hours. */
+    private static long guideHorizon(long now){
+        java.util.Calendar cal=java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("Asia/Riyadh"));
+        cal.setTimeInMillis(now);
+        cal.set(java.util.Calendar.HOUR_OF_DAY,0);cal.set(java.util.Calendar.MINUTE,0);cal.set(java.util.Calendar.SECOND,0);cal.set(java.util.Calendar.MILLISECOND,0);
+        long tomorrowEnd=cal.getTimeInMillis()+48L*3600_000L;
+        return Math.max(now+30*3600_000L,tomorrowEnd+3600_000L);
     }
     private static File guideFile(Context c,XtreamAccount a){return new File(c.getFilesDir(),"guide-day-"+AccountData.key(a)+".json");}
     private static void saveGuideFile(Context c,XtreamAccount a){

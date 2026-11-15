@@ -33,13 +33,12 @@ final class GoldenHomeSkin {
     private final SaudiDates dates=new SaudiDates();
     private StaticLayout gregorianLayout,hijriLayout;
     private CardBackdrop prayerBackdrop;
-    private Bitmap wallpaper,prayerArt,weatherPhoto,calendarIcon,mosqueIcon,frameArt;
+    private Bitmap prayerArt,weatherPhoto,calendarIcon,mosqueIcon,frameArt;
     private long minute=-1;
     private final Paint scrim=new Paint(Paint.ANTI_ALIAS_FLAG);
     private int generation=-1;
     GoldenHomeSkin(){line.setStyle(Paint.Style.STROKE);cardRim.setStyle(Paint.Style.STROKE);}
     void load(Context context){
-        wallpaper=decode(context,"backgrounds/ouswis_bg_1080p.webp");
         prayerArt=decode(context,"themes/gold-prayers.png");
         prayerBackdrop=CardBackdrop.load(context,"themes/card-prayer.jpg",true,0);
         weatherPhoto=decode(context,"themes/gold-weather.png");
@@ -70,7 +69,6 @@ final class GoldenHomeSkin {
     }
     void background(Canvas c,RectF screen){
         c.drawColor(0xFF060A13);
-        if(wallpaper!=null)c.drawBitmap(wallpaper,null,screen,image);
         frame(c,screen);
     }
     /** The cinematic gold frame: the gold light streaks at the corners and along the bottom (themes/gold-frame.png); a thin line if it is missing. */

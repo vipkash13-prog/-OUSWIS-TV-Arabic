@@ -4,27 +4,50 @@ import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
+import android.graphics.Matrix;
 import android.graphics.Paint;
-import android.graphics.Rect;
-import android.graphics.RectF;
 import java.io.InputStream;
 
-/** The inner screens' background (ouswis_bg_inner_1080p.webp: the city without the crescent), centre-cropped, under a dark layer. The home screen keeps ouswis_bg_1080p.webp. */
+/**
+ * The two backgrounds, each already darkened inside the picture (nothing is drawn over them): the home screen's
+ * (ouswis_bg_stars_1080p.webp) and the inner screens' (ouswis_bg_stars_inner_1080p.webp: Matches, Live TV, All Apps,
+ * Recent and Settings). Each is loaded once per process as RGB_565, centre-cropped and scaled to the screen's size, and
+ * every screen draws that same bitmap. A TV with no room for it gets the flat colour.
+ */
 final class Wallpaper {
     private Wallpaper(){}
+    private static Bitmap home,inner;
 
-    /** Draws the wallpaper over (0,0,w,h) and then a black layer of the given opacity (0..1). Call from a size change, not a draw pass. */
-    static void draw(Context c,Canvas canvas,int w,int h,float dim){draw(c,canvas,w,h,dim,0x000000);}
-    /** The same with the dark layer in the given colour (RGB), e.g. #0B0D1A. */
-    static void draw(Context c,Canvas canvas,int w,int h,float dim,int rgb){
-        Bitmap bmp=null;
-        try(InputStream in=c.getAssets().open("backgrounds/ouswis_bg_inner_1080p.webp")){BitmapFactory.Options o=new BitmapFactory.Options();o.inPreferredConfig=Bitmap.Config.RGB_565;o.inSampleSize=2;bmp=BitmapFactory.decodeStream(in,null,o);}catch(Throwable noRoom){bmp=null;}   // half size (the callers draw into a half-size backdrop): 1 MB, not 4; a TV with no room gets the flat colour, never a crash
-        if(bmp==null){canvas.drawColor(Design.BG);return;}
-        float s=Math.max(w/(float)bmp.getWidth(),h/(float)bmp.getHeight());
-        float sw=w/s,sh=h/s;
-        Rect src=new Rect((int)((bmp.getWidth()-sw)/2),(int)((bmp.getHeight()-sh)/2),(int)((bmp.getWidth()+sw)/2),(int)((bmp.getHeight()+sh)/2));
-        canvas.drawBitmap(bmp,src,new RectF(0,0,w,h),new Paint(Paint.FILTER_BITMAP_FLAG));
-        canvas.drawColor(((int)(dim*255)<<24)|(rgb&0xFFFFFF));
-        bmp.recycle();
+    static synchronized Bitmap home(Context c,int w,int h){
+        if(home==null||home.getWidth()!=w||home.getHeight()!=h)home=load(c,"backgrounds/ouswis_bg_stars_1080p.webp",w,h);
+        return home;
+    }
+    static synchronized Bitmap inner(Context c,int w,int h){
+        if(inner==null||inner.getWidth()!=w||inner.getHeight()!=h)inner=load(c,"backgrounds/ouswis_bg_stars_inner_1080p.webp",w,h);
+        return inner;
+    }
+
+    /** RGB_565, centre-cropped to the screen's shape and scaled to w×h; null when there is no room. */
+    private static Bitmap load(Context c,String path,int w,int h){
+        if(w<1||h<1)return null;
+        Bitmap full=null;
+        try(InputStream in=c.getAssets().open(path)){
+            BitmapFactory.Options o=new BitmapFactory.Options();o.inPreferredConfig=Bitmap.Config.RGB_565;
+            full=BitmapFactory.decodeStream(in,null,o);
+            if(full==null)return null;
+            if(full.getWidth()==w&&full.getHeight()==h)return full;
+            float s=Math.max(w/(float)full.getWidth(),h/(float)full.getHeight());   // centerCrop
+            Bitmap out=Bitmap.createBitmap(w,h,Bitmap.Config.RGB_565);
+            Matrix m=new Matrix();
+            m.postScale(s,s);
+            m.postTranslate((w-full.getWidth()*s)/2f,(h-full.getHeight()*s)/2f);
+            new Canvas(out).drawBitmap(full,m,new Paint(Paint.FILTER_BITMAP_FLAG));
+            full.recycle();
+            return out;
+        }catch(Throwable noRoom){
+            if(full!=null)full.recycle();
+            AppLog.w("wallpaper skipped: "+noRoom);
+            return null;
+        }
     }
 }

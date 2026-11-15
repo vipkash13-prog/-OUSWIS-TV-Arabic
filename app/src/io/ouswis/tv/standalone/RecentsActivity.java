@@ -425,12 +425,7 @@ public class RecentsActivity extends Activity {
         BackdropView(Context c) { super(c); setFocusable(false); setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES); }
 
         @Override protected void onSizeChanged(int w, int h, int ow, int oh) {
-            try {
-                wall = Bitmap.createBitmap(Math.max(1, w / 2), Math.max(1, h / 2), Bitmap.Config.RGB_565);
-                Canvas c = new Canvas(wall);
-                c.scale(0.5f, 0.5f);
-                Wallpaper.draw(getContext(), c, w, h, 0.6f, 0x0B0D1A);   // the inner wallpaper under #0B0D1A at 60 %, like All Apps
-            } catch (Throwable noRoom) { wall = null; AppLog.w("backdrop skipped: " + noRoom); }
+            wall = Wallpaper.inner(getContext(), w, h);   // the inner wallpaper, already dark: nothing over it
         }
 
         @Override protected void onDraw(Canvas c) {

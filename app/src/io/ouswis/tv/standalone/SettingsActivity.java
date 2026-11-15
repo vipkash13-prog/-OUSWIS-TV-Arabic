@@ -293,6 +293,7 @@ public class SettingsActivity extends Activity {
     }
 
     static final class SettingsView extends View implements Choreographer.FrameCallback {
+        private android.graphics.Bitmap wall;
         private static final int MAIN = 0, HOME_CHOICE = 1, HOME_SETTINGS = 2, REMOTE_KEYS = 3, PICKER = 4, SHELF_EDIT = 5,
                 POWER = 6, TMDB_KEY = 7, PICKS = 8, PICK_FROM = 9, WATCH_APPS = 10;
         private static final float LIST_ROW_H = 68, LIST_ROW_GAP = 6;
@@ -589,6 +590,7 @@ public class SettingsActivity extends Activity {
             w = width;
             h = height;
             k = w / 1920f;
+            wall = Wallpaper.inner(getContext(), w, h);
             scene.setSize(w, h);
             Symbols.warm(getContext(), "sparkles", 150 * k);
             Symbols.warm(getContext(), "chevron_right", 22 * k);
@@ -712,7 +714,7 @@ public class SettingsActivity extends Activity {
             if (up - lastSky >= 100) {
                 lastSky = up;
             }
-            c.drawColor(0xFF0B0D1A);   // plain #0B0D1A instead of the sky: bright areas hurt on an OLED
+            if (wall != null) c.drawBitmap(wall, null, new RectF(0, 0, w, h), null); else c.drawColor(0xFF0B0D1A);   // the inner wallpaper, already dark; flat #0B0D1A if there is no room
 
             // On the left: big symbol, title, description.
             float cx = 500 * k;

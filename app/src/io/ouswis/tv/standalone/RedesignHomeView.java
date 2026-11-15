@@ -246,27 +246,12 @@ final class RedesignHomeView extends View {
     @Override protected void onSizeChanged(int w,int h,int ow,int oh){
         k=w/1920f;
         loadWallpaper(w,h);
-        layerKey=-1;
     }
-    /**
-     * The supplied wallpaper, loaded once: the 1080p file (never the 4K one), RGB_565, already cropped to the screen's
-     * shape, so drawing it is one plain bitmap copy. A size change (not a refresh) is the only reason to load it again.
-     */
+    /** The home wallpaper (already dark inside the picture): the one RGB_565 bitmap Wallpaper keeps, cropped and sized to the screen; nothing is drawn over it. */
     private void loadWallpaper(int w,int h){
         if(wallpaper!=null&&wallW==w&&wallH==h)return;
-        Bitmap old=wallpaper;wallpaper=null;
-        try(InputStream in=getContext().getAssets().open("backgrounds/ouswis_bg_1080p.webp")){
-            BitmapFactory.Options o=new BitmapFactory.Options();o.inPreferredConfig=Bitmap.Config.RGB_565;
-            Bitmap full=BitmapFactory.decodeStream(in,null,o);
-            if(full!=null){
-                float aspect=w/(float)Math.max(1,h),have=full.getWidth()/(float)full.getHeight();
-                int cw=aspect>have?full.getWidth():Math.round(full.getHeight()*aspect),ch=aspect>have?Math.round(full.getWidth()/aspect):full.getHeight();
-                wallpaper=Bitmap.createBitmap(full,(full.getWidth()-cw)/2,(full.getHeight()-ch)/2,cw,ch);
-                if(wallpaper!=full)full.recycle();
-            }
-        }catch(Throwable ignored){wallpaper=null;}
+        wallpaper=Wallpaper.home(getContext(),w,h);
         wallW=w;wallH=h;
-        if(old!=null&&old!=wallpaper)old.recycle();
     }
     private int wallW,wallH;
     private long dateStamp=-1;
@@ -305,15 +290,6 @@ final class RedesignHomeView extends View {
         drawTop(c);
         boolean hasMatches=!today.isEmpty()||!confirmedEmpty();   // (after data has shown once, the row never goes back to empty cards)   // while loading the row shows empty cards of the same size
         spread(hasMatches);
-        // #0B0D1A at 55 % from the matches row down, with a short ramp above it, so the skyline never shows behind the cards
-        float layerTop=(hasMatches?400+dy[1]+10:626+dy[2]-20);
-        if(layerKey!=(int)layerTop){   // the ramp's shader is made again only when the layer moves
-            layerKey=(int)layerTop;
-            layerRamp.setShader(new LinearGradient(0,layerTop-40,0,layerTop,0x000B0D1A,0x8C0B0D1A,Shader.TileMode.CLAMP));
-        }
-        c.drawRect(0,layerTop-40,1920,layerTop,layerRamp);
-        layer.setColor(0x8C0B0D1A);
-        c.drawRect(0,layerTop,1920,getHeight()/k+1,layer);
         block(c,dy[0]);drawHero(c);drawPrayer(c);unblock(c);
         if(hasMatches){block(c,dy[1]);drawMatches(c);unblock(c);}
         block(c,dy[2]);drawApps(c);unblock(c);
@@ -396,9 +372,7 @@ final class RedesignHomeView extends View {
     private final Paint heroFill=new Paint(Paint.ANTI_ALIAS_FLAG),heroStroke=new Paint(Paint.ANTI_ALIAS_FLAG);
     private float heroL,heroT,heroR,heroB;   // the box the gradient was made for
     private final Path heroClip=new Path();
-    private int layerKey=-1;
-    private final Paint layerRamp=new Paint();
-    private final Paint layer=new Paint(),goldText15=Design.text(Design.GOLD,15,Design.regular());
+    private final Paint goldText15=Design.text(Design.GOLD,15,Design.regular());
 
     /** The last-channel card: 153 dp tall, always, and everything inside it is clipped to it, so it can't cover the row below. */
     private void drawHero(Canvas c){
