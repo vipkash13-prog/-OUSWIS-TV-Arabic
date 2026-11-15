@@ -103,25 +103,77 @@ final class ClubBadges {
 
     private static void lookup(String key,String name,Runnable done){
         try{
-            long wait=lastLookup+GAP_MS-System.currentTimeMillis();
-            if(wait>0)try{Thread.sleep(wait);}catch(InterruptedException e){Thread.currentThread().interrupt();}
-            lastLookup=System.currentTimeMillis();
-            String badge=search(name,key);
+            java.util.List<String> variants=variants(name);
+            String badge=null,why="";
+            int asked=0;
+            for(String v:variants){
+                long wait=lastLookup+GAP_MS-System.currentTimeMillis();
+                if(wait>0)try{Thread.sleep(wait);}catch(InterruptedException e){Thread.currentThread().interrupt();throw e;}
+                lastLookup=System.currentTimeMillis();
+                asked++;
+                badge=search(v,variants);
+                if(badge!=null){why=v.equals(name)?"":" · بالصيغة: "+v;break;}
+            }
             SharedPreferences p=prefs();
             if(badge==null){
                 NONE.put(key,System.currentTimeMillis());
                 if(p!=null)p.edit().putString(key,"none:"+System.currentTimeMillis()).apply();
+                note("شعار "+name+": ما لقى في TheSportsDB (جُرّبت "+asked+" صيغ)");
             }else{
                 BADGE.put(key,badge);
                 if(p!=null)p.edit().putString(key,badge).apply();
+                note("شعار "+name+": لقى في TheSportsDB"+why);
                 ImageCache.get(badge,done);   // the picture itself, in the image pool
             }
         }catch(Throwable t){
             SOFT.put(key,System.currentTimeMillis());   // no network, a busy server: asked again in a few minutes
+            note("شعار "+name+": خطأ في البحث ("+TheError.of(t)+")");
         }finally{
             synchronized(QUEUED){QUEUED.remove(key);}
             if(done!=null)MAIN.post(done);
         }
+    }
+
+    /** One line in the playback log per club looked up: found, not found, or an error. */
+    private static void note(String line){
+        try{Context c=Prefs.context();if(c!=null)PlayLog.add(c,-1,line);}catch(Throwable ignored){}
+    }
+    private static final class TheError{
+        static String of(Throwable t){
+            String m=t.getMessage();
+            if(t instanceof java.net.SocketTimeoutException)return "انتهت المهلة";
+            if(m!=null&&m.contains("answered "))return "HTTP "+m.substring(m.indexOf("answered ")+9).trim();
+            return t.getClass().getSimpleName();
+        }
+    }
+
+    private static final java.util.regex.Pattern AFFIX=java.util.regex.Pattern.compile("(?i)^(?:fc|cf|afc|sc|ac|as|us|ss|sv|fk|sk|bk|if|ud|cd|ca|rc|rcd|sd|ssc|1\\.|1)$");
+    /** The name as given, then without FC / CF / AC / AS / US ... at either end, then without numbers ("Mainz 05" -> "Mainz"). */
+    static java.util.List<String> variants(String name){
+        java.util.LinkedHashMap<String,String> out=new java.util.LinkedHashMap<>();
+        String clean=name.replaceAll("[.]"," ").replaceAll("\\s+"," ").trim();
+        out.put(key(name),name.trim());
+        java.util.List<String> words=new java.util.ArrayList<>(java.util.Arrays.asList(clean.split(" ")));
+        java.util.List<String> noAffix=new java.util.ArrayList<>(words);
+        while(noAffix.size()>1&&AFFIX.matcher(noAffix.get(0)).matches())noAffix.remove(0);
+        while(noAffix.size()>1&&AFFIX.matcher(noAffix.get(noAffix.size()-1)).matches())noAffix.remove(noAffix.size()-1);
+        String a=String.join(" ",noAffix);
+        if(key(a).length()>=3)out.putIfAbsent(key(a),a);
+        java.util.List<String> noDigits=new java.util.ArrayList<>();
+        for(String w:noAffix)if(!w.matches("\\d+"))noDigits.add(w);
+        String d=String.join(" ",noDigits);
+        if(!noDigits.isEmpty()&&key(d).length()>=3)out.putIfAbsent(key(d),d);
+        return new java.util.ArrayList<>(out.values());
+    }
+
+    /** True when this team has no crest to find: nothing to search with, or TheSportsDB has none (the screens draw a shield instead of a letter). */
+    static boolean none(String url,String name){
+        url=secure(url);
+        if(url!=null&&!url.isEmpty()&&!FEED_FAILED.contains(url)&&!ImageCache.failed(url))return false;   // the feed's own logo is still loading
+        String key=key(name);
+        if(key.length()<3||name==null||!name.matches(".*[A-Za-z].*"))return true;
+        Long t=NONE.get(key);
+        return t!=null&&System.currentTimeMillis()-t<NONE_MS&&!BADGE.containsKey(key);
     }
 
     private static String base(){
@@ -133,7 +185,7 @@ final class ClubBadges {
     }
 
     /** The badge address for this team, null when TheSportsDB has none; an exception when it could not be asked. */
-    private static String search(String name,String key) throws Exception {
+    private static String search(String name,java.util.List<String> variants) throws Exception {
         HttpURLConnection c=(HttpURLConnection)new URL(base()+"/api/v1/json/3/searchteams.php?t="+URLEncoder.encode(name,"UTF-8")).openConnection();
         c.setConnectTimeout(6000);c.setReadTimeout(8000);c.setInstanceFollowRedirects(false);
         try{
@@ -146,12 +198,14 @@ final class ClubBadges {
                 while((n=in.read(buf))!=-1){out.write(buf,0,n);if(out.size()>512*1024)return null;}
             }
             JSONArray teams=new JSONObject(out.toString("UTF-8")).optJSONArray("teams");
-            return pick(teams,key);
+            java.util.Set<String> keys=new java.util.HashSet<>();for(String v:variants)keys.add(key(v));
+            return pick(teams,keys);
         }finally{c.disconnect();}
     }
 
     /** A football team whose name is the one asked (or one of its alternate names); never a different club with a similar name. */
-    static String pick(JSONArray teams,String key){
+    static String pick(JSONArray teams,String key){return pick(teams,java.util.Collections.singleton(key));}
+    static String pick(JSONArray teams,java.util.Set<String> keys){
         if(teams==null)return null;
         String best=null;
         for(int i=0;i<teams.length();i++){
@@ -161,10 +215,10 @@ final class ClubBadges {
             String badge=t.optString("strBadge","");
             if(badge.isEmpty()||"null".equals(badge))badge=t.optString("strTeamBadge","");
             if(badge.isEmpty()||"null".equals(badge)||!badge.startsWith("http"))continue;
-            boolean same=key(t.optString("strTeam")).equals(key);
+            boolean same=keys.contains(key(t.optString("strTeam")));
             if(!same){
                 String alt=t.optString("strAlternate","");
-                if(!alt.isEmpty()&&!"null".equals(alt))for(String a:alt.split(","))if(key(a).equals(key)){same=true;break;}
+                if(!alt.isEmpty()&&!"null".equals(alt))for(String a:alt.split(","))if(keys.contains(key(a))){same=true;break;}
             }
             if(!same)continue;
             best=badge;break;

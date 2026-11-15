@@ -171,7 +171,7 @@ public class AllAppsActivity extends Activity {
             try{
                 rc.drawColor(CARD);   // a banner with transparency sits on a dark card
                 banner.setBounds(0,0,TILE_W,TILE_H);banner.draw(rc);
-                ok=!blank(raw)&&!tooLight(raw);   // a banner that is mostly white is no banner: the icon on the dark card instead
+                ok=!blank(raw)&&!tooLight(raw,true);   // a banner that is mostly white is no banner: the icon on the dark card instead
             }catch(Throwable t){ok=false;}
         }
         String how="banner";
@@ -254,8 +254,10 @@ public class AllAppsActivity extends Activity {
      * A card that glares on an OLED: a fifth of it bright (luminance 130 and up), or a pale grey or pastel (bright and
      * nearly colourless) fourth of it, or a mean luminance of 105 and up, or mostly near white. Such a card becomes the dark one with the icon.
      */
-    static boolean tooLight(Bitmap b){
-        int bright=0,pale=0,n=0,seen=0;double sum=0;
+    static boolean tooLight(Bitmap b){return tooLight(b,false);}
+    /** `strict` is for a banner (a picture the app drew, not our dark card): it is dropped for the icon on the dark card earlier, so a card that is only a little pale is never shown. */
+    static boolean tooLight(Bitmap b,boolean strict){
+        int bright=0,pale=0,vivid=0,n=0,seen=0;double sum=0;
         for(int i=0;i<40;i++)for(int j=0;j<24;j++){
             int px=b.getPixel(Math.min(b.getWidth()-1,(int)((i+0.5f)*b.getWidth()/40)),Math.min(b.getHeight()-1,(int)((j+0.5f)*b.getHeight()/24)));
             n++;
@@ -265,8 +267,10 @@ public class AllAppsActivity extends Activity {
             seen++;sum+=luma;
             if(luma>=130)bright++;
             if(luma>=110&&Math.max(r,Math.max(g,bl))-Math.min(r,Math.min(g,bl))<40)pale++;
+            if(luma>=110&&Math.max(r,Math.max(g,bl))>=200)vivid++;   // a bright yellow, light blue or pink card
         }
         float lightShare=bright/(float)n,paleShare=pale/(float)n,mean=seen==0?0:(float)(sum/seen);
+        if(strict&&(lightShare>=0.12f||paleShare>=0.15f||mean>=80f||vivid/(float)n>=0.25f))return true;
         return lightShare>=0.20f||paleShare>=0.25f||mean>=105f||whiteShare(b)>=0.30f;
     }
     /** The share of samples that are bright (luminance 150 and up: white, light grey, yellow). */

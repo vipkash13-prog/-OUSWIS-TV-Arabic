@@ -801,6 +801,10 @@ with tempfile.TemporaryDirectory() as temp:
     assert 'Egypt' not in SDB, 'TheSportsDB must not be asked for a team whose feed logo loads: ' + str(SDB)
     assert SDB.count('Malawi') == 1 and SDB.count('Kazakhstan') == 1, 'A team is looked up once: ' + str(SDB)
     assert SDB_NOW[1] <= 4, 'At most 4 requests at once: ' + str(SDB_NOW[1])
+    blog = adb('shell', 'cat', '/data/user/0/%s/files/playlog.txt' % PKG, check=False)
+    assert 'شعار Malawi: لقى في TheSportsDB' in blog, 'The play log must say the badge was found: ' + blog[-500:]
+    unknown = [t for t in sorted(set(SDB)) if t not in SDB_HAS]
+    assert not unknown or any('شعار %s: ما لقى' % t in blog for t in unknown), 'The play log must say when no badge was found (%s): %s' % (unknown, blog[-500:])
     asked = len(SDB)
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.HomeActivity'); time.sleep(3)
     focus_card('مصر ضد مالاوي'); time.sleep(2)

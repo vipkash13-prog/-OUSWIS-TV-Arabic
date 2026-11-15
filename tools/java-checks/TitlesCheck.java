@@ -83,6 +83,24 @@ public final class TitlesCheck {
         eq("إريتريا",TeamNames.arabic("Eritrea"));
         eq("غينيا بيساو",TeamNames.arabic("Guinea-Bissau"));
         eq("سورينام",TeamNames.arabic("Suriname"));
+        eq("أفريقيا الوسطى",TeamNames.arabic("Central African Republic"));
+        // channel copies: the regular HD, then FHD, then plain, then SD; RAW, LQ, 4K and H.265 last
+        is(true,Titles.qualityPenalty("beIN SPORTS 1 HD")<Titles.qualityPenalty("beIN SPORTS 1 RAW"),"HD before RAW");
+        is(true,Titles.qualityPenalty("beIN SPORTS 2")<Titles.qualityPenalty("beIN SPORTS 2 LQ"),"plain before LQ");
+        is(true,Titles.qualityPenalty("beIN SPORTS 2 SD")<Titles.qualityPenalty("beIN SPORTS 2 LQ"),"SD before LQ");
+        is(true,Titles.qualityPenalty("beIN SPORTS 1 FHD")<Titles.qualityPenalty("beIN SPORTS 1 SD"),"FHD before SD");
+        is(true,Titles.qualityPenalty("beIN SPORTS 1 HD")<Titles.qualityPenalty("beIN SPORTS 1 4K"),"HD before 4K");
+        is(true,Titles.qualityPenalty("beIN SPORTS 1 HD")<Titles.qualityPenalty("beIN SPORTS 1 H.265"),"HD before H.265");
+        eq("beIN SPORTS 1",Titles.channelName("beIN SPORTS 1 RAW"));
+        eq("beIN SPORTS 2",Titles.channelName("AR| beIN SPORTS 2 LQ"));
+        // the same channel in every copy has one key: it is listed once
+        for(String copy:new String[]{"beIN SPORTS 5","FR| beIN SPORTS 5 HD","beIN SPORTS 5 FHD","beIN SPORTS 5 RAW","beIN SPORTS 5 LQ","beIN SPORTS 5 (H.265)","beIN SPORTS 5 ᴴᴰ","beIN SPORTS 5 4K"})
+            eq(Titles.channelKey("beIN SPORTS 5"),Titles.channelKey(copy));
+        is(false,Titles.channelKey("beIN SPORTS 5").equals(Titles.channelKey("beIN SPORTS 1")),"another channel keeps its own key");
+        // a name with no translation is reported once, for the playback log
+        Titles.takeMissing();
+        Titles.missing("Nowhere United");Titles.missing("Nowhere United");
+        eq("[Nowhere United]",String.valueOf(Titles.takeMissing()));
         if(bad>0){System.out.println(bad+" failed");System.exit(1);}
         System.out.println("TitlesCheck: all passed");
     }

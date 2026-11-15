@@ -280,12 +280,18 @@ final class Titles {
     static volatile java.util.function.Consumer<String> missingSink;
     static void missing(String name){
         if(name==null||name.trim().length()<2||!name.matches(".*[A-Za-z].*"))return;
-        if(MISSING.add(name.trim())){java.util.function.Consumer<String> s=missingSink;if(s!=null)try{s.accept(name.trim());}catch(Throwable ignored){}}
+        if(MISSING.add(name.trim())){
+            synchronized(FRESH){FRESH.add(name.trim());}
+            java.util.function.Consumer<String> s=missingSink;if(s!=null)try{s.accept(name.trim());}catch(Throwable ignored){}
+        }
     }
+    private static final java.util.List<String> FRESH=new java.util.ArrayList<>();
+    /** The names without a translation that came up since the last call (each name once per start): the playback log lists them. */
+    static java.util.List<String> takeMissing(){synchronized(FRESH){java.util.List<String> out=new java.util.ArrayList<>(FRESH);FRESH.clear();return out;}}
 
     // MARK: channel names
 
-    private static final Pattern BAD_QUALITY=Pattern.compile("(?i)(4k|uhd|2160|h\\.?265|hevc|x265)");
+    private static final Pattern BAD_QUALITY=Pattern.compile("(?i)(4k|uhd|2160|h\\.?265|hevc|x265|\\b(?:raw|lq)\\b)");
     private static final Pattern GOOD_QUALITY=Pattern.compile("(?i)\\b(fhd|hd|1080p?|720p?)\\b");
     /** Lower is better: HD or FHD first, then unmarked, then SD, and 4K or H.265 last (used only when nothing else carries the match). */
     static int qualityPenalty(String name){
@@ -296,8 +302,13 @@ final class Titles {
         return 1;
     }
     private static final Pattern PREFIX=Pattern.compile("^\\s*(?:[A-Za-z]{2,3}|\\d{1,2}[Kk])\\s*[|:]\\s*");
-    private static final Pattern QUALITY_TAGS=Pattern.compile("(?i)[\\[(]?\\b(?:h\\.?265|hevc|x265|4k|uhd|fhd|hd|sd)\\b[\\])]?");
+    private static final Pattern QUALITY_TAGS=Pattern.compile("(?i)[\\[(]?\\b(?:h\\.?265|hevc|x265|4k|uhd|fhd|hd|sd|raw|lq)\\b[\\])]?");
     /** A channel's name for a card: no "FR|" prefix, no (H.265), no HD tag: "FR| beIN SPORTS 1 HD (H.265)" reads "beIN SPORTS 1". */
+    /** The same channel under any of its copies (HD, FHD, RAW, LQ, 4K, prefixes, superscript tags): letters and digits only. */
+    static String channelKey(String name){
+        String n=channelName(java.text.Normalizer.normalize(name==null?"":name,java.text.Normalizer.Form.NFKD));
+        return n.toLowerCase(java.util.Locale.ROOT).replaceAll("[^\\p{L}\\p{Nd}]","");
+    }
     static String channelName(String name){
         if(name==null)return "";
         String n=PREFIX.matcher(PREFIX.matcher(name).replaceFirst("")).replaceFirst("");   // "8K: FR| beIN…": both prefixes

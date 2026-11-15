@@ -36,7 +36,7 @@ final class TeamNames {
             "Serbia|صربيا","Slovakia|سلوفاكيا","Slovenia|سلوفينيا","Spain|إسبانيا","Sweden|السويد","Switzerland|سويسرا","Turkey|تركيا",
             "Türkiye|تركيا","Ukraine|أوكرانيا","Wales|ويلز");
         // national teams that reached the screen in English
-        add("Rwanda|رواندا","Malawi|مالاوي");   // small clubs of the Coupe de France (Orléans, Dijon FCO ...) stay as the feed writes them
+        add("Rwanda|رواندا","Malawi|مالاوي","Central African Republic|أفريقيا الوسطى","Central African Rep.|أفريقيا الوسطى","Central Africa|أفريقيا الوسطى");   // small clubs of the Coupe de France (Orléans, Dijon FCO ...) stay as the feed writes them
         // Asia (AFC) and Oceania
         add("Saudi Arabia|السعودية","Qatar|قطر","United Arab Emirates|الإمارات","UAE|الإمارات","Kuwait|الكويت","Bahrain|البحرين","Oman|عُمان",
             "Iraq|العراق","Jordan|الأردن","Syria|سوريا","Lebanon|لبنان","Palestine|فلسطين","Yemen|اليمن","Iran|إيران","IR Iran|إيران",
