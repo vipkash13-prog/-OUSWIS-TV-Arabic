@@ -220,10 +220,15 @@ with tempfile.TemporaryDirectory() as temp:
     # Norway v Wales: 4 h ahead, but never past Riyadh's midnight (the matches screen's "today" ends there)
     _riyadh_left = 86400 - ((int(time.time()) + 3 * 3600) % 86400)
     NOR_AHEAD = max(1500, min(4 * HOUR, _riyadh_left - 1200))
+    # two matches tomorrow (Riyadh): Portugal v Morocco is in beIN Sports 2's day guide, Germany v Japan is in no guide.
+    # They start at 22:30 tomorrow, but never sooner than 24.5 h from now (the other tomorrow fixture is at 24 h 5 min)
+    _riyadh_start = int(time.time()) - ((int(time.time()) + 3 * 3600) % 86400)
+    TOM_AHEAD = max(24 * HOUR + 1800, _riyadh_start + 86400 + 22 * HOUR + 1800 - int(time.time()))
     LIVE_SECONDS = int(os.environ.get('OUSWIS_LIVE_SECONDS', '600'))   # the live-speed stream is watched this long: 600 = the full test
     # guide programmes other than the default four: (title, start offset, stop offset) in seconds from now
     # item: the day's guide. Norway v Wales starts in 4 hours: only get_simple_data_table lists it, on two channels (the first, beIN Sports 1 HD, is the main one)
-    EPGDAY = {'110': [('Live: Norway vs Wales - UEFA Nations League', NOR_AHEAD - 600, NOR_AHEAD + 6600)],
+    EPGDAY = {'111': [('Live: Portugal vs Morocco - International Friendly', TOM_AHEAD - 600, TOM_AHEAD + 6600)],
+              '110': [('Live: Norway vs Wales - UEFA Nations League', NOR_AHEAD - 600, NOR_AHEAD + 6600)],
               '114': [('مباشر: النرويج × ويلز - دوري الأمم الأوروبية', NOR_AHEAD - 600, NOR_AHEAD + 6600)]}
     EPGX = {'120': [('(L) الهلال × النصر · دوري روشن', -1800, 1800), ('NBA: Philadelphia 76ers vs Boston Celtics', -1200, 6000), ('NBA Highlights', 6000, 9600)],
             '103': [('Philadelphia 76ers vs Boston Celtics - NBA', -900, 6300), ('Volleyball: Italy vs Poland', 6300, 9900), ('Live: England vs Croatia - International Friendly', 5 * HOUR, 5 * HOUR + 6000)],   # the last one: the same match shown again 5 h later
@@ -270,7 +275,7 @@ with tempfile.TemporaryDirectory() as temp:
                 lname = 'English Premier League'
                 if slug == 'eng.1' and FEED_MODE[0] == 'ok' and q.get('dates', [''])[0] == time.strftime('%Y%m', utc):
                     # a finished match with goals (today and yesterday), one tomorrow, one later today; a team name the table lacks
-                    events = [fx('8007', 'Moldova', 'Kazakhstan', 'pre', 20), fx('8008', 'Egypt', 'Malawi', 'pre', 25), fx('8009', 'Spain', 'Greece', 'pre', 40, bc='beIN Sports 3'), fx('8010', 'Tunisia', 'Libya', 'pre', 35, bc='beIN SPORTS 7'), fx('8011', 'Norway', 'Wales', 'pre', NOR_AHEAD // 60), fx('8001', 'Liverpool', 'Manchester City', 'post', -240, '2', '1', goals=True), fx('8002', 'Wolverhampton Wanderers', 'Fulham FC XYZ', 'post', -1700, '0', '0'),
+                    events = [fx('8007', 'Moldova', 'Kazakhstan', 'pre', 20), fx('8008', 'Egypt', 'Malawi', 'pre', 25), fx('8009', 'Spain', 'Greece', 'pre', 40, bc='beIN Sports 3'), fx('8010', 'Tunisia', 'Libya', 'pre', 35, bc='beIN SPORTS 7'), fx('8011', 'Norway', 'Wales', 'pre', NOR_AHEAD // 60), fx('8012', 'Portugal', 'Morocco', 'pre', TOM_AHEAD // 60), fx('8013', 'Germany', 'Japan', 'pre', TOM_AHEAD // 60 + 10), fx('8001', 'Liverpool', 'Manchester City', 'post', -240, '2', '1', goals=True), fx('8002', 'Wolverhampton Wanderers', 'Fulham FC XYZ', 'post', -1700, '0', '0'),
                               fx('8003', 'Arsenal', 'Chelsea', 'pre', 24 * 60 + 5), fx('8004', 'Tottenham Hotspur', 'Everton', 'pre', 150), fx('8005', 'Orléans', 'Dijon FCO', 'post', -30, '1', '0'), fx('8006', 'Rwanda', 'Malawi', 'post', -45, '0', '0')]   # finished a moment ago: on today's list whatever the hour
                 body = {'leagues': [{'name': lname if slug == 'eng.1' else 'Africa Cup of Nations Qualifying', 'logos': []}], 'events': events}
                 payload = json.dumps(body).encode(); kind = 'application/json'
@@ -758,6 +763,21 @@ with tempfile.TemporaryDirectory() as temp:
     assert any('beIN Sports 2' in l for l in ghana) and not any('اختر القناة' in l for l in ghana), 'Ghana v Somalia must show beIN Sports 2 from its guide: ' + str(ghana)
     shot('redesign-matches-ghana.png')
     note('PASS: "غانا × الصومال" in beIN Sports 2\'s guide linked to the feed\'s "Somalia at Ghana": the card reads ' + ghana[0][-70:] + '.')
+    # tomorrow's matches: the day guide (get_simple_data_table) lists Portugal v Morocco tomorrow evening, so it carries beIN Sports 2;
+    # Germany v Japan is in no guide: it stays "اختر القناة" until a guide names it
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.MatchesScreenActivity'); time.sleep(3)
+    tap('غداً', exact=True)
+    por = wait_label('البرتغال ضد المغرب', 'Portugal v Morocco on the tomorrow tab', tries=60)
+    for _ in range(30):
+        por = [l for l in labels() if 'البرتغال ضد المغرب' in l]
+        if any('beIN Sports 2' in l for l in por): break
+        time.sleep(2)
+    ger = [l for l in labels() if 'ألمانيا ضد اليابان' in l]
+    shot('redesign-matches-tomorrow.png')
+    assert any('beIN Sports 2' in l for l in por) and not any('اختر القناة' in l for l in por), 'Tomorrow\'s Portugal v Morocco must carry beIN Sports 2 from the day guide: ' + str(por)
+    assert ger and all('اختر القناة' in l and 'beIN' not in l and 'SSC' not in l for l in ger), 'Tomorrow\'s Germany v Japan is in no guide: it must ask to pick the channel: ' + str(ger)
+    tap('اليوم', exact=True); keys('BACK', pause=1)
+    note('PASS: tomorrow tab: Portugal v Morocco (in the day guide, past the old 30 h limit when run before 17:30 Riyadh) carries beIN Sports 2; Germany v Japan (no guide) says اختر القناة.')
     # item 1: each match opens on the channel whose guide names it; HD beats the SD copy; the feed's broadcaster alone is "غير مؤكدة"
     mol = wait_label('مولدوفا ضد كازاخستان', 'Moldova v Kazakhstan', tries=60)
     assert any('beIN SPORTS 5' in l for l in mol) and not any('SPORTS 6' in l or 'غير مؤكدة' in l or 'اختر القناة' in l for l in mol), 'Moldova v Kazakhstan must show beIN SPORTS 5 (HD): ' + str(mol)
