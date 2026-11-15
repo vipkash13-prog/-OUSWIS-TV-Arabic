@@ -30,7 +30,7 @@ import java.util.concurrent.Executors;
 /**
  * Matches (SPEC section 3, matches.png): day and competition filters, a grid of match cards and a detail panel that
  * follows the focus. The data is the existing ESPN source (UpcomingMatches); the "watch" button only exists when the
- * viewer's own subscription has the broadcasting channel. It refreshes every 60 s while a match is live (30 min
+ * viewer's own subscription has the broadcasting channel. It refreshes every 60 s while a match is live (10 min
  * otherwise) and stops while the screen is hidden.
  */
 public final class MatchesScreenActivity extends Activity {
@@ -80,7 +80,7 @@ public final class MatchesScreenActivity extends Activity {
     @Override protected void onResume(){
         super.onResume();foreground=true;
         syncFromStore();
-        long every=failed?2*60_000L:anyLive()?60_000L:30*60_000L,age=System.currentTimeMillis()-updatedAt;
+        long every=failed?2*60_000L:anyLive()?60_000L:10*60_000L,age=System.currentTimeMillis()-updatedAt;
         if(updatedAt==0||failed||age>=every)load();               // only when stale: coming back does not load again
         else main.postDelayed(refresh,every-age);
     }
@@ -95,9 +95,9 @@ public final class MatchesScreenActivity extends Activity {
             main.post(()->{
                 loading=false;
                 syncFromStore();
-                for(MatchCarouselView.Match m:all){ImageCache.get(m.homeLogo,()->view.postInvalidate());ImageCache.get(m.awayLogo,()->view.postInvalidate());}   // every day's crests are ready before a filter is chosen: no pale placeholder badge on the switch
+                for(MatchCarouselView.Match m:all){ImageCache.get(ClubBadges.secure(m.homeLogo),()->view.postInvalidate());ImageCache.get(ClubBadges.secure(m.awayLogo),()->view.postInvalidate());}   // every day's crests are ready before a filter is chosen: no pale placeholder badge on the switch
                 view.dataChanged(MatchStore.updatedAt()>0||!all.isEmpty());
-                if(foreground)main.postDelayed(refresh,failed?2*60_000L:anyLive()?60_000L:30*60_000L);
+                if(foreground)main.postDelayed(refresh,failed?2*60_000L:anyLive()?60_000L:10*60_000L);
             });
         });
     }
@@ -208,8 +208,8 @@ public final class MatchesScreenActivity extends Activity {
             if(account==null)return null;
             return MatchChannels.forMatch(getContext(),account,m);
         }
-        private void crest(Canvas c,String url,String name,float cx,float cy,float radius){
-            Bitmap b=ImageCache.get(url,()->invalidate());
+        private void crest(Canvas c,String url,String name,String nameEn,float cx,float cy,float radius){
+            Bitmap b=ClubBadges.get(url,nameEn,()->invalidate());
             if(b!=null){
                 p.setStyle(Paint.Style.FILL);p.setShader(null);p.setColor(0x14FFFFFF);c.drawCircle(cx,cy,radius,p);
                 float s=Math.min(radius*1.5f/b.getWidth(),radius*1.5f/b.getHeight());
@@ -287,7 +287,7 @@ public final class MatchesScreenActivity extends Activity {
                 if(focused){Design.grown(r,g);card=g;}
                 Design.card(c,card,22,1,p,0xFF151A2E);   // opaque: the wallpaper never shows through a result; a live card differs only by the red badge
                 int alpha=done?153:255;
-                crest(c,m.homeLogo,m.home,right-81,top+62,32);crest(c,m.awayLogo,m.away,left+81,top+62,32);
+                crest(c,m.homeLogo,m.home,m.homeEn,right-81,top+62,32);crest(c,m.awayLogo,m.away,m.awayEn,left+81,top+62,32);
                 team.setAlpha(alpha);Design.center(c,Design.fitShrink(m.home,team,170),right-81,top+120,team);
                 Design.center(c,Design.fitShrink(m.away,team,170),left+81,top+120,team);team.setAlpha(255);
                 float cx=(left+right)/2;
@@ -346,7 +346,7 @@ public final class MatchesScreenActivity extends Activity {
             a11y.add(72,243,591,490,"تفاصيل المباراة: "+m.home+" ضد "+m.away+" · "+m.competition,false,false);
             Design.right(c,Design.fit(m.competition,small,300),561,288,small);
             if(m.live()){String mn=minuteOf(m);Design.liveBadge(c,160,283,mn.equals("مباشر")?"مباشر":"مباشر "+mn,17,p,badge);}
-            crest(c,m.homeLogo,m.home,470,378,40);crest(c,m.awayLogo,m.away,158,378,40);
+            crest(c,m.homeLogo,m.home,m.homeEn,470,378,40);crest(c,m.awayLogo,m.away,m.awayEn,158,378,40);
             boolean started=!m.upcoming();
             big.setTextSize(started?72:44);
             Design.center(c,started?scoreText(m):timeOf(m.kickoffMillis),332,408,big);big.setTextSize(50);

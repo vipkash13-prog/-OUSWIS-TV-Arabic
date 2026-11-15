@@ -18,23 +18,72 @@ import java.util.concurrent.Executors;
 final class ImageCache {
     private ImageCache(){}
     private static final LruCache<String,Bitmap> CACHE=new LruCache<>(400);
-    private static final Set<String> BUSY=new HashSet<>(),FAILED=new HashSet<>();
+    private static final Set<String> BUSY=new HashSet<>();
+    private static final java.util.Map<String,Long> FAILED=new java.util.HashMap<>();   // url -> when it failed: asked again after RETRY_MS
+    private static final long RETRY_MS=15*60_000L;
     private static final ExecutorService POOL=Executors.newFixedThreadPool(3);
     private static final Handler MAIN=new Handler(Looper.getMainLooper());
-    /** The bitmap if it is ready; otherwise starts loading and calls `done` on the UI thread when it arrives. */
+    private static volatile java.io.File dir;
+    private static boolean pruned;
+
+    /** True while this address is known not to load (it is asked for again after a few minutes). */
+    static boolean failed(String url){
+        if(url==null)return false;
+        synchronized(BUSY){Long at=FAILED.get(url);return at!=null&&System.currentTimeMillis()-at<RETRY_MS;}
+    }
+    /** The bitmap if it is ready; otherwise starts loading (from the disk copy, else the network) and calls `done` on the UI thread when it arrives. */
     static Bitmap get(String url,Runnable done){
         if(url==null||!url.startsWith("http"))return null;
         Bitmap b;
         synchronized(CACHE){b=CACHE.get(url);}
         if(b!=null)return b;
-        synchronized(BUSY){if(FAILED.contains(url)||!BUSY.add(url))return null;}
+        synchronized(BUSY){
+            Long at=FAILED.get(url);
+            if(at!=null){if(System.currentTimeMillis()-at<RETRY_MS)return null;FAILED.remove(url);}
+            if(!BUSY.add(url))return null;
+        }
         POOL.execute(()->{
             Bitmap loaded=null;
-            try{loaded=download(url);}catch(Throwable ignored){}
-            synchronized(BUSY){BUSY.remove(url);if(loaded==null)FAILED.add(url);}
-            if(loaded!=null){synchronized(CACHE){CACHE.put(url,loaded);}MAIN.post(done);}
+            try{loaded=readDisk(url);}catch(Throwable ignored){}
+            if(loaded==null){
+                try{loaded=download(url);}catch(Throwable ignored){}
+                if(loaded!=null)writeDisk(url,loaded);
+            }
+            synchronized(BUSY){BUSY.remove(url);if(loaded==null)FAILED.put(url,System.currentTimeMillis());}
+            if(loaded!=null){synchronized(CACHE){CACHE.put(url,loaded);}if(done!=null)MAIN.post(done);}
         });
         return null;
+    }
+
+    // The small pictures (at most 128 px) are also kept on the device: a crest asked for once is not downloaded again.
+    private static java.io.File file(String url){
+        try{
+            java.io.File d=dir;
+            if(d==null){
+                android.content.Context c=Prefs.context();if(c==null)return null;
+                d=new java.io.File(c.getCacheDir(),"crests");d.mkdirs();dir=d;
+            }
+            byte[] h=java.security.MessageDigest.getInstance("SHA-1").digest(url.getBytes("UTF-8"));
+            StringBuilder n=new StringBuilder();for(byte x:h)n.append(String.format("%02x",x));
+            return new java.io.File(d,n+".png");
+        }catch(Throwable t){return null;}
+    }
+    private static Bitmap readDisk(String url){
+        java.io.File f=file(url);
+        return f!=null&&f.isFile()&&f.length()>0?BitmapFactory.decodeFile(f.getPath()):null;
+    }
+    private static void writeDisk(String url,Bitmap b){
+        java.io.File f=file(url);if(f==null)return;
+        try(java.io.FileOutputStream out=new java.io.FileOutputStream(f)){b.compress(Bitmap.CompressFormat.PNG,100,out);}
+        catch(Throwable t){f.delete();}
+        synchronized(BUSY){if(pruned)return;pruned=true;}
+        try{   // once per run: no more than about 600 small files
+            java.io.File[] all=f.getParentFile().listFiles();
+            if(all!=null&&all.length>600){
+                java.util.Arrays.sort(all,(x,y)->Long.compare(x.lastModified(),y.lastModified()));
+                for(int i=0;i<all.length-400;i++)all[i].delete();
+            }
+        }catch(Throwable ignored){}
     }
     private static Bitmap download(String address) throws Exception {
         HttpURLConnection c=(HttpURLConnection)new URL(address).openConnection();
