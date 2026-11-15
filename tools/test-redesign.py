@@ -656,7 +656,7 @@ with tempfile.TemporaryDirectory() as temp:
     cover = shot('redesign-player-cover.png')
     w, h = cover.size
     def near(px, ref=(11, 13, 26)): return all(abs(a - b) <= 8 for a, b in zip(px, ref))
-    spots = [(0.03, 0.05), (0.97, 0.05), (0.03, 0.95), (0.97, 0.95), (0.1, 0.2), (0.9, 0.3)]
+    spots = [(0.03, 0.05), (0.97, 0.05), (0.1, 0.2), (0.9, 0.3), (0.05, 0.6), (0.95, 0.6)]   # not the bottom strip: that is the channel-number banner, which stays
     off = [sp for sp in spots if not near(cover.getpixel((int(sp[0] * w), int(sp[1] * h))))]
     time.sleep(16)
     gaps = [round(b - a, 1) for a, b in zip(T997, T997[1:])]
