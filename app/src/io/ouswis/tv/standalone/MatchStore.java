@@ -79,12 +79,9 @@ final class MatchStore {
         boolean complete=badN==0&&okN>0&&!lowLeagues&&!lowMatches&&!emptyOverData;
         // a competition that answered replaces its saved matches only when the refresh as a whole is trustworthy
         // (or, for a retry, the competition itself answered); a failed one keeps what it had
-        Set<String> replace;
-        if(complete)replace=f.ok;
-        else{   // a partial answer replaces only the competitions that brought matches: one that answered empty may be a glitch, its saved matches stay
-            replace=new HashSet<>();
-            for(MatchCarouselView.Match m:f.matches)if(f.ok.contains(leagueOf(m)))replace.add(leagueOf(m));
-        }
+        // a partial answer is only added to what is saved (by key, so scores still update): replacing a competition's
+        // matches with a smaller list is how the screen emptied
+        Set<String> replace=complete?f.ok:new HashSet<String>();
         merge(f.matches,replace,complete||(retry&&MISSING.size()-f.ok.size()<=0&&badN==0),now);
         String what;
         int kept=snapshot().size();
