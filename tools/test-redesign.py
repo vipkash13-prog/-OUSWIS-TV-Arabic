@@ -1218,6 +1218,21 @@ with tempfile.TemporaryDirectory() as temp:
     note('PASS: 15 minutes on the matches screen: %d refresh line(s) in the log, e.g. %s' % (len(lines), lines[-1][:140]))
     keys('BACK', pause=1)
 
+    # 6f. the home row writes when it updates and how many matches it shows (a fresh start: nothing saved yet)
+    adb('shell', 'am', 'force-stop', PKG); time.sleep(2)
+    adb('shell', 'rm', '-f', '/data/user/0/%s/files/playlog.txt' % PKG)
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.HomeActivity'); front('HomeActivity')
+    row_lines = []
+    for _ in range(30):
+        time.sleep(2)
+        plog = adb('shell', 'cat', '/data/user/0/%s/files/playlog.txt' % PKG, check=False)
+        row_lines = [l for l in plog.splitlines() if 'الرئيسية: صف المباريات' in l]
+        if row_lines: break
+    (OUT / 'redesign-home-row-playlog.txt').write_text(plog)
+    assert row_lines, 'The home row must write its update (when and how many matches) in the playback log: ' + plog[-600:]
+    assert 'عرض ' in row_lines[-1] and 'مباراة' in row_lines[-1], row_lines[-1]
+    note('PASS: the home row logged its update: ' + row_lines[-1][:200])
+
     # 7. sections: order and hiding (Settings)
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.SectionOrderActivity')
     wait_label('FR|TF1 HD', 'the sections list in Settings')
