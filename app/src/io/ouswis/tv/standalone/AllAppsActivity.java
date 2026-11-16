@@ -147,7 +147,7 @@ public class AllAppsActivity extends Activity {
     }
     private static final int PRELOAD_TILES=25;   // the first screen is 15 cards; a few rows more
 
-    // A card is 16:9 like the home screen's app tiles: the app's TV banner fills it; an app without one shows its whole icon, 75% of the card's height, on a card of the icon's own colour.
+    // A card is 16:9 like the home screen's app tiles: the app's TV banner fills it; an app without one shows its whole icon, 70% of the card's height, on the flat #1A1F3A card.
     private static final int CARD=0xFF1A1F3A,TILE_W=330,TILE_H=186;   // reference pixels (1 dp = 1.5 px)
 
     /** The app's card, made off the UI thread: banner, else icon on a dark card (never a blank white square). */
@@ -168,7 +168,7 @@ public class AllAppsActivity extends Activity {
             try{
                 rc.drawColor(CARD);   // art with transparency sits on a dark card
                 AppBanners.cover(rc,found.drawable,TILE_W,TILE_H);
-                ok=!blank(raw)&&!tooLight(raw,true);   // art that is mostly white is no banner: the icon on its own colour instead
+                ok=!blank(raw);   // the banner as the app drew it (the TV launcher shows it whatever its colours)
                 how=found.how;
             }catch(Throwable t){ok=false;}
         }
@@ -184,14 +184,14 @@ public class AllAppsActivity extends Activity {
         return out;
     }
 
-    /** No banner: the whole icon, three quarters of the card's height, in the middle of a card of the icon's own (darkened) colour. */
+    /** No banner: the whole icon in its own colours, 70% of the card's height, in the middle of the flat #1A1F3A card. */
     private static String drawIcon(Context c,String pkg,String name,Bitmap raw,Canvas rc){
-        int size=Math.round(TILE_H*0.75f);
+        int size=Math.round(TILE_H*0.70f);
         String[] how={""};
         Bitmap glyph=null;
         try{glyph=AppBanners.fullIcon(c,pkg,size,how);}catch(Throwable t){glyph=null;}
         if(glyph!=null){
-            rc.drawColor(AppBanners.dominant(glyph));
+            rc.drawColor(CARD);   // always #1A1F3A, never the icon's colour
             rc.drawBitmap(glyph,(TILE_W-size)/2f,(TILE_H-size)/2f,null);
             glyph.recycle();
             return how[0];

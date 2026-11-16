@@ -1,0 +1,60 @@
+name: App cards test
+on:
+  push:
+    branches: ['feature/app-tiles-launcher']
+    paths: ['.github/workflows/app-cards-test.yml', 'tools/test-app-cards.py', 'tools/make-test-apps.py', 'app/**']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  cards:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - name: Android SDK
+        shell: bash
+        run: |
+          set +o pipefail
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$RUNNER_TEMP/sdk" "build-tools;34.0.0" "platforms;android-34" > /dev/null
+          echo "ANDROID_HOME=$RUNNER_TEMP/sdk" >> "$GITHUB_ENV"
+      - name: Build the app and the test apps
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y python3-pil > /dev/null
+          sudo chmod 666 /dev/kvm
+          ./build.sh --generic
+          python3 tools/make-test-apps.py testapps
+      - name: Kodi for the emulator (best effort)
+        shell: bash
+        run: |
+          set +e
+          # Kodi publishes android builds for arm, arm64-v8a and x86 (no x86_64 folder). Its 32-bit x86 build did not install on
+          # the plain x86_64 image (NO_MATCHING_ABIS), so the arm64 build goes on a Google APIs image, which translates ARM.
+          for base in https://mirrors.kodi.tv/releases/android/arm64-v8a/ https://mirrors.mit.edu/kodi/releases/android/arm64-v8a/; do
+            curl -sS -m 60 -L -o kodi-index.html -w "$base -> HTTP %{http_code}\n" "$base"
+            f=$(grep -o 'kodi-[0-9][^"<>/]*-arm64-v8a\.apk' kodi-index.html | sort -uV | tail -1)
+            echo "newest listed: ${f:-none}"
+            if [ -n "$f" ] && curl -fsSL -m 400 -o kodi.apk "$base$f" && unzip -tq kodi.apk > /dev/null; then echo "Kodi downloaded: $f"; break; fi
+            rm -f kodi.apk
+          done
+          [ -f kodi.apk ] || echo "Kodi could not be downloaded in this run"
+      - name: Emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: tv_1080p
+          avd-name: ouswis-1080
+          ram-size: 4096M
+          heap-size: 512M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -skin 1920x1080
+          script: python3 tools/test-app-cards.py FreeMyTV.apk testapps kodi.apk
+      - name: Evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-cards
+          path: app-cards-evidence
