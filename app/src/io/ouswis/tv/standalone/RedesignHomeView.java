@@ -182,9 +182,49 @@ final class RedesignHomeView extends View {
         if(sig.equals(todaySig)){sameDataSkips++;return;}                           // the same data again: nothing to update
         String focusedKey=row==2&&col[2]<today.size()&&col[2]<4?today.get(col[2]).key:null;
         today.clear();today.addAll(list);todaySig=sig;todayChanges++;
+        logRow(homeLogWhy.isEmpty()?"تحدّث (بعد تحديث الشبكة)":"تحدّث (من المحفوظ: "+homeLogWhy+")",Math.min(4,list.size()),list.size());homeLogWhy="";
         if(!list.isEmpty()){everHadData=true;dataDay=start;}
         if(focusedKey!=null)for(int i=0;i<Math.min(4,today.size());i++)if(today.get(i).key.equals(focusedKey)){col[2]=i;break;}   // the focus stays on the same match
         clampColumns();invalidate();
+    }
+    /** What the row shows from a list of matches: live ones and those still to come today, live first, then by kickoff. */
+    private List<MatchCarouselView.Match> todayOf(List<MatchCarouselView.Match> found){
+        final List<MatchCarouselView.Match> shown=new ArrayList<>();
+        long start=dayStart(),end=start+24L*3600_000;
+        java.util.Set<String> seen=new java.util.HashSet<>();
+        for(MatchCarouselView.Match m:found)
+            if((m.live()||(m.upcoming()&&m.kickoffMillis>=start&&m.kickoffMillis<end))&&seen.add(m.key))shown.add(m);
+        java.util.Collections.sort(shown,(a,b)->{
+            int ra=a.live()?0:a.upcoming()?1:2,rb=b.live()?0:b.upcoming()?1:2;
+            return ra!=rb?Integer.compare(ra,rb):Long.compare(a.kickoffMillis,b.kickoffMillis);
+        });
+        return shown;
+    }
+    private static int storeSeen=-1;
+    /**
+     * The row reads the saved list (MatchStore, the one the matches screen shows) as soon as it differs from what it last read,
+     * without waiting for its own network refresh: whatever the matches screen or an earlier refresh saved appears at once.
+     */
+    private void loadSaved(String why){
+        if(destroyed)return;
+        try{io.execute(()->{
+            final List<MatchCarouselView.Match> shown=todayOf(MatchStore.snapshot());
+            if(shown.isEmpty())return;   // nothing saved to show: the row waits for the feed
+            final StringBuilder sig=new StringBuilder();
+            for(MatchCarouselView.Match m:shown)sig.append(m.key).append('|').append(m.state).append('|').append(m.homeScore).append('-').append(m.awayScore).append('|').append(m.status).append(';');
+            main.post(()->{
+                if(destroyed||shown.isEmpty())return;
+                String sigNow=sig.toString();
+                if(sigNow.equals(apiSig)&&!today.isEmpty())return;
+                apiToday.clear();apiToday.addAll(shown);apiSig=sigNow;
+                homeLogWhy=why;
+                rebuildToday();
+            });
+        });}catch(java.util.concurrent.RejectedExecutionException gone){}
+    }
+    private String homeLogWhy="";
+    private void logRow(String what,int shownCount,int totalCount){
+        try{PlayLog.add(getContext().getApplicationContext(),-1,"الرئيسية: صف المباريات "+what+" · عرض "+shownCount+" من "+totalCount+" مباراة · المحفوظ "+MatchStore.snapshot().size()+" · آخر تحديث للمحفوظ "+(MatchStore.updatedAt()==0?"لم يحدث":((System.currentTimeMillis()-MatchStore.updatedAt())/1000)+" ث قبل"));}catch(Throwable ignored){}
     }
     /** One line the stability test reads: how often the data really changed, and that nothing relapsed. */
     private void logStats(){AppLog.w("home-stats: todayChanges="+todayChanges+" sameDataSkips="+sameDataSkips+" skeletonAfterData="+skeletonAfterData+" focusResets="+focusResets);}
@@ -206,6 +246,7 @@ final class RedesignHomeView extends View {
 
     void resume(){
         resumed=true;lastAt=0;
+        storeSeen=MatchStore.version();loadSaved("عند فتح الرئيسية");
         account=XtreamAccount.read(getContext());
         if(account!=null&&live==null)live=new LiveData(getContext(),account);
         PrayerTimes.get(getContext()).addListener(prayerChanged);
@@ -220,9 +261,11 @@ final class RedesignHomeView extends View {
         HomeData.get(getContext()).refreshIfStale();
         PrayerTimes.get(getContext()).refreshIfStale();
         long now=System.currentTimeMillis();
+        int storeNow=MatchStore.version();
+        if(storeNow!=storeSeen){storeSeen=storeNow;loadSaved("تغيّر المحفوظ");}
         LiveData.Channel last=lastChannel();
         if(live!=null&&last!=null)live.loadGuide(last.id,this::postInvalidate);
-        if(now-matchesAt>(anyLive()?60_000L:15*60_000L)){
+        if(now-matchesAt>(anyLive()?60_000L:(today.isEmpty()&&!confirmedEmpty())?2*60_000L:15*60_000L)){   // nothing shown and not known to be empty: ask again in 2 minutes, not 15
             matchesAt=now;
             if(!destroyed)try{io.execute(()->{
                 List<MatchCarouselView.Match> found=new ArrayList<>();
@@ -232,16 +275,8 @@ final class RedesignHomeView extends View {
                     found.addAll(MatchStore.snapshot());answered=MatchStore.answered();
                 }catch(Throwable ignored){}
                 final int answeredNow=answered;
+                final List<MatchCarouselView.Match> shown=todayOf(found);
                 final StringBuilder fresh=new StringBuilder();
-                final List<MatchCarouselView.Match> shown=new ArrayList<>();
-                long start=dayStart(),end=start+24L*3600_000;
-                java.util.Set<String> seen=new java.util.HashSet<>();
-                for(MatchCarouselView.Match m:found)
-                    if((m.live()||(m.upcoming()&&m.kickoffMillis>=start&&m.kickoffMillis<end))&&seen.add(m.key))shown.add(m);
-                java.util.Collections.sort(shown,(a,b)->{
-                    int ra=a.live()?0:a.upcoming()?1:2,rb=b.live()?0:b.upcoming()?1:2;
-                    return ra!=rb?Integer.compare(ra,rb):Long.compare(a.kickoffMillis,b.kickoffMillis);
-                });
                 for(MatchCarouselView.Match m:shown)fresh.append(m.key).append('|').append(m.state).append('|').append(m.homeScore).append('-').append(m.awayScore).append('|').append(m.status).append(';');
                 main.post(()->{
                     boolean first=!feedDone||answeredNow>feedAnswered;
