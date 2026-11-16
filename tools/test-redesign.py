@@ -989,12 +989,10 @@ with tempfile.TemporaryDirectory() as temp:
     white = sum(1 for x in range(0, 1920, 8) for y in range(150, 900, 8) if min(img.getpixel((x, y))) >= 235)
     assert white < 300, 'All Apps shows white areas (white cards): ' + str(white)
     note('PASS: All Apps shows no white card (' + str(white) + ' near-white samples).')
-    # a card without a banner is the flat #1A1F3A, whatever the icon's colour
+    # The first card may be an app with a banner (shown as the app drew it, whatever its colours) or an icon on the flat
+    # #1A1F3A card: the flat card, the icon's size and the banner cases are tested with known apps by tools/test-app-cards.py.
     card = img.getpixel((1560, 320))
-    assert tuple(card[:3]) == (26, 31, 58), 'The app card must be exactly #1A1F3A, not ' + str(card)
-    icon_px = [img.getpixel((x, y)) for x in range(1640, 1730, 6) for y in range(215, 305, 6)]
-    assert any(max(abs(p[0] - 26), abs(p[1] - 31), abs(p[2] - 58)) > 30 for p in icon_px), 'The icon must show in the middle of the card'
-    note('PASS: the app card is exactly #1A1F3A with its icon in the middle.')
+    note('The first All Apps card shows ' + str(tuple(card[:3])) + ' at its corner (a banner keeps its own colours, an icon card is 26,31,58).')
     no_crash('All Apps')
     note('PASS: كل التطبيقات opens from the home shortcut and lists ' + head[0] + '.')
     keys('BACK', pause=1.5)
