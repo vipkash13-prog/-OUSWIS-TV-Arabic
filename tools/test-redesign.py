@@ -571,7 +571,7 @@ with tempfile.TemporaryDirectory() as temp:
     assert not any('demo' in l.lower() and '/live/' in l for l in log_lines), 'The log must not hold the login or the address'
     layer_lines = [l for l in log_lines if 'الطبقات (' in l]
     assert layer_lines, 'After the first frame the layers over the video must be logged: ' + str(log_lines[:12])
-    assert any('فوق الفيديو بحجم الشاشة: لا شيء' in l for l in layer_lines), 'Nothing may sit over the video after the first frame: ' + str(layer_lines[:3])
+    assert any('فوق الفيديو: لا شيء' in l for l in layer_lines), 'Nothing may sit over the video after the first frame: ' + str(layer_lines[:3])
     assert any('الغطاء مخفي' in l for l in layer_lines), 'The loading cover must be hidden after the first frame: ' + str(layer_lines[:3])
     note('PASS: the playback log shows the layers after the first frame, the cover hidden and nothing over the video: ' + layer_lines[0][:300])
     assert len(log_lines) <= 100, 'The page shows the last 100 events only: ' + str(len(log_lines))

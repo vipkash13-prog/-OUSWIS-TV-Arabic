@@ -418,11 +418,10 @@ public final class PlayerActivity extends Activity {
                 if(v.getVisibility()==View.VISIBLE&&v.getAlpha()>0.05f&&v.getWidth()>=root.getWidth()*0.9f&&v.getHeight()>=root.getHeight()*0.9f)
                     over.append(v==cover?"الغطاء ":v==hold?"hold ":"طبقة"+i+" ").append("(").append(v.getWidth()).append("×").append(v.getHeight()).append(") ");
             }
-            log("الطبقات ("+when+"): الفيديو "+video+" · الحجم المبلّغ "+vs.width+"×"+vs.height+" · decoder="+(decoderName.isEmpty()?"غير معروف":decoderName)
+            log("الطبقات ("+when+"): فوق الفيديو: "+(over.length()==0?"لا شيء":over.toString().trim())+" · الغطاء "+vis(cover)+" · hold "+vis(hold)
+                    +" · الفيديو "+video+" · الحجم المبلّغ "+vs.width+"×"+vs.height+" · decoder="+(decoderName.isEmpty()?"غير معروف":decoderName)
                     +" · Surface "+surface.getWidth()+"×"+surface.getHeight()+" (مطلوب "+lp.width+"×"+lp.height+") صالح="+surface.getHolder().getSurface().isValid()+" "+vis(surface)
-                    +" · الغطاء "+vis(cover)+" · hold "+vis(hold)+" · الشريط "+vis(label)+" · النص "+vis(status)
-                    +" · فوق الفيديو بحجم الشاشة: "+(over.length()==0?"لا شيء":over.toString().trim())
-                    +" · الشاشة "+root.getWidth()+"×"+root.getHeight()+" · "+playerState());
+                    +" · الشريط "+vis(label)+" · النص "+vis(status)+" · الشاشة "+root.getWidth()+"×"+root.getHeight()+" · "+playerState());
         }catch(RuntimeException e){log("تعذّر تسجيل الطبقات: "+e.getClass().getSimpleName());}
     }
     /** A picture is rendered and the clock moves: nothing may stay over it. A cover or a held frame that lasts 3 s is taken away. */
