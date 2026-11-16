@@ -1,10 +1,13 @@
 name: Upgrade order test
 on:
+  push:
+    branches: ['feature/app-tiles-flat']
+    paths: ['.github/workflows/upgrade-order-test.yml', 'tools/test-upgrade-order.py']
   workflow_dispatch:
     inputs:
       preview_tags:
-        description: 'Preview release tags, oldest first, separated by commas (e.g. preview-111,preview-222)'
-        required: true
+        description: 'Preview release tags, oldest first, separated by commas; empty = the two newest previews'
+        required: false
 permissions:
   contents: read
 jobs:
@@ -18,6 +21,10 @@ jobs:
           TAGS: ${{ inputs.preview_tags }}
         run: |
           set -euo pipefail
+          if [ -z "$TAGS" ]; then
+            TAGS=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 60 --json tagName,createdAt,isPrerelease --jq '[.[]|select(.isPrerelease and (.tagName|test("^preview-[0-9]+$")))]|sort_by(.createdAt)|.[-2:]|map(.tagName)|join(",")')
+          fi
+          echo "previews: $TAGS"
           mkdir -p apks
           official=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)
           echo "$official" > apks/order.txt
