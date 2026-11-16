@@ -207,7 +207,7 @@ public final class PlayerActivity extends Activity {
                 if(state==Player.STATE_BUFFERING&&pictured)statusLater("جارٍ التحميل…",STATUS_DELAY_MS);   // the last picture stays; the text comes only if it lasts
                 if(state==Player.STATE_READY){statusClear();failures=0;}
             }
-            @Override public void onRenderedFirstFrame(){coverHide();limitStep=0;releaseHold();statusClear();pictureUp();pictured=true;log("ظهرت أول لقطة");}
+            @Override public void onRenderedFirstFrame(){coverHide();limitStep=0;releaseHold();statusClear();pictureUp();pictured=true;log("ظهرت أول لقطة");scheduleLayerLog();}
             @Override public void onPlaybackSuppressionReasonChanged(int reason){if(reason!=Player.PLAYBACK_SUPPRESSION_REASON_NONE)log("إيقاف مؤقت من النظام (السبب "+reason+")");}
             @Override public void onIsPlayingChanged(boolean playing){
                 if(!playing)return;
@@ -240,6 +240,7 @@ public final class PlayerActivity extends Activity {
                 int http=httpCode(error);
                 log("تعذّر تحميل جزء"+(canceled?" (ملغى)":"")+": "+causes(error)+(http>0?" HTTP "+http:"")+" · "+playerState());
             }
+            @Override public void onVideoDecoderInitialized(AnalyticsListener.EventTime t,String name,long at,long took){decoderName=name;}
             @Override public void onVideoCodecError(AnalyticsListener.EventTime t,Exception e){log("خطأ decoder للفيديو: "+e.getClass().getSimpleName());main.post(()->decoderFailed());}
             @Override public void onAudioCodecError(AnalyticsListener.EventTime t,Exception e){log("خطأ decoder للصوت: "+e.getClass().getSimpleName());}
         });
@@ -333,6 +334,7 @@ public final class PlayerActivity extends Activity {
             if(now-healthySince>=HEALTHY_MS)backoffStep=0;   // it has played for a while: the next failure starts again at once
         }else if(st!=Player.STATE_READY)healthySince=0;
         if(moved)posMovedAt=now;
+        if(pictured&&st==Player.STATE_READY&&player.getPlayWhenReady()&&moved)checkNothingOver(now);else coverSeenAt=0;
         lastPos=pos;
         long bp=player.getBufferedPosition();
         if(bp!=lastBufferedPos){lastBufferedPos=bp;bufferMovedAt=now;}
@@ -386,6 +388,53 @@ public final class PlayerActivity extends Activity {
         restart(wait);
     }
 
+    // MARK: what is on top of the picture (a black screen with sound: is the video there, or is something over it?)
+    private volatile String decoderName="";
+    private int layerToken;
+    private long coverSeenAt;
+    /** After a first frame: what the video is, and which layers sit over it, right away, 2 s and 6 s later. */
+    private void scheduleLayerLog(){
+        final int token=++layerToken;
+        coverSeenAt=0;
+        final long[] delays={300,2_000,6_000};
+        for(final long d:delays)main.postDelayed(()->{if(token==layerToken&&!isFinishing())logLayers("بعد أول لقطة بـ "+d+" مللي ثانية");},d);
+    }
+    private static String vis(View v){
+        if(v==null)return "لا يوجد";
+        return (v.getVisibility()==View.VISIBLE?"ظاهر":v.getVisibility()==View.GONE?"مخفي":"غير مرئي")+(v.getAlpha()<1f?" شفافية "+v.getAlpha():"");
+    }
+    private void logLayers(String when){
+        if(player==null||surface==null||root==null)return;
+        try{
+            androidx.media3.common.Format f=player.getVideoFormat();
+            VideoSize vs=player.getVideoSize();
+            String video=f==null?"لا يوجد تنسيق فيديو":(f.width+"×"+f.height+" · "+f.sampleMimeType+" · codecs="+f.codecs+" · "+(f.frameRate>0?f.frameRate+" إطار/ث":"معدل غير معروف")
+                    +(f.colorInfo!=null?" · نقل الألوان="+f.colorInfo.colorTransfer+" عمق="+f.colorInfo.lumaBitdepth:""));
+            android.view.ViewGroup.LayoutParams lp=surface.getLayoutParams();
+            StringBuilder over=new StringBuilder();
+            int si=root.indexOfChild(surface);
+            for(int i=si+1;i<root.getChildCount();i++){
+                View v=root.getChildAt(i);
+                if(v.getVisibility()==View.VISIBLE&&v.getAlpha()>0.05f&&v.getWidth()>=root.getWidth()*0.9f&&v.getHeight()>=root.getHeight()*0.9f)
+                    over.append(v==cover?"الغطاء ":v==hold?"hold ":"طبقة"+i+" ").append("(").append(v.getWidth()).append("×").append(v.getHeight()).append(") ");
+            }
+            log("الطبقات ("+when+"): فوق الفيديو: "+(over.length()==0?"لا شيء":over.toString().trim())+" · الغطاء "+vis(cover)+" · hold "+vis(hold)
+                    +" · الفيديو "+video+" · الحجم المبلّغ "+vs.width+"×"+vs.height+" · decoder="+(decoderName.isEmpty()?"غير معروف":decoderName)
+                    +" · Surface "+surface.getWidth()+"×"+surface.getHeight()+" (مطلوب "+lp.width+"×"+lp.height+") صالح="+surface.getHolder().getSurface().isValid()+" "+vis(surface)
+                    +" · الشريط "+vis(label)+" · النص "+vis(status)+" · الشاشة "+root.getWidth()+"×"+root.getHeight()+" · "+playerState());
+        }catch(RuntimeException e){log("تعذّر تسجيل الطبقات: "+e.getClass().getSimpleName());}
+    }
+    /** A picture is rendered and the clock moves: nothing may stay over it. A cover or a held frame that lasts 3 s is taken away. */
+    private void checkNothingOver(long now){
+        boolean over=(cover!=null&&cover.getVisibility()==View.VISIBLE)||(hold!=null&&hold.getVisibility()==View.VISIBLE);
+        if(!over){coverSeenAt=0;return;}
+        if(coverSeenAt==0){coverSeenAt=now;return;}
+        if(now-coverSeenAt>=3_000){
+            log("غطاء أو صورة محفوظة بقيت فوق الفيديو "+(now-coverSeenAt)/1000+" ث بعد أول لقطة والبث يتقدم: أخفيتها");
+            coverHide();releaseHold();coverSeenAt=0;
+            logLayers("بعد إخفاء ما بقي فوق الفيديو");
+        }
+    }
     /** Closes the old connection, waits `gap` ms, then opens the same channel again; no loading text unless it lasts. */
     /** Copies what the surface shows into {@link #hold}: the codec release of a reconnect can blank some TVs' surfaces. */
     private void holdPicture(){

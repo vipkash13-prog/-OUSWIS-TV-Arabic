@@ -1,0 +1,59 @@
+name: Upgrade order test
+on:
+  push:
+    branches: ['feature/app-tiles-flat']
+    paths: ['.github/workflows/upgrade-order-test.yml', 'tools/test-upgrade-order.py']
+  workflow_dispatch:
+    inputs:
+      preview_tags:
+        description: 'Preview release tags, oldest first, separated by commas; empty = the two newest previews'
+        required: false
+permissions:
+  contents: read
+jobs:
+  upgrade:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download the latest official build and the previews
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAGS: ${{ inputs.preview_tags }}
+        run: |
+          set -euo pipefail
+          if [ -z "$TAGS" ]; then
+            TAGS=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 60 --json tagName,createdAt,isPrerelease --jq '[.[]|select(.isPrerelease and (.tagName|test("^preview-[0-9]+$")))]|sort_by(.tagName|ltrimstr("preview-")|tonumber)|.[-2:]|map(.tagName)|join(",")')
+          fi
+          echo "previews: $TAGS"
+          mkdir -p apks
+          official=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)
+          echo "$official" > apks/order.txt
+          gh release download "$official" --pattern OUSWIS-TV-1.0.apk --output apks/0-official.apk
+          i=1
+          for t in $(echo "$TAGS" | tr ',' ' '); do
+            gh release download "$t" --pattern OUSWIS-TV-preview.apk --output "apks/$i-$t.apk"
+            echo "$t" >> apks/order.txt
+            i=$((i+1))
+          done
+          ls -l apks
+      - name: Tools
+        run: sudo chmod 666 /dev/kvm
+      - name: Emulator, install each build over the one before it, no uninstall
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: default
+          arch: x86_64
+          profile: tv_1080p
+          avd-name: ouswis-1080
+          ram-size: 4096M
+          heap-size: 512M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -skin 1920x1080
+          script: python3 tools/test-upgrade-order.py apks
+      - name: Evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: upgrade-order
+          path: upgrade-order.log
