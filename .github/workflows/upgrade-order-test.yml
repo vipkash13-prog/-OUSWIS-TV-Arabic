@@ -22,7 +22,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "$TAGS" ]; then
-            TAGS=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 60 --json tagName,createdAt,isPrerelease --jq '[.[]|select(.isPrerelease and (.tagName|test("^preview-[0-9]+$")))]|sort_by(.createdAt)|.[-2:]|map(.tagName)|join(",")')
+            TAGS=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 60 --json tagName,createdAt,isPrerelease --jq '[.[]|select(.isPrerelease and (.tagName|test("^preview-[0-9]+$")))]|sort_by(.tagName|ltrimstr("preview-")|tonumber)|.[-2:]|map(.tagName)|join(",")')
           fi
           echo "previews: $TAGS"
           mkdir -p apks
