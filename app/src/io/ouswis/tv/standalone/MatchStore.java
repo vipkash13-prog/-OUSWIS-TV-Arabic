@@ -105,6 +105,13 @@ final class MatchStore {
             what=b.toString();
         }
         if(okN>0)answered=Math.max(answered,okN);
+        java.util.List<String> unnamed=Titles.takeMissing();   // names the translation table doesn't know: one line, so the log isn't flooded
+        if(!unnamed.isEmpty()){
+            StringBuilder b=new StringBuilder("ترجمة ناقصة ("+unnamed.size()+"): ");
+            for(int i=0;i<Math.min(30,unnamed.size());i++){if(i>0)b.append("، ");b.append(unnamed.get(i));}
+            if(unnamed.size()>30)b.append(" …");
+            try{PlayLog.add(ctx,-1,b.toString());}catch(Throwable ignored){}
+        }
         try{PlayLog.add(ctx,-1,what);}catch(Throwable ignored){}   // every refresh, good, partial or bad, goes into the playback log
         if(!MISSING.isEmpty()&&retries<6&&!retryPending&&ctx!=null){
             retryPending=true;retries++;

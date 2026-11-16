@@ -806,6 +806,20 @@ with tempfile.TemporaryDirectory() as temp:
     focus_card('مصر ضد مالاوي'); time.sleep(2)
     assert len(SDB) == asked, 'Nothing is asked again for a team already answered (a badge or no badge): ' + str(SDB[asked:])
     note('PASS: crests: feed logo shown (green %.2f), TheSportsDB fallback shown (magenta %.2f) for the team whose feed logo 404s; lookups %s, at most %d at once, none repeated.' % (green, magenta, sorted(set(SDB)), SDB_NOW[1]))
+    # the play log says what each lookup found: forget the saved answers, start the app again and read the log of the new lookups
+    adb('shell', 'am', 'force-stop', PKG); time.sleep(2)
+    adb('shell', 'rm', '-f', '/data/user/0/%s/shared_prefs/ouswis-badges.xml' % PKG, '/data/user/0/%s/files/playlog.txt' % PKG)
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.HomeActivity'); wait_label('غانا ضد الصومال', 'the home after the badge answers were forgotten')
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.MatchesScreenActivity'); time.sleep(3)
+    blog = ''
+    for _ in range(40):
+        blog = adb('shell', 'cat', '/data/user/0/%s/files/playlog.txt' % PKG, check=False)
+        if 'شعار Malawi: لقى في TheSportsDB' in blog and 'ما لقى' in blog: break
+        time.sleep(3)
+    (OUT / 'redesign-badge-playlog.txt').write_text(blog)
+    assert 'شعار Malawi: لقى في TheSportsDB' in blog, 'The play log must say the badge was found: ' + blog[-500:]
+    assert 'شعار Tunisia: ما لقى في TheSportsDB' in blog, 'The play log must say when no badge was found: ' + blog[-500:]
+    note('PASS: the play log names each club looked up: found (Malawi) and not found (Tunisia). ' + [l for l in blog.splitlines() if 'شعار' in l][0][:120])
     # tomorrow's matches: the day guide (get_simple_data_table) lists Portugal v Morocco tomorrow evening, so it carries beIN Sports 2;
     # Germany v Japan is in no guide: it stays "اختر القناة" until a guide names it
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.MatchesScreenActivity'); time.sleep(3)

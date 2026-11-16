@@ -196,10 +196,10 @@ public final class MatchesScreenActivity extends Activity {
         private List<LiveData.Channel> extraOptions(MatchCarouselView.Match m,LiveData.Channel chosen){
             List<LiveData.Channel> out=new ArrayList<>();
             java.util.Set<String> shown=new java.util.HashSet<>();   // one entry per name as it reads after cleaning (HD, SD, prefixes): the best-ranked copy, which comes first
-            if(chosen!=null)shown.add(MatchChannels.shortName(chosen.name).trim().toLowerCase(java.util.Locale.ROOT));
+            if(chosen!=null)shown.add(Titles.channelKey(chosen.name));
             for(LiveData.Channel o:MatchChannels.options(m)){
                 if(chosen!=null&&o.id.equals(chosen.id))continue;
-                if(!shown.add(MatchChannels.shortName(o.name).trim().toLowerCase(java.util.Locale.ROOT)))continue;
+                if(!shown.add(Titles.channelKey(o.name)))continue;
                 out.add(o);if(out.size()==2)break;
             }
             return out;
@@ -214,7 +214,8 @@ public final class MatchesScreenActivity extends Activity {
                 p.setStyle(Paint.Style.FILL);p.setShader(null);p.setColor(0x14FFFFFF);c.drawCircle(cx,cy,radius,p);
                 float s=Math.min(radius*1.5f/b.getWidth(),radius*1.5f/b.getHeight());
                 float w=b.getWidth()*s,h=b.getHeight()*s;bm.set(cx-w/2,cy-h/2,cx+w/2,cy+h/2);p.setColor(0xFFFFFFFF);c.drawBitmap(b,null,bm,p);
-            }else Design.initial(c,name,cx,cy,radius,p,badge);
+            }else if(ClubBadges.none(url,nameEn))Design.shield(c,cx,cy,radius,p);
+            else Design.initial(c,name,cx,cy,radius,p,badge);
         }
 
         @Override protected void onDraw(Canvas c){

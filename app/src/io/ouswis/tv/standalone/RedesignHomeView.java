@@ -501,12 +501,12 @@ final class RedesignHomeView extends View {
     }
 
     private void drawMatches(Canvas c){
-        Design.right(c,"مباريات اليوم",1842,434,section);
+        Design.right(c,"مباريات اليوم",1842,418,section);   // above the cards with room for the focused card, which grows
         goldText.setTextSize(20);
         boolean linkFocus=focus(2,Math.min(today.size(),4));
-        Design.left(c,"عرض الكل ←",78,432,linkFocus?tx(0xFFFFFFFF,22,Design.bold()):goldText);
-        a11y.add(1500,410,1842,446,"مباريات اليوم",false,false);
-        a11y.add(70,410,200,446,"عرض الكل",linkFocus,true);
+        Design.left(c,"عرض الكل ←",78,416,linkFocus?tx(0xFFFFFFFF,22,Design.bold()):goldText);
+        a11y.add(1500,394,1842,430,"مباريات اليوم",false,false);
+        a11y.add(70,394,200,430,"عرض الكل",linkFocus,true);
         int n=Math.min(4,today.size());
         if(today.isEmpty()){
             if(everHadData)skeletonAfterData++;
@@ -566,7 +566,8 @@ final class RedesignHomeView extends View {
             p.setStyle(Paint.Style.FILL);p.setShader(null);p.setColor(0x14FFFFFF);c.drawCircle(cx,cy,radius,p);
             float s=Math.min(radius*1.5f/b.getWidth(),radius*1.5f/b.getHeight());
             float w=b.getWidth()*s,h=b.getHeight()*s;bm.set(cx-w/2,cy-h/2,cx+w/2,cy+h/2);p.setColor(0xFFFFFFFF);c.drawBitmap(b,null,bm,p);
-        }else Design.initial(c,name,cx,cy,radius,p,badge);
+        }else if(ClubBadges.none(url,nameEn))Design.shield(c,cx,cy,radius,p);
+            else Design.initial(c,name,cx,cy,radius,p,badge);
     }
 
     private void drawApps(Canvas c){

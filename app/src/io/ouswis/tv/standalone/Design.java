@@ -121,6 +121,17 @@ final class Design {
         t.setTextSize(radius*0.95f);t.setColor(TEXT);
         center(c,ch,cx,cy+radius*0.33f,t);
     }
+    private static final android.graphics.Path SHIELD=new android.graphics.Path();
+    /** A plain dark shield, for a club with no crest anywhere (the UI thread only: one shared path). */
+    static void shield(Canvas c,float cx,float cy,float radius,Paint p){
+        float w=radius*0.78f,top=cy-radius*0.85f,mid=cy+radius*0.1f,bottom=cy+radius*0.9f;
+        SHIELD.reset();
+        SHIELD.moveTo(cx-w,top+radius*0.12f);SHIELD.lineTo(cx,top);SHIELD.lineTo(cx+w,top+radius*0.12f);
+        SHIELD.lineTo(cx+w,mid);SHIELD.quadTo(cx+w,bottom-radius*0.25f,cx,bottom);SHIELD.quadTo(cx-w,bottom-radius*0.25f,cx-w,mid);SHIELD.close();
+        p.setStyle(Paint.Style.FILL);p.setShader(null);p.setColor(0xFF1A1F3A);c.drawPath(SHIELD,p);
+        p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(Math.max(1.5f,radius*0.07f));p.setColor(0x33FFFFFF);c.drawPath(SHIELD,p);
+        p.setStyle(Paint.Style.FILL);
+    }
     static final java.util.Locale AR=java.util.Locale.forLanguageTag("ar-u-nu-latn");
     private static final String[] PRAYERS={"الفجر","الظهر","العصر","المغرب","العشاء"};
     static String prayer(int i){return PRAYERS[Math.max(0,Math.min(4,i))];}

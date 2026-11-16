@@ -20,7 +20,7 @@ import org.json.JSONObject;
 final class MatchChannels {
     private MatchChannels(){}
     private static final Pattern FHD=Pattern.compile("(?i)\\b(fhd|1080p?)\\b"),HD_ONLY=Pattern.compile("(?i)\\bhd\\b");
-    private static final Pattern QUALITY=Pattern.compile("(?i)\\b(FHD|UHD|HD|SD|4K)\\b");
+    private static final Pattern QUALITY=Pattern.compile("(?i)\\b(FHD|UHD|HD|SD|4K|RAW|LQ|HEVC|H\\.?265|X265)\\b");
 
     /** The leagues the settings table lists: {name shown, text that identifies it in a match's competition}. */
     static final String[][] LEAGUES={
@@ -336,8 +336,26 @@ final class MatchChannels {
                 out.add(ch);break;
             }
         }
-        java.util.Collections.sort(out,(x,y)->Integer.compare(rank(x),rank(y)));
-        return out;
+        // the regular copy of each channel (HD, then FHD, then plain, then SD; RAW, LQ, 4K and H.265 only when nothing else exists),
+        // even when only the other copy's guide named the match, and one entry per channel as it reads
+        java.util.List<LiveData.Channel> best=new ArrayList<>();
+        java.util.Set<String> seen=new java.util.HashSet<>();
+        for(LiveData.Channel ch:out){
+            LiveData.Channel pick=bestCopy(ch);
+            if(seen.add(Titles.channelKey(pick.name))&&!best.contains(pick))best.add(pick);
+        }
+        java.util.Collections.sort(best,(x,y)->Integer.compare(rank(x),rank(y)));
+        return best;
+    }
+    /** The best-ranked copy of this channel that the subscription has and this device decodes (the channel itself when none is better). */
+    private static LiveData.Channel bestCopy(LiveData.Channel ch){
+        LiveData.Channel best=ch;
+        String want=canonical(ch.name);
+        for(LiveData.Channel x:guideChannels.values()){
+            if(x==ch||!canonical(x.name).equals(want)||(bad!=null&&bad.contains(x.id)))continue;
+            if(rank(x)<rank(best))best=x;
+        }
+        return best;
     }
     static LiveData.Channel fromGuide(MatchCarouselView.Match m){
         java.util.List<LiveData.Channel> o=guideOptions(m);
@@ -361,7 +379,7 @@ final class MatchChannels {
         for(String name:m.broadcasts){
             String want=canonical(name);
             if(want.isEmpty())continue;
-            for(LiveData.Channel ch:guideChannels.values())if(canonical(ch.name).equals(want))return ch;
+            for(LiveData.Channel ch:guideChannels.values())if(canonical(ch.name).equals(want))return bestCopy(ch);
         }
         return null;
     }
