@@ -996,12 +996,6 @@ with tempfile.TemporaryDirectory() as temp:
     icon_px = [img.getpixel((x, y)) for x in range(1640, 1730, 6) for y in range(215, 305, 6)]
     assert any(max(abs(p[0] - card[0]), abs(p[1] - card[1]), abs(p[2] - card[2])) > 30 for p in icon_px), 'The icon must show in the middle of the card'
     note('PASS: the app card is ' + str(tuple(card[:3])) + ' (dark) with its icon in the middle.')
-    tile_log = [l for l in adb('logcat', '-d', '-s', 'FreeMyTV', check=False).splitlines() if 'all-apps tile ' in l]
-    (OUT / 'all-apps-tiles.txt').write_text('\n'.join(tile_log))
-    assert tile_log, 'All Apps logged no tile source'
-    assert not any(l.rstrip().endswith(': letter') and 'org.xbmc.kodi' in l for l in tile_log), 'Kodi shows a letter instead of its icon'
-    kodi = [l for l in tile_log if 'org.xbmc.kodi' in l]
-    note('Kodi tile: ' + (kodi[-1].split('FreeMyTV')[-1].strip() if kodi else 'Kodi is not installed in this run'))
     no_crash('All Apps')
     note('PASS: كل التطبيقات opens from the home shortcut and lists ' + head[0] + '.')
     keys('BACK', pause=1.5)
@@ -1010,6 +1004,16 @@ with tempfile.TemporaryDirectory() as temp:
     assert not any('جارٍ التحميل' in l or 'جارٍ تحميل' in l for l in again), 'All Apps opened again must show its kept list at once: ' + str(again[:8])
     assert any('تطبيق' in l and '1' in l for l in again), 'All Apps opened again lost its list: ' + str(again[:8])
     note('PASS: All Apps opened a second time shows the kept list at once (no loading text).')
+    keys('BACK', pause=1.5)
+    # which art each card used (the log of a fresh start, read before the buffer rolls over)
+    adb('shell', 'am', 'force-stop', PKG); time.sleep(2); adb('logcat', '-c')
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.AllAppsActivity'); time.sleep(8)
+    tile_log = [l for l in adb('logcat', '-d', '-s', 'FreeMyTV', check=False).splitlines() if 'all-apps tile ' in l]
+    (OUT / 'all-apps-tiles.txt').write_text('\n'.join(tile_log))
+    assert tile_log, 'All Apps logged no tile source'
+    assert not any(l.rstrip().endswith(': letter') and 'org.xbmc.kodi' in l for l in tile_log), 'Kodi shows a letter instead of its icon'
+    kodi = [l for l in tile_log if 'org.xbmc.kodi' in l]
+    note('Kodi tile: ' + (kodi[-1].split('FreeMyTV')[-1].strip() if kodi else 'Kodi is not installed in this run'))
     keys('BACK', pause=1.5)
     # Round K: Recent Apps is a screen of its own; the classic home view is never created
     classic = [f.name for f in (Path(__file__).resolve().parent.parent / 'app').rglob('*.java') if f.name != 'HomeView.java' and 'new HomeView(' in f.read_text(encoding='utf-8')]
