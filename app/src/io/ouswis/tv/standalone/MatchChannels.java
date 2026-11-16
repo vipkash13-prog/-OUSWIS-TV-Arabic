@@ -489,6 +489,10 @@ final class MatchChannels {
                     if(notInSubscription&&!ChannelHints.channelsFor(m).isEmpty()&&hintMissed.add(m.key)){
                         try{PlayLog.add(app,-1,"قناة المباراة: "+m.home+" × "+m.away+" ← "+ChannelHints.channelsFor(m)+" ("+ChannelHints.siteFor(m)+") ليست في اشتراكك"+(guide!=null?" · استعملت الدليل":""));}catch(Throwable ignored){}
                     }
+                    // a channel that is not a plain HD copy: say which other copies the subscription has (in every section, not only the sports ones the scan reads), once per channel
+                    if(hint!=null&&a!=null&&qualityPenalty(hint.name)>0&&copiesLogged.add(ChannelHints.hintKey(hint.name))){
+                        try{PlayLog.add(app,-1,"نسخ القناة: "+hint.name+" ← اخترتها لأنها الوحيدة التي قرأتها؛ في كل أقسامك: "+copiesOnDisk(app,a,ChannelHints.hintKey(hint.name),hint.id));}catch(Throwable ignored){}
+                    }
                     confirmed.put(m.key,ch==null?NONE:ch);
                     fire();
                 }catch(Throwable ignored){}finally{resolving.remove(m.key);}
@@ -499,6 +503,30 @@ final class MatchChannels {
     /** False while the answer for this match is still being worked out (the card shows nothing then, not "اختر القناة"). */
     static boolean resolved(Context c,MatchCarouselView.Match m){
         return m!=null&&(!m.epgChannelId.isEmpty()||confirmed.containsKey(m.key)||matchPick(c,m.key)!=null);
+    }
+    private static final java.util.Set<String> copiesLogged=java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<String,Boolean>());
+    /** Every channel of the subscription's saved sections that reads as the same channel (name only, for the playback log); off the UI thread. */
+    private static String copiesOnDisk(Context c,XtreamAccount a,String key,String chosenId){
+        StringBuilder sb=new StringBuilder();int n=0;
+        File[] files=c.getFilesDir().listFiles();
+        if(files==null)return "—";
+        String prefix="live-cat-"+Integer.toHexString((a.server+"|"+a.user).hashCode())+"-";
+        for(File f:files){
+            String fn=f.getName();
+            if(!fn.startsWith(prefix)||!fn.endsWith(".json"))continue;
+            try{
+                JSONArray items=new JSONObject(new String(Files.readAllBytes(f.toPath()),StandardCharsets.UTF_8)).getJSONArray("items");
+                for(int i=0;i<items.length()&&n<8;i++){
+                    LiveData.Channel x=LiveData.Channel.from(items.optJSONObject(i));
+                    if(x==null||x.name==null||!ChannelHints.hintKey(x.name).equals(key))continue;
+                    if(n++>0)sb.append(" | ");
+                    sb.append(x.name);
+                    if(x.id.equals(chosenId))sb.append(" (المختارة)");
+                    else if(!guideChannels.containsKey(x.id))sb.append(" (خارج ما قرأه)");
+                }
+            }catch(Exception ignored){}
+        }
+        return n==0?"—":sb.toString();
     }
     private static final java.util.Set<String> hintMissed=java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<String,Boolean>());   // each match is logged once
     private static final java.util.Set<String> resolving=java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<String,Boolean>());
