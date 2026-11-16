@@ -115,7 +115,7 @@ final class MatchChannels {
     /** The subscription changed: nothing read for the old one stays in memory (the files and preferences are AccountData's). */
     static void reset(){
         epoch++;
-        guides.clear();guideChannels.clear();confirmed.clear();optionsMap.clear();
+        guides.clear();guideChannels.clear();idxExact=null;idxLoose=null;confirmed.clear();optionsMap.clear();
         merged=null;mergedFor=null;leaguePicks=null;matchPicksJson=null;bad=null;guideAt=0;
         fire();
     }
@@ -382,21 +382,64 @@ final class MatchChannels {
      */
     static LiveData.Channel fromHints(Context c,MatchCarouselView.Match m){
         java.util.List<String> names=ChannelHints.channelsFor(m);
+        java.util.Map<String,java.util.List<LiveData.Channel>> exact=idxExact,loose=idxLoose;
         for(int pass=0;pass<2;pass++){   // the exact name first, then the loose one (a decorated "SP⚽RTS" that is not a clean O)
             for(String raw:names){
                 String key=pass==0?ChannelHints.hintKey(raw):ChannelHints.looseKey(raw);
                 if(key.length()<4)continue;
+                java.util.List<LiveData.Channel> pool=null;
+                java.util.Map<String,java.util.List<LiveData.Channel>> idx=pass==0?exact:loose;
+                if(idx!=null)pool=idx.get(key);
+                if(pool==null){   // no index yet: only what the guide scan read
+                    pool=new ArrayList<>();
+                    for(LiveData.Channel ch:guideChannels.values()){
+                        String mine=pass==0?ChannelHints.hintKey(ch.name):ChannelHints.looseKey(ch.name);
+                        if(mine.equals(key))pool.add(ch);
+                    }
+                }
                 LiveData.Channel best=null;
-                for(LiveData.Channel ch:guideChannels.values()){
+                for(LiveData.Channel ch:pool){
                     if(isUnsupported(c,ch.id))continue;
-                    String mine=pass==0?ChannelHints.hintKey(ch.name):ChannelHints.looseKey(ch.name);
-                    if(!mine.equals(key))continue;
                     if(best==null||rank(ch)<rank(best))best=ch;
                 }
                 if(best!=null)return best;
             }
         }
         return null;
+    }
+    // Every sports channel of every saved section, by name key: the guide scan reads only the sections it chose, and an HD copy may sit in another one.
+    private static volatile java.util.Map<String,java.util.List<LiveData.Channel>> idxExact,idxLoose;
+    private static volatile long idxAt;
+    private static volatile int idxEpoch=-1;
+    /** Builds that index from the saved sections (background only; again every few hours or when the subscription changes). */
+    static void ensureIndex(Context c,XtreamAccount a){
+        if(a==null)return;
+        long now=System.currentTimeMillis();
+        if(idxExact!=null&&idxEpoch==epoch&&now-idxAt<GUIDE_TTL)return;
+        final int ep=epoch;
+        java.util.Map<String,java.util.List<LiveData.Channel>> ex=new java.util.HashMap<>(),lo=new java.util.HashMap<>();
+        java.util.Set<String> seen=new java.util.HashSet<>();
+        try{
+            File[] files=c.getFilesDir().listFiles();
+            String prefix="live-cat-"+Integer.toHexString((a.server+"|"+a.user).hashCode())+"-";
+            if(files!=null)for(File f:files){
+                String fn=f.getName();
+                if(!fn.startsWith(prefix)||!fn.endsWith(".json"))continue;
+                try{
+                    JSONArray items=new JSONObject(new String(Files.readAllBytes(f.toPath()),StandardCharsets.UTF_8)).getJSONArray("items");
+                    for(int i=0;i<items.length();i++){
+                        LiveData.Channel ch=LiveData.Channel.from(items.optJSONObject(i));
+                        if(ch==null||ch.name==null||sportRank(ch.name)>=2||!seen.add(ch.id))continue;
+                        String k=ChannelHints.hintKey(ch.name),l=ChannelHints.looseKey(ch.name);
+                        if(k.length()<4)continue;
+                        ex.computeIfAbsent(k,x->new ArrayList<>()).add(ch);
+                        lo.computeIfAbsent(l,x->new ArrayList<>()).add(ch);
+                    }
+                }catch(Exception ignored){}
+            }
+        }catch(Throwable ignored){}
+        if(ep!=epoch||ex.isEmpty())return;
+        idxExact=ex;idxLoose=lo;idxEpoch=ep;idxAt=now;
     }
     /** A channel the feed itself names for the match ("beIN SPORTS 2"), when the subscription has exactly that channel. */
     static LiveData.Channel fromBroadcast(MatchCarouselView.Match m){
@@ -482,6 +525,7 @@ final class MatchChannels {
                 try{
                     // the sites' broadcaster first (unless the guide says that channel shows another match), the guide as the backup;
                     // the league's pick stays a suggestion (see suggestions)
+                    ensureIndex(app,a);
                     LiveData.Channel guide=fromGuide(m),hint=fromHints(app,m);
                     final boolean notInSubscription=hint==null;
                     if(hint!=null&&guide!=null&&contradicts(hint,m))hint=null;
