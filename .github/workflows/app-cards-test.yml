@@ -29,10 +29,11 @@ jobs:
         shell: bash
         run: |
           set +e
-          # Kodi publishes android builds for arm, arm64-v8a and x86 (no x86_64 folder): the x86 one runs on the x86_64 emulator
-          for base in https://mirrors.kodi.tv/releases/android/x86/ https://mirrors.mit.edu/kodi/releases/android/x86/; do
+          # Kodi publishes android builds for arm, arm64-v8a and x86 (no x86_64 folder). Its 32-bit x86 build did not install on
+          # the plain x86_64 image (NO_MATCHING_ABIS), so the arm64 build goes on a Google APIs image, which translates ARM.
+          for base in https://mirrors.kodi.tv/releases/android/arm64-v8a/ https://mirrors.mit.edu/kodi/releases/android/arm64-v8a/; do
             curl -sS -m 60 -L -o kodi-index.html -w "$base -> HTTP %{http_code}\n" "$base"
-            f=$(grep -o 'kodi-[0-9][^"<>/]*-x86\.apk' kodi-index.html | sort -uV | tail -1)
+            f=$(grep -o 'kodi-[0-9][^"<>/]*-arm64-v8a\.apk' kodi-index.html | sort -uV | tail -1)
             echo "newest listed: ${f:-none}"
             if [ -n "$f" ] && curl -fsSL -m 400 -o kodi.apk "$base$f" && unzip -tq kodi.apk > /dev/null; then echo "Kodi downloaded: $f"; break; fi
             rm -f kodi.apk
@@ -42,7 +43,7 @@ jobs:
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
-          target: default
+          target: google_apis
           arch: x86_64
           profile: tv_1080p
           avd-name: ouswis-1080
