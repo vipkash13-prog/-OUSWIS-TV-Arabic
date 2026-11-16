@@ -164,6 +164,7 @@ final class ChannelHints {
         try {
             long now = System.currentTimeMillis();
             if (loaded && now < dueAt) return;
+            if (Busy.on()) return;   // not while a channel list or a channel is on screen
             if (!running.compareAndSet(false, true)) return;
             final Context app = c.getApplicationContext();
             WORKER.execute(() -> {
@@ -191,11 +192,14 @@ final class ChannelHints {
         boolean changed = false, asked = false;
         List<Row> all = new ArrayList<>();
         for (Row r : rows) if (days.contains(r.day)) all.add(r);   // yesterday's rows are dropped
+        boolean paused = false;
+        outer:
         for (String site : new String[] {YALLA, FILGOAL}) {
             for (String day : days) {
                 String key = site + "|" + day;
                 Long at = fetched.get(key);
                 if (at != null && now - at < TTL) continue;
+                if (Busy.on()) { paused = true; break outer; }   // the rest waits for the viewer to leave the live screen
                 if (asked) { try { Thread.sleep(1000); } catch (InterruptedException e) { return; } }   // one request a second at most
                 asked = true;
                 fetched.put(key, System.currentTimeMillis());   // a failure waits 30 minutes too
@@ -211,7 +215,7 @@ final class ChannelHints {
                 }
             }
         }
-        dueAt = System.currentTimeMillis() + TTL;
+        dueAt = System.currentTimeMillis() + (paused ? 60_000L : TTL);
         if (!asked) { loaded = true; return; }   // everything was fresh: nothing was asked, nothing to log
         rows = all;
         loaded = true;

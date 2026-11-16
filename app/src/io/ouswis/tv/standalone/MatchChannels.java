@@ -154,6 +154,7 @@ final class MatchChannels {
      */
     static void scanGuides(Context c,XtreamAccount a){
         if(a==null||scanning||System.currentTimeMillis()-guideAt<GUIDE_TTL)return;
+        if(Busy.on())return;   // later: not while a channel list or a channel is on screen
         scanning=true;
         final int ep=epoch;
         final Context app=c.getApplicationContext();
@@ -167,6 +168,7 @@ final class MatchChannels {
                 final long now=System.currentTimeMillis();
                 for(LiveData.Channel ch:list)jobs.add(pool.submit(()->{
                     try{
+                        while(Busy.on()&&ep==epoch)Thread.sleep(500);   // wait while the viewer is in the live screen, then go on
                         if(ep!=epoch)return;   // the subscription changed: no more requests for the old one
                         java.util.List<LiveData.Program> day=null;
                         try{day=LiveData.fetchDay(a,ch.id);}catch(Exception ignored){}
@@ -177,7 +179,10 @@ final class MatchChannels {
                         if(ep==epoch){guides.put(ch.id,keep);guideChannels.put(ch.id,ch);}   // not if the subscription changed meanwhile
                     }catch(Exception ignored){}
                 }));
-                for(java.util.concurrent.Future<?> j:jobs){try{j.get(60,java.util.concurrent.TimeUnit.SECONDS);}catch(Exception ignored){}}
+                for(java.util.concurrent.Future<?> j:jobs){   // up to a minute of quiet waiting each; the time the viewer spends in the live screen does not count
+                    int idle=0;
+                    while(idle<12){try{j.get(5,java.util.concurrent.TimeUnit.SECONDS);break;}catch(java.util.concurrent.TimeoutException te){if(Busy.on())idle=0;else idle++;}catch(Exception e){break;}}
+                }
                 pool.shutdownNow();
                 if(ep==epoch&&!guides.isEmpty())saveGuideFile(app,a);
             }catch(Throwable ignored){}
