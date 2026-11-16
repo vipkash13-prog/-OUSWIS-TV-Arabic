@@ -3,9 +3,16 @@
 import json, re, urllib.request, datetime, html as H
 
 UA = {'User-Agent': 'Mozilla/5.0 (Linux; Android 14; TV) AppleWebKit/537.36 Chrome/124 Safari/537.36', 'Accept-Language': 'ar,en;q=0.8'}
+import time
 def get(url):
-    with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=25) as r:
-        return r.read().decode('utf-8', 'replace')
+    last = None
+    for attempt in range(4):
+        try:
+            with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=25) as r:
+                return r.read().decode('utf-8', 'replace')
+        except Exception as e:
+            last = e; print('  retry', attempt, url[:60], repr(e)[:80]); time.sleep(4 * (attempt + 1))
+    raise last
 
 now = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=3)
 day = now.strftime('%Y-%m-%d')
