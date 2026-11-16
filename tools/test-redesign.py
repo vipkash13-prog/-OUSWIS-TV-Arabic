@@ -764,10 +764,27 @@ with tempfile.TemporaryDirectory() as temp:
     # the guide of the sports channels names one match (الهلال × النصر): it is a match on the screen, with its channel
     guide_card = wait_label('الهلال ضد النصر', 'the match found only in the guide')
     assert any(('SSC 1' in l or 'beIN Sports 1' in l or 'AD Sports 1' in l) for l in guide_card), 'The guide match must carry the channel it was found on: ' + str(guide_card)
+    # a channel may also be named by the two sites the app asks for the broadcaster (Yallakora, Filgoal): their cached answers are in the app's own folder
+    try: site_rows = json.loads(adb('shell', 'cat', '/data/user/0/%s/files/channel-hints.json' % PKG, check=False) or '{}').get('rows', [])
+    except Exception: site_rows = []
+    def sp(t):
+        t = re.sub(r'[\u064B-\u0652\u0640]', '', t or '')
+        for a, b in (('أ', 'ا'), ('إ', 'ا'), ('آ', 'ا'), ('ة', 'ه'), ('ى', 'ي')): t = t.replace(a, b)
+        return ' '.join(w[2:] if w.startswith('ال') and len(w) > 4 else w for w in t.split())
+    def named_by_sites(card):
+        pair = card.split(' · ')[0].split(' ضد ')
+        if len(pair) != 2: return False
+        a, b = sp(pair[0]), sp(pair[1])
+        def same(x, y): return bool(x) and bool(y) and (x == y or x in y or y in x)
+        return any((same(sp(r.get('h')), a) and same(sp(r.get('a')), b)) or (same(sp(r.get('h')), b) and same(sp(r.get('a')), a)) for r in site_rows if r.get('c'))
+    from_sites = 0
     for l in cards:
         if any(t in l for t in ('الهلال', 'يوفنتوس', 'آرسنال', 'غانا', 'إنجلترا', 'مولدوفا', 'مصر', 'إسبانيا', 'النرويج')): continue   # found in the mock guide: confirmed
+        if ('beIN' in l or 'SSC' in l or 'AD Sports' in l) and named_by_sites(l):
+            from_sites += 1; continue   # confirmed by a site that names both teams
         assert 'beIN' not in l and 'SSC' not in l and 'AD Sports' not in l and 'beIN SPORTS' not in l, 'No channel may be named without a confirmation: ' + l
         if 'انتهت' not in l: assert 'اختر القناة' in l, 'An unconfirmed match must ask to pick the channel: ' + l
+    note('PASS: a channel is named only when the guide or a site naming both teams confirms it (%d from the sites); every other match asks to pick one.' % from_sites)
     labs = labels(); i_all = [i for i, l in enumerate(labs) if l.startswith('الكل')][0]
     favs = [i for i, l in enumerate(labs) if '★ المفضلة' in l]   # the row scrolls: with many leagues the favourites chip is past the edge
     league_chips = labs[i_all + 1:favs[0] if favs else i_all + 12]
