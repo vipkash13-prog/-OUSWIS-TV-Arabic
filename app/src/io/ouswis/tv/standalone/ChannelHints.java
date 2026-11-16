@@ -73,6 +73,26 @@ final class ChannelHints {
         return out;
     }
 
+
+    /**
+     * A channel name for comparing, whatever the provider decorated it with: no prefix ("8K:", "AR|"), no quality tag, no
+     * symbols, and a symbol sitting inside a word is a letter O (providers write "beIN SP⚽RTS 2" and "beIN SP●RTS 2").
+     */
+    static String hintKey(String name) {
+        String n = Titles.channelName(java.text.Normalizer.normalize(name == null ? "" : name, java.text.Normalizer.Form.NFKD));
+        StringBuilder b = new StringBuilder();
+        int[] cps = n.codePoints().toArray();
+        for (int i = 0; i < cps.length; i++) {
+            int cp = cps[i];
+            if (Character.isLetterOrDigit(cp)) { b.appendCodePoint(Character.toLowerCase(cp)); continue; }
+            boolean symbol = Character.getType(cp) == Character.OTHER_SYMBOL || Character.getType(cp) == Character.MATH_SYMBOL;
+            if (symbol && i > 0 && i < cps.length - 1 && Character.isLetter(cps[i - 1]) && Character.isLetter(cps[i + 1])) b.append('o');
+        }
+        return b.toString();
+    }
+    /** The same without any "o": a last try when a provider's decoration is not a clean O. */
+    static String looseKey(String name) { return hintKey(name).replace("o", ""); }
+
     /** Which site named a channel for this match ("يلا كورة"), for the log; empty when none. */
     static String siteFor(MatchCarouselView.Match m) {
         if (m == null) return "";

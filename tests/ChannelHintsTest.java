@@ -49,6 +49,14 @@ public final class ChannelHintsTest {
         check(ChannelHints.same("الهلال", "هلال"), "the article does not matter");
         check(!ChannelHints.same("سلوفينيا", "سلوفاكيا"), "Slovenia is not Slovakia");
         check(!ChannelHints.same("الهلال", "النصر"), "two clubs");
+        // the subscription's decorated names against the sites' plain ones
+        String site2 = ChannelHints.clean("beIN Sports MENA 2");
+        check(ChannelHints.hintKey("8K: beIN SP\u26BDRTS 2 HD \u25CF").equals(ChannelHints.hintKey(site2)), "the ball is an O: " + ChannelHints.hintKey("8K: beIN SP\u26BDRTS 2 HD \u25CF"));
+        check(ChannelHints.hintKey("AR| beIN SPORTS 4 HD (H.265)").equals(ChannelHints.hintKey(ChannelHints.clean("beIN SPORTS 4"))), "prefix and tags");
+        check(!ChannelHints.hintKey("beIN SPORTS 2 HD").equals(ChannelHints.hintKey("beIN SPORTS 3")), "two numbers are two channels");
+        check(!ChannelHints.hintKey("beIN SPORTS 1").equals(ChannelHints.hintKey("beIN SPORTS 11")), "1 is not 11");
+        check(ChannelHints.looseKey("beIN SP#RTS 2").equals(ChannelHints.looseKey("beIN SPORTS 2")), "a loose match with a decorated name");
+        check(!ChannelHints.looseKey("beIN SPORTS 2").equals(ChannelHints.looseKey("beIN SPORTS 3")), "loose keeps the number");
         check(!ChannelHints.same("غينيا", "غينيا بيساو") && !ChannelHints.same("غينيا", "غينيا الاستوائية"), "the Guineas are three teams");
     }
 }

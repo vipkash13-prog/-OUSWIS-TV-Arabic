@@ -381,15 +381,20 @@ final class MatchChannels {
      * other copies, RAW, LQ, 4K and H.265 only when nothing better exists. A copy this device can't decode is skipped.
      */
     static LiveData.Channel fromHints(Context c,MatchCarouselView.Match m){
-        for(String raw:ChannelHints.channelsFor(m)){
-            String key=Titles.channelKey(raw);
-            if(key.isEmpty())continue;
-            LiveData.Channel best=null;
-            for(LiveData.Channel ch:guideChannels.values()){
-                if(isUnsupported(c,ch.id)||!Titles.channelKey(ch.name).equals(key))continue;
-                if(best==null||rank(ch)<rank(best))best=ch;
+        java.util.List<String> names=ChannelHints.channelsFor(m);
+        for(int pass=0;pass<2;pass++){   // the exact name first, then the loose one (a decorated "SP⚽RTS" that is not a clean O)
+            for(String raw:names){
+                String key=pass==0?ChannelHints.hintKey(raw):ChannelHints.looseKey(raw);
+                if(key.length()<4)continue;
+                LiveData.Channel best=null;
+                for(LiveData.Channel ch:guideChannels.values()){
+                    if(isUnsupported(c,ch.id))continue;
+                    String mine=pass==0?ChannelHints.hintKey(ch.name):ChannelHints.looseKey(ch.name);
+                    if(!mine.equals(key))continue;
+                    if(best==null||rank(ch)<rank(best))best=ch;
+                }
+                if(best!=null)return best;
             }
-            if(best!=null)return best;
         }
         return null;
     }
