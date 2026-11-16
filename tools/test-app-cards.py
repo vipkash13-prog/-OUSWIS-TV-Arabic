@@ -64,6 +64,7 @@ if KODI:
     note('Kodi: ' + ('installed' if kodi_installed else 'did not install: ' + out))
 else:
     note('Kodi: not downloaded in this run')
+subprocess.run(['adb', 'root'], capture_output=True, timeout=60); subprocess.run(['adb', 'wait-for-device'], timeout=60); time.sleep(3)   # AllAppsActivity is not exported
 adb('shell', 'appops', 'set', PKG, 'SYSTEM_ALERT_WINDOW', 'allow', check=False)
 adb('logcat', '-c')
 adb('shell', 'am', 'start', '-W', '-n', PKG + '/.AllAppsActivity')
