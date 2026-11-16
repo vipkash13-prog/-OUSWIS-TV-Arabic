@@ -38,19 +38,11 @@ jobs:
           echo "::add-mask::$derived"
           echo "FREEMYTV_KEYSTORE=$RUNNER_TEMP/ouswis-official.keystore" >> "$GITHUB_ENV"
           echo "FREEMYTV_KEYSTORE_PASS=$derived" >> "$GITHUB_ENV"
-      - name: Assign increasing internal build number
-        shell: python
+      - name: Assign increasing internal build number (one counter for official and preview, tools/version-code.py)
         run: |
-          import os, re
-          from pathlib import Path
-          p = Path('app/AndroidManifest.xml')
-          s = p.read_text()
-          base = int(re.search(r'android:versionCode="(\d+)"', s)[1])
-          # Official builds count from 100000 + base: every preview (quick-preview and the others count from base, in the
-          # tens of thousands at most) stays lower, so an official release always updates over any preview.
-          code = 100000 + base + int(os.environ['GITHUB_RUN_NUMBER'])
-          s = re.sub(r'android:versionCode="\d+"', f'android:versionCode="{code}"', s, count=1)
-          p.write_text(s)
+          code=$(python3 tools/version-code.py --set app/AndroidManifest.xml)
+          test "$code" -gt 110253
+          echo "versionCode $code"
       - name: Check translations and build upgrade baseline
         env:
           GH_TOKEN: ${{ github.token }}

@@ -40,23 +40,11 @@ jobs:
           echo "::add-mask::$derived"
           echo "FREEMYTV_KEYSTORE=$RUNNER_TEMP/ouswis-official.keystore" >> "$GITHUB_ENV"
           echo "FREEMYTV_KEYSTORE_PASS=$derived" >> "$GITHUB_ENV"
-      - name: Version code above every earlier preview
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: python
+      - name: Version code above every earlier build (one counter for official and preview)
         run: |
-          import os, re, subprocess
-          from pathlib import Path
-          # the signed-APK workflow numbers its previews base + its run number: this one goes just above its latest
-          n = int(subprocess.check_output(['gh','run','list','--repo',os.environ['GITHUB_REPOSITORY'],'--workflow','ouswis-build.yml','--limit','1','--json','number','--jq','.[0].number'], text=True).strip())
-          p = Path('app/AndroidManifest.xml')
-          s = p.read_text()
-          base = int(re.search(r'android:versionCode="(\d+)"', s)[1])
-          code = base + n + int(os.environ['GITHUB_RUN_NUMBER'])
-          s = re.sub(r'android:versionCode="\d+"', f'android:versionCode="{code}"', s, count=1)
-          p.write_text(s)
-          assert code < 100000, 'a preview must stay below the official numbers (they start at 100000)'
-          print('versionCode', code)
+          code=$(python3 tools/version-code.py --set app/AndroidManifest.xml)
+          test "$code" -gt 110253
+          echo "versionCode $code"
       - name: Check translations and build the signed APK
         run: |
           set -euo pipefail
