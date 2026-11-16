@@ -1188,13 +1188,9 @@ final class HomeApps {
         int w = Math.round(TILE_W * k), h = Math.round(TILE_H * k);
         Bitmap b = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(b);
-        canvas.drawColor(0xFF15161C);   // art with transparency sits on a dark background
+        canvas.drawColor(0xFF1A1F3A);   // art with transparency, or a banner shown whole, sits on the flat card
         AppBanners.cover(canvas, d, w, h);
         Bitmap out = shrink(b, TILE_W, TILE_H);
-        if (AllAppsActivity.tooLight(out, true)) {   // a pale banner glares on an OLED: the icon on its own colour instead
-            out.recycle();
-            return null;
-        }
         return out;
     }
 

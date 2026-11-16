@@ -168,7 +168,7 @@ public class AllAppsActivity extends Activity {
             try{
                 rc.drawColor(CARD);   // art with transparency sits on a dark card
                 AppBanners.cover(rc,found.drawable,TILE_W,TILE_H);
-                ok=!blank(raw)&&!tooLight(raw,true);   // art that is mostly white is no banner: the icon on its own colour instead
+                ok=!blank(raw);   // the banner as the app drew it (the TV launcher shows it whatever its colours)
                 how=found.how;
             }catch(Throwable t){ok=false;}
         }

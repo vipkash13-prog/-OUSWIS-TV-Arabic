@@ -2,7 +2,6 @@ package io.ouswis.tv.standalone;
 
 import android.content.Context;
 import android.content.Intent;
-import android.content.pm.ActivityInfo;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.graphics.drawable.AdaptiveIconDrawable;
@@ -11,8 +10,8 @@ import android.graphics.BitmapShader;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Shader;
-import android.graphics.drawable.Drawable;
 import android.util.DisplayMetrics;
+import android.graphics.drawable.Drawable;
 
 /** What an app card is made of: the app's banner if it has one, else its whole icon on the flat dark card. */
 final class AppBanners {
@@ -31,27 +30,19 @@ final class AppBanners {
     }
 
     /**
-     * The art for the whole card, in this order: the banner of the app's LEANBACK_LAUNCHER activity, the app's banner,
-     * the banner the activity info loads. A logo is no banner: an app without one gets its icon on the flat card.
+     * The art of the card, the way Android TV's own launcher finds it: the banner `ActivityInfo.loadBanner()` gives for
+     * the app's LEANBACK_LAUNCHER activity (it falls back to the application's banner), then the package manager's
+     * activity banner, then the application's. A logo is no banner: an app without one gets its icon on the flat card.
      */
     static Found find(Context c, String pkg) {
         PackageManager pm = c.getPackageManager();
         Intent launch = HomeApps.launchIntent(pm, pkg);
         Drawable d = null;
         try {
-            if (launch != null && launch.getComponent() != null) {
-                ActivityInfo ai = pm.getActivityInfo(launch.getComponent(), 0);
-                int res = ai.getBannerResource();
-                if (res != 0) {   // at the highest density the app has
-                    try {
-                        d = pm.getResourcesForApplication(ai.applicationInfo).getDrawableForDensity(res, DisplayMetrics.DENSITY_XXXHIGH, null);
-                    } catch (PackageManager.NameNotFoundException | RuntimeException ignored) {
-                    }
-                }
-            }
+            if (launch != null && launch.getComponent() != null) d = pm.getActivityInfo(launch.getComponent(), 0).loadBanner(pm);
         } catch (PackageManager.NameNotFoundException | RuntimeException ignored) {
         }
-        if (d != null) return new Found(d, "activity banner");
+        if (d != null) return new Found(d, "loadBanner");
         try {
             if (launch != null) d = pm.getActivityBanner(launch);
         } catch (PackageManager.NameNotFoundException | RuntimeException ignored) {
@@ -61,16 +52,13 @@ final class AppBanners {
             d = pm.getApplicationBanner(pkg);
         } catch (PackageManager.NameNotFoundException | RuntimeException ignored) {
         }
-        if (d != null) return new Found(d, "app banner");
-        try {
-            if (launch != null && launch.getComponent() != null) d = pm.getActivityInfo(launch.getComponent(), 0).loadBanner(pm);
-        } catch (PackageManager.NameNotFoundException | RuntimeException ignored) {
-        }
-        if (d != null) return new Found(d, "loaded banner");
-        return null;
+        return d != null ? new Found(d, "app banner") : null;
     }
 
-    /** Fills w × h with d, keeping its proportions (the extra is cropped, evenly); a 16:9 banner just fills it. */
+    /**
+     * A banner on the card. About the card's own proportions (16:9, within 12%): it fills the card. Any other shape is shown
+     * whole and centred on the card, never cropped: a square banner must not lose its edges.
+     */
     static void cover(Canvas canvas, Drawable d, int w, int h) {
         int iw = d.getIntrinsicWidth(), ih = d.getIntrinsicHeight();
         if (iw <= 0 || ih <= 0) {
@@ -78,13 +66,16 @@ final class AppBanners {
             d.draw(canvas);
             return;
         }
-        float s = Math.max(w / (float) iw, h / (float) ih);
+        float ratio = (iw / (float) ih) / (w / (float) h);
+        if (ratio > 0.88f && ratio < 1.12f) {
+            d.setBounds(0, 0, w, h);
+            d.draw(canvas);
+            return;
+        }
+        float s = Math.min(w / (float) iw, h / (float) ih);
         int dw = Math.round(iw * s), dh = Math.round(ih * s);
-        int save = canvas.save();
-        canvas.clipRect(0, 0, w, h);
         d.setBounds((w - dw) / 2, (h - dh) / 2, (w - dw) / 2 + dw, (h - dh) / 2 + dh);
         d.draw(canvas);
-        canvas.restoreToCount(save);
     }
 
     /**
@@ -137,7 +128,10 @@ final class AppBanners {
                         gc.drawRoundRect(0, 0, size, size, size * 0.2237f, size * 0.2237f, sp);
                         layers.recycle();
                     } else {
-                        d.setBounds(0, 0, size, size);
+                        int iw = d.getIntrinsicWidth(), ih = d.getIntrinsicHeight();
+                        float sc = iw > 0 && ih > 0 ? Math.min(size / (float) iw, size / (float) ih) : 0;
+                        int dw = sc > 0 ? Math.round(iw * sc) : size, dh = sc > 0 ? Math.round(ih * sc) : size;
+                        d.setBounds((size - dw) / 2, (size - dh) / 2, (size - dw) / 2 + dw, (size - dh) / 2 + dh);   // whole and centred
                         d.draw(gc);
                     }
                     if (!visible(glyph)) {
