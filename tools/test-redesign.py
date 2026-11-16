@@ -394,7 +394,7 @@ with tempfile.TemporaryDirectory() as temp:
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.HomeActivity')
     shot('redesign-home-loading.png')
     assert any(l == 'مباريات اليوم' for l in labels()), 'The matches row must not vanish while the data loads: ' + str(labels()[:20])
-    hero = wait_label('آخر قناة شاهدتها: SSC 1 HD', 'the last-channel card with the saved channel')
+    hero = wait_label('آخر قناة شاهدتها: SSC 1', 'the last-channel card with the saved channel')
     arabic = wait_label('يوفنتوس × ليون — دوري أبطال أوروبا للسيدات', 'the guide title of the last channel in Arabic')
     assert not any('Lyonnes' in l or 'Juventus' in l for l in labels()), 'The English match title must not show: ' + str(labels()[:12])
     img = shot('redesign-home.png'); no_crash('Home')
@@ -424,7 +424,7 @@ with tempfile.TemporaryDirectory() as temp:
     note('PASS: new home: last-channel card holds the first focus; six shortcuts and the + tile are reachable controls.')
 
     measure(os.environ.get('PERF_TAG', 'run'))
-    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.HomeActivity'); wait_label('آخر قناة شاهدتها: SSC 1 HD', 'the home again after the measurement')
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.HomeActivity'); wait_label('آخر قناة شاهدتها: SSC 1', 'the home again after the measurement')
 
     # 2. OK on the last-channel card plays it with Media3, full screen
     keys('DPAD_CENTER', pause=1.5); front('PlayerActivity')
