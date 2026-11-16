@@ -400,12 +400,21 @@ final class MatchChannels {
                 LiveData.Channel best=null;
                 for(LiveData.Channel ch:pool){
                     if(isUnsupported(c,ch.id))continue;
-                    if(best==null||rank(ch)<rank(best))best=ch;
+                    if(best==null||hintRank(ch)<hintRank(best))best=ch;
                 }
                 if(best!=null)return best;
             }
         }
         return null;
+    }
+    private static final Pattern PROVIDER_PREFIX=Pattern.compile("^\\s*(?:[A-Za-z]{2,3}|\\d{1,2}[Kk])\\s*[|:]\\s*");
+    /** The quality of a copy by its name without the provider's prefix: "UHD: beIN Sports 3 HD" is an HD copy, not a 4K one. */
+    private static int bodyQuality(String name){return qualityPenalty(PROVIDER_PREFIX.matcher(name==null?"":name).replaceFirst(""));}
+    /** Which copy of the channel the site named: quality first (HD, then FHD, unmarked, SD, RAW/LQ/H.265 last), then an Arabic or unprefixed name before a foreign one ("UHD:" is no language). */
+    private static int hintRank(LiveData.Channel ch){
+        String n=ch.name==null?"":ch.name;
+        boolean foreign=FOREIGN.matcher(n).find()&&!n.trim().toUpperCase(java.util.Locale.ROOT).startsWith("UHD");
+        return bodyQuality(n)*100_000_000+(foreign?10_000_000:0)+(FHD.matcher(n).find()&&!HD_ONLY.matcher(n).find()?500_000:0)+number(canonical(n))*1000+(n.hashCode()&511);
     }
     // Every sports channel of every saved section, by name key: the guide scan reads only the sections it chose, and an HD copy may sit in another one.
     private static volatile java.util.Map<String,java.util.List<LiveData.Channel>> idxExact,idxLoose;
@@ -534,7 +543,7 @@ final class MatchChannels {
                         try{PlayLog.add(app,-1,"قناة المباراة: "+m.home+" × "+m.away+" ← "+ChannelHints.channelsFor(m)+" ("+ChannelHints.siteFor(m)+") ليست في اشتراكك"+(guide!=null?" · استعملت الدليل":""));}catch(Throwable ignored){}
                     }
                     // a channel that is not a plain HD copy: say which other copies the subscription has (in every section, not only the sports ones the scan reads), once per channel
-                    if(hint!=null&&a!=null&&qualityPenalty(hint.name)>0&&copiesLogged.add(ChannelHints.hintKey(hint.name))){
+                    if(hint!=null&&a!=null&&bodyQuality(hint.name)>0&&copiesLogged.add(ChannelHints.hintKey(hint.name))){
                         try{PlayLog.add(app,-1,"نسخ القناة: "+hint.name+" ← اخترتها لأنها الوحيدة التي قرأتها؛ في كل أقسامك: "+copiesOnDisk(app,a,ChannelHints.hintKey(hint.name),hint.id));}catch(Throwable ignored){}
                     }
                     confirmed.put(m.key,ch==null?NONE:ch);
