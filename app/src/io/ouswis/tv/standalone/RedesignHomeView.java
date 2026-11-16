@@ -284,6 +284,11 @@ final class RedesignHomeView extends View {
                     // a failed load keeps what was there rather than hiding the section
                     String sigNow=fresh.toString();
                     boolean changed=(!found.isEmpty()||apiToday.isEmpty())&&!sigNow.equals(apiSig);
+                    // the row is emptied only by an answer that really came (competitions answered) and listed nothing live or coming today
+                    if(changed&&shown.isEmpty()&&!apiToday.isEmpty()&&answeredNow==0)changed=false;
+                    int liveN=0;for(MatchCarouselView.Match m:shown)if(m.live())liveN++;
+                    String decision=changed?(shown.isEmpty()?"يفرغ الصف: الخادم ردّ ولا مباراة جارية أو قادمة اليوم":"يحدّث الصف"):(shown.isEmpty()&&!apiToday.isEmpty()?"يبقي آخر بيانات محفوظة (التحديث فشل أو لم يرد)":"بلا تغيير");
+                    try{PlayLog.add(getContext().getApplicationContext(),-1,"الوصول إلى الرئيسية: "+found.size()+" مباراة في المحفوظ · "+shown.size()+" لليوم (جارية "+liveN+") · ردّت "+answeredNow+" بطولة · القرار: "+decision);}catch(Throwable ignored){}
                     if(changed){apiToday.clear();apiToday.addAll(shown);apiSig=sigNow;}
                     if(changed||first)rebuildToday();else sameDataSkips++;
                 });
