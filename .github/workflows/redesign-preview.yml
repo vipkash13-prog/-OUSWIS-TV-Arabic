@@ -29,6 +29,13 @@ jobs:
         run: |
           sudo apt-get update -qq && sudo apt-get install -y ffmpeg python3-pil > /dev/null
           sudo chmod 666 /dev/kvm
+      - name: Kodi for the emulator (best effort: a test app with a known white-square icon)
+        shell: bash
+        run: |
+          set +e
+          base=https://mirrors.kodi.tv/releases/android/x86_64/
+          f=$(curl -fsS -m 60 "$base" | grep -o 'kodi-[0-9][^"<>]*x86_64\.apk' | sort -uV | tail -1)
+          if [ -n "$f" ] && curl -fsSL -m 400 -o kodi.apk "$base$f" && unzip -tq kodi.apk > /dev/null; then echo "Kodi: $f"; else rm -f kodi.apk; echo "Kodi could not be downloaded in this run"; fi
       - name: Emulator run, 1920x1080
         uses: reactivecircus/android-emulator-runner@v2
         env:
@@ -45,6 +52,7 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -skin 1920x1080
           script: |
             adb install -r FreeMyTV.apk
+            if [ -f kodi.apk ]; then adb install -r kodi.apk || echo "Kodi did not install"; fi
             adb shell appops set io.ouswis.tv.standalone SYSTEM_ALERT_WINDOW allow || true
             python3 tools/test-redesign.py redesign-evidence
       - name: Publish the preview with its screenshots
