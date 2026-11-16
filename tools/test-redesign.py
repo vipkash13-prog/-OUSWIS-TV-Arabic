@@ -989,13 +989,12 @@ with tempfile.TemporaryDirectory() as temp:
     white = sum(1 for x in range(0, 1920, 8) for y in range(150, 900, 8) if min(img.getpixel((x, y))) >= 235)
     assert white < 300, 'All Apps shows white areas (white cards): ' + str(white)
     note('PASS: All Apps shows no white card (' + str(white) + ' near-white samples).')
-    # the card is the icon's own colour, darkened so white text shows (the flat #1A1F3A only for an icon without colour)
+    # a card without a banner is the flat #1A1F3A, whatever the icon's colour
     card = img.getpixel((1560, 320))
-    luma = 0.299 * card[0] + 0.587 * card[1] + 0.114 * card[2]
-    assert luma <= 100, 'The app card must be dark enough for white text, not ' + str(card)
+    assert tuple(card[:3]) == (26, 31, 58), 'The app card must be exactly #1A1F3A, not ' + str(card)
     icon_px = [img.getpixel((x, y)) for x in range(1640, 1730, 6) for y in range(215, 305, 6)]
-    assert any(max(abs(p[0] - card[0]), abs(p[1] - card[1]), abs(p[2] - card[2])) > 30 for p in icon_px), 'The icon must show in the middle of the card'
-    note('PASS: the app card is ' + str(tuple(card[:3])) + ' (dark) with its icon in the middle.')
+    assert any(max(abs(p[0] - 26), abs(p[1] - 31), abs(p[2] - 58)) > 30 for p in icon_px), 'The icon must show in the middle of the card'
+    note('PASS: the app card is exactly #1A1F3A with its icon in the middle.')
     no_crash('All Apps')
     note('PASS: كل التطبيقات opens from the home shortcut and lists ' + head[0] + '.')
     keys('BACK', pause=1.5)

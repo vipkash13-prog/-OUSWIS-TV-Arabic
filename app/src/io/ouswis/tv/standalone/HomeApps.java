@@ -1174,7 +1174,7 @@ final class HomeApps {
         return tile;
     }
 
-    /** The app's official TV art (banner, else logo), found in AppBanners' order and filling the whole card. */
+    /** The app's official TV art (banner only), found in AppBanners' order and filling the whole card. */
     private static Bitmap bannerTile(Context c, String pkg) {
         AppBanners.Found found;
         try {
@@ -1198,10 +1198,10 @@ final class HomeApps {
         return out;
     }
 
-    /** No banner: the whole icon, three quarters of the card's height, on a card of the icon's own (darkened) colour. */
+    /** No banner: the whole icon, 70% of the card's height, on the flat #1A1F3A card. */
     private static Bitmap iconTile(Context c, String pkg) {
         int th = TILE_H * 2, tw = TILE_W * 2;   // drawn at twice the size, then filtered down
-        int size = Math.round(th * 0.75f);
+        int size = Math.round(th * 0.70f);
         Bitmap icon = null;
         try {
             icon = AppBanners.fullIcon(c, pkg, size, new String[1]);
@@ -1210,7 +1210,7 @@ final class HomeApps {
         if (icon == null) return iconCard(TILE_W, TILE_H);
         Bitmap b = Bitmap.createBitmap(tw, th, Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(b);
-        canvas.drawColor(AppBanners.dominant(icon));
+        canvas.drawColor(0xFF1A1F3A);   // always #1A1F3A, never the icon's colour
         canvas.drawBitmap(icon, (tw - size) / 2f, (th - size) / 2f, null);
         icon.recycle();
         return shrink(b, TILE_W, TILE_H);
