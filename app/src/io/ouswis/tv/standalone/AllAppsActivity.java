@@ -178,13 +178,6 @@ public class AllAppsActivity extends Activity {
         if(!ok){
             how=drawIcon(c,pm,pkg,name,raw,rc);
         }
-        if(tooLight(raw)){   // whatever was drawn, a white card on an OLED is never shown
-            rc.drawColor(CARD);
-            Paint lp=Design.text(Design.TEXT,64,Design.bold());
-            String n=name==null?"":name.trim();if(n.length()>3&&n.startsWith("ال"))n=n.substring(2);
-            Design.center(rc,n.isEmpty()?"?":n.substring(0,n.offsetByCodePoints(0,1)),TILE_W/2f,TILE_H/2f+22,lp);
-            how="letter (card was white)";
-        }
         AppLog.w("all-apps tile "+pkg+": "+how);
         // rounded corners, anti-aliased
         Bitmap out=Bitmap.createBitmap(TILE_W,TILE_H,Bitmap.Config.ARGB_8888);
@@ -209,14 +202,16 @@ public class AllAppsActivity extends Activity {
         }catch(Throwable t){}
         String[] names={"icon","app icon","icon resource"};
         int left=(TILE_W-ICON)/2,top=(TILE_H-ICON)/2;
-        for(int pass=0;pass<2;pass++){   // pass 1: the glyph layer on its own (a white glyph over a white background is a blank square)
+        Bitmap spare=null;   // an adaptive icon whose layers blend into one flat colour: shown only if its glyph layer alone is no better
+        for(int pass=0;pass<2;pass++){   // pass 1: the glyph layer on its own (a white glyph over a white background is a flat square)
             for(int i=0;i<tries.length;i++){
                 Drawable d=tries[i];if(d==null)continue;
                 Bitmap glyph=null;
                 try{
-                    glyph=Bitmap.createBitmap(ICON,ICON,Bitmap.Config.ARGB_8888);   // drawn alone, so a blank picture can be told from the card behind it
+                    glyph=Bitmap.createBitmap(ICON,ICON,Bitmap.Config.ARGB_8888);   // drawn alone, so an empty picture can be told from the card behind it
                     Canvas gc=new Canvas(glyph);
-                    if(d instanceof AdaptiveIconDrawable){
+                    boolean adaptive=d instanceof AdaptiveIconDrawable;
+                    if(adaptive){
                         AdaptiveIconDrawable a=(AdaptiveIconDrawable)d;
                         Bitmap layers=Bitmap.createBitmap(ICON,ICON,Bitmap.Config.ARGB_8888);
                         Canvas lc=new Canvas(layers);
@@ -231,15 +226,24 @@ public class AllAppsActivity extends Activity {
                         if(pass==1)continue;   // a plain icon has no layers: nothing new to try
                         d.setBounds(0,0,ICON,ICON);d.draw(gc);
                     }
-                    if(!blank(glyph,0,0,ICON,pass==1)&&whiteShare(glyph)<0.6f){
-                        rc.drawRect(0,0,TILE_W,TILE_H,bg);
-                        rc.drawBitmap(glyph,left,top,null);
-                        glyph.recycle();
-                        return names[i]+(pass==1?" (glyph layer)":"");
-                    }
+                    if(blank(glyph,0,0,ICON,true)){glyph.recycle();glyph=null;continue;}   // nothing visible at all
+                    boolean flat=adaptive&&pass==0&&blank(glyph,0,0,ICON,false);
+                    if(flat){if(spare==null){spare=glyph;glyph=null;}continue;}
+                    // the icon is always shown on the dark card, white or not: the light check is for banners only
+                    rc.drawRect(0,0,TILE_W,TILE_H,bg);
+                    rc.drawBitmap(glyph,left,top,null);
+                    glyph.recycle();
+                    if(spare!=null)spare.recycle();
+                    return names[i]+(pass==1?" (glyph layer)":"");
                 }catch(Throwable t){}
                 if(glyph!=null)glyph.recycle();
             }
+        }
+        if(spare!=null){
+            rc.drawRect(0,0,TILE_W,TILE_H,bg);
+            rc.drawBitmap(spare,left,top,null);
+            spare.recycle();
+            return "icon (flat)";
         }
         // nothing drew: the app's first letter on the dark card
         rc.drawRect(0,0,TILE_W,TILE_H,bg);

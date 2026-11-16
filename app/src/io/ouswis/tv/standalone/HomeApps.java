@@ -1196,7 +1196,12 @@ final class HomeApps {
         canvas.drawColor(0xFF15161C);   // banners with transparency sit on a dark background
         d.setBounds(0, 0, w, h);
         d.draw(canvas);
-        return shrink(b, TILE_W, TILE_H);
+        Bitmap out = shrink(b, TILE_W, TILE_H);
+        if (AllAppsActivity.tooLight(out, true)) {   // a pale banner glares on an OLED: the icon on the dark card instead
+            out.recycle();
+            return null;
+        }
+        return out;
     }
 
     /** No banner: the app's icon (in its proper shape, with some margin) on a dark card. */
@@ -1214,15 +1219,15 @@ final class HomeApps {
             if (icon == null) icon = pm.getApplicationIcon(ai);
         } catch (PackageManager.NameNotFoundException ignored) {
         }
-        if (icon == null) return darkTile(TILE_W, TILE_H);
+        if (icon == null) return iconCard(TILE_W, TILE_H);
         boolean adaptive = icon instanceof AdaptiveIconDrawable;
         // Drawn at the icon's own resolution (the whole tile, so the squircle's edge is smooth too), then filtered down.
-        float drawn = TILE_H * (adaptive ? 0.56f * 1.5f : 0.46f);
+        float drawn = TILE_H * (84f / 186f * (adaptive ? 1.5f : 1f));
         float k = detail(icon, drawn, drawn);
         int tw = Math.round(TILE_W * k), th = Math.round(TILE_H * k);
-        Bitmap b = darkTile(tw, th);
+        Bitmap b = iconCard(tw, th);
         Canvas canvas = new Canvas(b);
-        int size = Math.round(th * 0.56f);
+        int size = Math.round(th * 84f / 186f);   // 56 dp in the middle, as on All Apps
         float left = (tw - size) / 2f, top = (th - size) / 2f;
         if (adaptive) {
             // Adaptive icon: the layers in a squircle, like an Apple icon. Drawn apart, then filling an anti-aliased
@@ -1246,7 +1251,7 @@ final class HomeApps {
             canvas.drawRoundRect(x, y, x + size, y + size, size * 0.2237f, size * 0.2237f, p);
         } else {
             // Legacy icon (a free-form drawing with transparency): smaller, no frame.
-            int s = Math.round(th * 0.46f);
+            int s = Math.round(th * 84f / 186f);
             icon.setBounds((tw - s) / 2, (th - s) / 2, (tw + s) / 2, (th + s) / 2);
             icon.draw(canvas);
         }
@@ -1304,6 +1309,13 @@ final class HomeApps {
         Paint bg = new Paint();
         bg.setShader(new LinearGradient(0, 0, 0, h, 0xFF2B2E3A, 0xFF17191F, Shader.TileMode.CLAMP));
         new Canvas(b).drawRect(0, 0, w, h, bg);
+        return b;
+    }
+
+    /** The flat dark card (#1A1F3A) that All Apps and Recents use for an app without a banner. */
+    private static Bitmap iconCard(int w, int h) {
+        Bitmap b = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+        new Canvas(b).drawColor(0xFF1A1F3A);
         return b;
     }
 
