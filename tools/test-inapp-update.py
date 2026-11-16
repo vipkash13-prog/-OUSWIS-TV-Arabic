@@ -35,6 +35,16 @@ def click(node):
     x1, y1, x2, y2 = map(int, re.findall(r'\d+', node.get('bounds')))
     adb('shell', 'input', 'tap', str((x1+x2)//2), str((y1+y2)//2))
 
+def app_log(why):
+    # Put the app's own update lines in the run's log and the evidence, so a failure says why (never changes the test's verdict).
+    try:
+        lines = [l for l in adb('logcat', '-d', '-s', 'FreeMyTV:I').splitlines() if 'update' in l.lower()][-30:]
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        lines = ['(logcat unavailable)']
+    text = why + '\n' + '\n'.join(lines)
+    print(text, flush=True)
+    (OUT / 'inapp-update-applog.txt').write_text(text + '\n')
+
 def shot(name):
     (OUT / name).write_bytes(subprocess.check_output([ADB, 'exec-out', 'screencap', '-p'], timeout=60))
 
@@ -59,9 +69,11 @@ for _ in range(90):
         note('Bootstrap: there is not yet a published standalone APK to download. Standalone installation/update is tested separately; re-run after publication to test the full in-app download/install flow.')
         sys.exit(0)
     if state.get('state') in ('failed', 'build', 'current'):
+        app_log('update state: ' + str(state))
         raise AssertionError('Expected a newer signed download: ' + str(state))
     time.sleep(2)
 else:
+    app_log('update state at timeout: ' + str(state))
     raise AssertionError('Update download timed out: ' + str(state))
 assert int(state['version']) == EXPECTED, state
 note('PASS: the visible Updates button fetched the official GitHub APK and verified its build/signature.')
