@@ -989,6 +989,11 @@ with tempfile.TemporaryDirectory() as temp:
     white = sum(1 for x in range(0, 1920, 8) for y in range(150, 900, 8) if min(img.getpixel((x, y))) >= 235)
     assert white < 300, 'All Apps shows white areas (white cards): ' + str(white)
     note('PASS: All Apps shows no white card (' + str(white) + ' near-white samples).')
+    card = img.getpixel((1560, 320))
+    assert tuple(card[:3]) == (26, 31, 58), 'The app card must be exactly #1A1F3A, not ' + str(card)
+    icon_px = [img.getpixel((x, y)) for x in range(1655, 1712, 6) for y in range(235, 292, 6)]
+    assert any(max(abs(p[0] - 26), abs(p[1] - 31), abs(p[2] - 58)) > 60 for p in icon_px), 'The icon must show in the middle of the dark card'
+    note('PASS: the app card is exactly #1A1F3A with its icon in the middle.')
     no_crash('All Apps')
     note('PASS: كل التطبيقات opens from the home shortcut and lists ' + head[0] + '.')
     keys('BACK', pause=1.5)
