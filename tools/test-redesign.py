@@ -394,7 +394,7 @@ with tempfile.TemporaryDirectory() as temp:
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.HomeActivity')
     shot('redesign-home-loading.png')
     assert any(l == 'مباريات اليوم' for l in labels()), 'The matches row must not vanish while the data loads: ' + str(labels()[:20])
-    hero = wait_label('آخر قناة شاهدتها: SSC 1 HD', 'the last-channel card with the saved channel')
+    hero = wait_label('آخر قناة شاهدتها: SSC 1', 'the last-channel card with the saved channel')
     arabic = wait_label('يوفنتوس × ليون — دوري أبطال أوروبا للسيدات', 'the guide title of the last channel in Arabic')
     assert not any('Lyonnes' in l or 'Juventus' in l for l in labels()), 'The English match title must not show: ' + str(labels()[:12])
     img = shot('redesign-home.png'); no_crash('Home')
@@ -424,7 +424,7 @@ with tempfile.TemporaryDirectory() as temp:
     note('PASS: new home: last-channel card holds the first focus; six shortcuts and the + tile are reachable controls.')
 
     measure(os.environ.get('PERF_TAG', 'run'))
-    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.HomeActivity'); wait_label('آخر قناة شاهدتها: SSC 1 HD', 'the home again after the measurement')
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.HomeActivity'); wait_label('آخر قناة شاهدتها: SSC 1', 'the home again after the measurement')
 
     # 2. OK on the last-channel card plays it with Media3, full screen
     keys('DPAD_CENTER', pause=1.5); front('PlayerActivity')
@@ -989,11 +989,13 @@ with tempfile.TemporaryDirectory() as temp:
     white = sum(1 for x in range(0, 1920, 8) for y in range(150, 900, 8) if min(img.getpixel((x, y))) >= 235)
     assert white < 300, 'All Apps shows white areas (white cards): ' + str(white)
     note('PASS: All Apps shows no white card (' + str(white) + ' near-white samples).')
+    # the card is the icon's own colour, darkened so white text shows (the flat #1A1F3A only for an icon without colour)
     card = img.getpixel((1560, 320))
-    assert tuple(card[:3]) == (26, 31, 58), 'The app card must be exactly #1A1F3A, not ' + str(card)
-    icon_px = [img.getpixel((x, y)) for x in range(1655, 1712, 6) for y in range(235, 292, 6)]
-    assert any(max(abs(p[0] - 26), abs(p[1] - 31), abs(p[2] - 58)) > 60 for p in icon_px), 'The icon must show in the middle of the dark card'
-    note('PASS: the app card is exactly #1A1F3A with its icon in the middle.')
+    luma = 0.299 * card[0] + 0.587 * card[1] + 0.114 * card[2]
+    assert luma <= 100, 'The app card must be dark enough for white text, not ' + str(card)
+    icon_px = [img.getpixel((x, y)) for x in range(1640, 1730, 6) for y in range(215, 305, 6)]
+    assert any(max(abs(p[0] - card[0]), abs(p[1] - card[1]), abs(p[2] - card[2])) > 30 for p in icon_px), 'The icon must show in the middle of the card'
+    note('PASS: the app card is ' + str(tuple(card[:3])) + ' (dark) with its icon in the middle.')
     no_crash('All Apps')
     note('PASS: كل التطبيقات opens from the home shortcut and lists ' + head[0] + '.')
     keys('BACK', pause=1.5)
@@ -1002,6 +1004,16 @@ with tempfile.TemporaryDirectory() as temp:
     assert not any('جارٍ التحميل' in l or 'جارٍ تحميل' in l for l in again), 'All Apps opened again must show its kept list at once: ' + str(again[:8])
     assert any('تطبيق' in l and '1' in l for l in again), 'All Apps opened again lost its list: ' + str(again[:8])
     note('PASS: All Apps opened a second time shows the kept list at once (no loading text).')
+    keys('BACK', pause=1.5)
+    # which art each card used (the log of a fresh start, read before the buffer rolls over)
+    adb('shell', 'am', 'force-stop', PKG); time.sleep(2); adb('logcat', '-c')
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.AllAppsActivity'); time.sleep(8)
+    tile_log = [l for l in adb('logcat', '-d', '-s', 'FreeMyTV', check=False).splitlines() if 'all-apps tile ' in l]
+    (OUT / 'all-apps-tiles.txt').write_text('\n'.join(tile_log))
+    assert tile_log, 'All Apps logged no tile source'
+    assert not any(l.rstrip().endswith(': letter') and 'org.xbmc.kodi' in l for l in tile_log), 'Kodi shows a letter instead of its icon'
+    kodi = [l for l in tile_log if 'org.xbmc.kodi' in l]
+    note('Kodi tile: ' + (kodi[-1].split('FreeMyTV')[-1].strip() if kodi else 'Kodi is not installed in this run'))
     keys('BACK', pause=1.5)
     # Round K: Recent Apps is a screen of its own; the classic home view is never created
     classic = [f.name for f in (Path(__file__).resolve().parent.parent / 'app').rglob('*.java') if f.name != 'HomeView.java' and 'new HomeView(' in f.read_text(encoding='utf-8')]

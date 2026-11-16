@@ -1174,87 +1174,45 @@ final class HomeApps {
         return tile;
     }
 
-    /** The app's official TV art (the Android TV banner), at the highest density the app has. */
+    /** The app's official TV art (banner, else logo), found in AppBanners' order and filling the whole card. */
     private static Bitmap bannerTile(Context c, String pkg) {
-        PackageManager pm = c.getPackageManager();
-        Drawable d = null;
+        AppBanners.Found found;
         try {
-            Intent launch = launchIntent(pm, pkg);
-            if (launch != null && launch.getComponent() != null) {
-                ActivityInfo ai = pm.getActivityInfo(launch.getComponent(), 0);
-                int res = ai.getBannerResource();
-                if (res != 0) d = pm.getResourcesForApplication(ai.applicationInfo).getDrawableForDensity(res, DisplayMetrics.DENSITY_XXXHIGH, null);
-            }
-            if (d == null) d = pm.getApplicationBanner(pkg);
-        } catch (PackageManager.NameNotFoundException | RuntimeException ignored) {
+            found = AppBanners.find(c, pkg);
+        } catch (RuntimeException e) {
+            return null;
         }
-        if (d == null) return null;
+        if (found == null) return null;
+        Drawable d = found.drawable;
         float k = detail(d, TILE_W, TILE_H);
         int w = Math.round(TILE_W * k), h = Math.round(TILE_H * k);
         Bitmap b = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(b);
-        canvas.drawColor(0xFF15161C);   // banners with transparency sit on a dark background
-        d.setBounds(0, 0, w, h);
-        d.draw(canvas);
+        canvas.drawColor(0xFF15161C);   // art with transparency sits on a dark background
+        AppBanners.cover(canvas, d, w, h);
         Bitmap out = shrink(b, TILE_W, TILE_H);
-        if (AllAppsActivity.tooLight(out, true)) {   // a pale banner glares on an OLED: the icon on the dark card instead
+        if (AllAppsActivity.tooLight(out, true)) {   // a pale banner glares on an OLED: the icon on its own colour instead
             out.recycle();
             return null;
         }
         return out;
     }
 
-    /** No banner: the app's icon (in its proper shape, with some margin) on a dark card. */
+    /** No banner: the whole icon, three quarters of the card's height, on a card of the icon's own (darkened) colour. */
     private static Bitmap iconTile(Context c, String pkg) {
-        Drawable icon = null;
+        int th = TILE_H * 2, tw = TILE_W * 2;   // drawn at twice the size, then filtered down
+        int size = Math.round(th * 0.75f);
+        Bitmap icon = null;
         try {
-            PackageManager pm = c.getPackageManager();
-            ApplicationInfo ai = pm.getApplicationInfo(pkg, 0);
-            if (ai.icon != 0) {
-                try {
-                    icon = pm.getResourcesForApplication(ai).getDrawableForDensity(ai.icon, DisplayMetrics.DENSITY_XXXHIGH, null);
-                } catch (PackageManager.NameNotFoundException | RuntimeException ignored) {
-                }
-            }
-            if (icon == null) icon = pm.getApplicationIcon(ai);
-        } catch (PackageManager.NameNotFoundException ignored) {
+            icon = AppBanners.fullIcon(c, pkg, size, new String[1]);
+        } catch (RuntimeException ignored) {
         }
         if (icon == null) return iconCard(TILE_W, TILE_H);
-        boolean adaptive = icon instanceof AdaptiveIconDrawable;
-        // Drawn at the icon's own resolution (the whole tile, so the squircle's edge is smooth too), then filtered down.
-        float drawn = TILE_H * (84f / 186f * (adaptive ? 1.5f : 1f));
-        float k = detail(icon, drawn, drawn);
-        int tw = Math.round(TILE_W * k), th = Math.round(TILE_H * k);
-        Bitmap b = iconCard(tw, th);
+        Bitmap b = Bitmap.createBitmap(tw, th, Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(b);
-        int size = Math.round(th * 84f / 186f);   // 56 dp in the middle, as on All Apps
-        float left = (tw - size) / 2f, top = (th - size) / 2f;
-        if (adaptive) {
-            // Adaptive icon: the layers in a squircle, like an Apple icon. Drawn apart, then filling an anti-aliased
-            // rounded rectangle (clipPath leaves stair-stepped corners).
-            AdaptiveIconDrawable a = (AdaptiveIconDrawable) icon;
-            Bitmap layers = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
-            Canvas lc = new Canvas(layers);
-            int pad = size / 4;
-            for (Drawable layer : new Drawable[] {a.getBackground(), a.getForeground()}) {
-                if (layer == null) continue;
-                layer.setBounds(-pad, -pad, size + pad, size + pad);
-                layer.draw(lc);
-            }
-            int x = Math.round(left), y = Math.round(top);
-            BitmapShader shader = new BitmapShader(layers, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP);
-            Matrix m = new Matrix();
-            m.setTranslate(x, y);
-            shader.setLocalMatrix(m);
-            Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
-            p.setShader(shader);
-            canvas.drawRoundRect(x, y, x + size, y + size, size * 0.2237f, size * 0.2237f, p);
-        } else {
-            // Legacy icon (a free-form drawing with transparency): smaller, no frame.
-            int s = Math.round(th * 84f / 186f);
-            icon.setBounds((tw - s) / 2, (th - s) / 2, (tw + s) / 2, (th + s) / 2);
-            icon.draw(canvas);
-        }
+        canvas.drawColor(AppBanners.dominant(icon));
+        canvas.drawBitmap(icon, (tw - size) / 2f, (th - size) / 2f, null);
+        icon.recycle();
         return shrink(b, TILE_W, TILE_H);
     }
 

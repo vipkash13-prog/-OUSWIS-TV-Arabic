@@ -63,8 +63,47 @@ final class RedesignHomeView extends View {
     /** The last-watched channel, read at most once a second (it was parsed from its JSON on every frame). */
     private LiveData.Channel lastChannel(){
         long now=android.os.SystemClock.uptimeMillis();
-        if(lastAt==0||now-lastAt>1000){lastAt=now;lastCh=LiveData.lastWatched(getContext());}
+        if(lastAt==0||now-lastAt>1000){
+            lastAt=now;
+            LiveData.Channel ch=LiveData.lastWatched(getContext());
+            lastCh=ch!=null&&better!=null&&ch.id.equals(betterFor)?better:ch;
+            if(ch!=null&&!ch.id.equals(betterFor)&&!searching&&live!=null){
+                searching=true;
+                final LiveData.Channel want=ch;
+                new Thread(()->{
+                    LiveData.Channel found=betterCopy(want);
+                    post(()->{better=found;betterFor=want.id;searching=false;lastAt=0;invalidate();});
+                }).start();
+            }
+        }
         return lastCh;
+    }
+    private volatile LiveData.Channel better;
+    private volatile String betterFor;
+    private volatile boolean searching;
+    /**
+     * The card plays the best copy of the channel that is already in memory: HD or FHD over an unmarked or SD one
+     * (never 4K or H.265, and never a copy the device failed to decode). Worked out on a background thread, once per channel.
+     */
+    private LiveData.Channel betterCopy(LiveData.Channel ch){
+        if(ch==null||live==null)return ch;
+        try{
+            String key=Titles.channelKey(ch.name);
+            if(key.isEmpty())return ch;
+            LiveData.Channel best=ch;
+            java.util.List<LiveData.Category> cats;
+            synchronized(live.categories){cats=new ArrayList<>(live.categories);}
+            for(LiveData.Category cat:cats){
+                java.util.List<LiveData.Channel> list=live.cached(cat.id);
+                if(list==null)continue;
+                for(LiveData.Channel x:new ArrayList<>(list)){
+                    if(x.id.equals(best.id)||Titles.qualityPenalty(x.name)>=Titles.qualityPenalty(best.name)||Titles.qualityPenalty(x.name)>=3)continue;
+                    if(!key.equals(Titles.channelKey(x.name))||MatchChannels.isUnsupported(getContext(),x.id))continue;
+                    best=x;
+                }
+            }
+            return best;
+        }catch(RuntimeException e){return ch;}
     }
     private final java.util.HashMap<String,Paint> texts=new java.util.HashMap<>();
     /** A text paint made once per (colour, size, weight): drawing never makes one. Callers must not change what they get. */
@@ -394,7 +433,7 @@ final class RedesignHomeView extends View {
                 float lw=logo.getWidth()*sc,lh=logo.getHeight()*sc;
                 bm.set(thumb.centerX()-lw/2,thumb.centerY()-lh/2,thumb.centerX()+lw/2,thumb.centerY()+lh/2);p.setColor(0xFFFFFFFF);c.drawBitmap(logo,null,bm,p);
             }else{   // no logo: the channel's short name on the dark tile
-                String shortName=shortName(ch.name);
+                String shortName=shortName(Titles.channelName(ch.name));
                 Paint sn=Design.text(Design.TEXT,56,Design.bold());
                 while(sn.getTextSize()>26&&sn.measureText(shortName)>tw-40)sn.setTextSize(sn.getTextSize()-2);   // smaller, never cut
                 Design.center(c,shortName,thumb.centerX(),thumb.centerY()+sn.getTextSize()*0.35f,sn);
@@ -407,7 +446,7 @@ final class RedesignHomeView extends View {
         }else{
             Design.right(c,"آخر قناة شاهدتها",x,box.top+50,tx(Design.GOLD,22,Design.regular()));
             Paint nameP=tx(Design.TEXT,44,Design.bold());
-            Design.right(c,Design.fit(ch.name,nameP,x-box.left-40),x,box.top+104,nameP);
+            Design.right(c,Design.fit(Titles.channelName(ch.name),nameP,x-box.left-40),x,box.top+104,nameP);
             long now=System.currentTimeMillis();
             List<LiveData.Program> guide=live==null?null:live.guide(ch.id);
             LiveData.Program cur=LiveData.current(guide,now),nxt=LiveData.following(guide,now);
@@ -455,7 +494,7 @@ final class RedesignHomeView extends View {
         long now=System.currentTimeMillis();
         List<LiveData.Program> guide=live==null?null:live.guide(ch.id);
         LiveData.Program cur=LiveData.current(guide,now);
-        return "آخر قناة شاهدتها: "+ch.name+(cur==null?" · الآن: بث مباشر":" · الآن: "+cur.shown);
+        return "آخر قناة شاهدتها: "+Titles.channelName(ch.name)+(cur==null?" · الآن: بث مباشر":" · الآن: "+cur.shown);
     }
     private String fmt(String pattern,long at){
         return Design.clock(at,pattern);
@@ -674,7 +713,7 @@ final class RedesignHomeView extends View {
                 break;
             case 1:
                 if(cl==0){
-                    LiveData.Channel ch=LiveData.lastWatched(ctx);
+                    LiveData.Channel ch=lastChannel();
                     if(ch!=null&&account!=null)start(PlayerActivity.intent(ctx,ch,""));   // the player finds the channel's own section
                     else start(new Intent(ctx,LiveActivity.class));
                 }else prayerDetails();

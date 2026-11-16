@@ -147,8 +147,8 @@ public class AllAppsActivity extends Activity {
     }
     private static final int PRELOAD_TILES=25;   // the first screen is 15 cards; a few rows more
 
-    // A card is 16:9 like the home screen's app tiles: the app's TV banner fills it; an app without one shows its icon, 56 dp, in the middle.
-    private static final int CARD=0xFF1A1F3A,TILE_W=330,TILE_H=186,ICON=84;   // reference pixels (1 dp = 1.5 px)
+    // A card is 16:9 like the home screen's app tiles: the app's TV banner fills it; an app without one shows its whole icon, 75% of the card's height, on a card of the icon's own colour.
+    private static final int CARD=0xFF1A1F3A,TILE_W=330,TILE_H=186;   // reference pixels (1 dp = 1.5 px)
 
     /** The app's card, made off the UI thread: banner, else icon on a dark card (never a blank white square). */
     /** More than this share of a card that is light (white, grey, yellow…) and it becomes the dark card with the icon. */
@@ -160,23 +160,20 @@ public class AllAppsActivity extends Activity {
         PackageManager pm=c.getPackageManager();
         Bitmap raw=Bitmap.createBitmap(TILE_W,TILE_H,Bitmap.Config.ARGB_8888);
         Canvas rc=new Canvas(raw);
-        Drawable banner=null;
-        try{
-            Intent launch=HomeApps.launchIntent(pm,pkg);
-            if(launch!=null&&launch.getComponent()!=null){ActivityInfo ai=pm.getActivityInfo(launch.getComponent(),0);banner=ai.loadBanner(pm);}
-            if(banner==null)banner=pm.getApplicationBanner(pkg);
-        }catch(Throwable t){banner=null;}
+        AppBanners.Found found=null;
+        try{found=AppBanners.find(c,pkg);}catch(Throwable t){found=null;}
         boolean ok=false;
-        if(banner!=null){
+        String how="banner";
+        if(found!=null){
             try{
-                rc.drawColor(CARD);   // a banner with transparency sits on a dark card
-                banner.setBounds(0,0,TILE_W,TILE_H);banner.draw(rc);
-                ok=!blank(raw)&&!tooLight(raw,true);   // a banner that is mostly white is no banner: the icon on the dark card instead
+                rc.drawColor(CARD);   // art with transparency sits on a dark card
+                AppBanners.cover(rc,found.drawable,TILE_W,TILE_H);
+                ok=!blank(raw)&&!tooLight(raw,true);   // art that is mostly white is no banner: the icon on its own colour instead
+                how=found.how;
             }catch(Throwable t){ok=false;}
         }
-        String how="banner";
         if(!ok){
-            how=drawIcon(c,pm,pkg,name,raw,rc);
+            how=drawIcon(c,pkg,name,raw,rc);
         }
         AppLog.w("all-apps tile "+pkg+": "+how);
         // rounded corners, anti-aliased
@@ -187,66 +184,20 @@ public class AllAppsActivity extends Activity {
         return out;
     }
 
-    /** The icon, in the middle of a dark card. Tries the icon the launcher shows, then the app's own icon resource, then the glyph layer alone, then the first letter. */
-    private static String drawIcon(Context c,PackageManager pm,String pkg,String name,Bitmap raw,Canvas rc){
-        Paint bg=new Paint();bg.setColor(CARD);   // #1A1F3A, flat
-        Drawable[] tries=new Drawable[3];
-        try{
-            Intent launch=HomeApps.launchIntent(pm,pkg);
-            if(launch!=null&&launch.getComponent()!=null)tries[0]=pm.getActivityInfo(launch.getComponent(),0).loadIcon(pm);
-        }catch(Throwable t){}
-        try{tries[1]=pm.getApplicationInfo(pkg,0).loadIcon(pm);}catch(Throwable t){}
-        try{
-            android.content.pm.ApplicationInfo ai=pm.getApplicationInfo(pkg,0);
-            if(ai.icon!=0)tries[2]=pm.getResourcesForApplication(ai).getDrawableForDensity(ai.icon,android.util.DisplayMetrics.DENSITY_XXXHIGH,null);
-        }catch(Throwable t){}
-        String[] names={"icon","app icon","icon resource"};
-        int left=(TILE_W-ICON)/2,top=(TILE_H-ICON)/2;
-        Bitmap spare=null;   // an adaptive icon whose layers blend into one flat colour: shown only if its glyph layer alone is no better
-        for(int pass=0;pass<2;pass++){   // pass 1: the glyph layer on its own (a white glyph over a white background is a flat square)
-            for(int i=0;i<tries.length;i++){
-                Drawable d=tries[i];if(d==null)continue;
-                Bitmap glyph=null;
-                try{
-                    glyph=Bitmap.createBitmap(ICON,ICON,Bitmap.Config.ARGB_8888);   // drawn alone, so an empty picture can be told from the card behind it
-                    Canvas gc=new Canvas(glyph);
-                    boolean adaptive=d instanceof AdaptiveIconDrawable;
-                    if(adaptive){
-                        AdaptiveIconDrawable a=(AdaptiveIconDrawable)d;
-                        Bitmap layers=Bitmap.createBitmap(ICON,ICON,Bitmap.Config.ARGB_8888);
-                        Canvas lc=new Canvas(layers);
-                        int pad=ICON/4;
-                        Drawable[] ls=pass==0?new Drawable[]{a.getBackground(),a.getForeground()}:new Drawable[]{a.getForeground()};
-                        for(Drawable layer:ls){if(layer==null)continue;layer.setBounds(-pad,-pad,ICON+pad,ICON+pad);layer.draw(lc);}
-                        Paint sp=new Paint(Paint.ANTI_ALIAS_FLAG);
-                        sp.setShader(new BitmapShader(layers,Shader.TileMode.CLAMP,Shader.TileMode.CLAMP));
-                        gc.drawRoundRect(0,0,ICON,ICON,ICON*0.2237f,ICON*0.2237f,sp);   // the squircle, like the launcher's
-                        layers.recycle();
-                    }else{
-                        if(pass==1)continue;   // a plain icon has no layers: nothing new to try
-                        d.setBounds(0,0,ICON,ICON);d.draw(gc);
-                    }
-                    if(blank(glyph,0,0,ICON,true)){glyph.recycle();glyph=null;continue;}   // nothing visible at all
-                    boolean flat=adaptive&&pass==0&&blank(glyph,0,0,ICON,false);
-                    if(flat){if(spare==null){spare=glyph;glyph=null;}continue;}
-                    // the icon is always shown on the dark card, white or not: the light check is for banners only
-                    rc.drawRect(0,0,TILE_W,TILE_H,bg);
-                    rc.drawBitmap(glyph,left,top,null);
-                    glyph.recycle();
-                    if(spare!=null)spare.recycle();
-                    return names[i]+(pass==1?" (glyph layer)":"");
-                }catch(Throwable t){}
-                if(glyph!=null)glyph.recycle();
-            }
-        }
-        if(spare!=null){
-            rc.drawRect(0,0,TILE_W,TILE_H,bg);
-            rc.drawBitmap(spare,left,top,null);
-            spare.recycle();
-            return "icon (flat)";
+    /** No banner: the whole icon, three quarters of the card's height, in the middle of a card of the icon's own (darkened) colour. */
+    private static String drawIcon(Context c,String pkg,String name,Bitmap raw,Canvas rc){
+        int size=Math.round(TILE_H*0.75f);
+        String[] how={""};
+        Bitmap glyph=null;
+        try{glyph=AppBanners.fullIcon(c,pkg,size,how);}catch(Throwable t){glyph=null;}
+        if(glyph!=null){
+            rc.drawColor(AppBanners.dominant(glyph));
+            rc.drawBitmap(glyph,(TILE_W-size)/2f,(TILE_H-size)/2f,null);
+            glyph.recycle();
+            return how[0];
         }
         // nothing drew: the app's first letter on the dark card
-        rc.drawRect(0,0,TILE_W,TILE_H,bg);
+        rc.drawColor(CARD);
         Paint lp=Design.text(Design.TEXT,64,Design.bold());
         String n=name==null?"":name.trim();if(n.length()>3&&n.startsWith("ال"))n=n.substring(2);
         Design.center(rc,n.isEmpty()?"?":n.substring(0,n.offsetByCodePoints(0,1)),TILE_W/2f,TILE_H/2f+22,lp);
