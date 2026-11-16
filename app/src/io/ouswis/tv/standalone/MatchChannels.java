@@ -373,6 +373,26 @@ final class MatchChannels {
         return PlayerActivity.intent(c,ch,"").putExtra(PlayerActivity.EXTRA_MATCH_KEY,m.key).putExtra(PlayerActivity.EXTRA_LINKED,"1")
                 .putExtra(PlayerActivity.EXTRA_SUGGESTED,android.text.TextUtils.join(",",suggestions(c,m)));
     }
+    /** Told by {@link ChannelHints} when the sites' channels changed: the answers are worked out again (the guide is not read again). */
+    static void hintsChanged(){clearAnswers();fire();}
+    /**
+     * The viewer's own channel for what the sites (Yallakora, Filgoal) say broadcasts the match: "beIN Sports MENA 4" is
+     * the subscription's "beIN SPORTS 4 HD". The same channel under any prefix and quality tag counts; HD first, then the
+     * other copies, RAW, LQ, 4K and H.265 only when nothing better exists. A copy this device can't decode is skipped.
+     */
+    static LiveData.Channel fromHints(Context c,MatchCarouselView.Match m){
+        for(String raw:ChannelHints.channelsFor(m)){
+            String key=Titles.channelKey(raw);
+            if(key.isEmpty())continue;
+            LiveData.Channel best=null;
+            for(LiveData.Channel ch:guideChannels.values()){
+                if(isUnsupported(c,ch.id)||!Titles.channelKey(ch.name).equals(key))continue;
+                if(best==null||rank(ch)<rank(best))best=ch;
+            }
+            if(best!=null)return best;
+        }
+        return null;
+    }
     /** A channel the feed itself names for the match ("beIN SPORTS 2"), when the subscription has exactly that channel. */
     static LiveData.Channel fromBroadcast(MatchCarouselView.Match m){
         if(m==null||m.broadcasts.isEmpty())return null;
@@ -444,6 +464,7 @@ final class MatchChannels {
     static LiveData.Channel forMatch(Context c,XtreamAccount a,MatchCarouselView.Match m){
         if(m==null)return null;
         scanGuides(c,a);
+        ChannelHints.refreshIfStale(c);   // background, at most every 30 minutes
         LiveData.Channel manual=matchPick(c,m.key);
         if(manual!=null&&!contradicts(manual,m)&&!isUnsupported(c,manual.id))return manual;
         if(!m.epgChannelId.isEmpty())return notRefused(c,m.key,guideChannels.get(m.epgChannelId));
@@ -454,8 +475,15 @@ final class MatchChannels {
             final Context app=c.getApplicationContext();
             resolver.execute(()->{
                 try{
-                    // only the guide confirms a channel: the feed's broadcaster and the league's pick are suggestions (see suggestions)
-                    LiveData.Channel ch=notRefused(app,m.key,fromGuide(m));
+                    // the sites' broadcaster first (unless the guide says that channel shows another match), the guide as the backup;
+                    // the league's pick stays a suggestion (see suggestions)
+                    LiveData.Channel guide=fromGuide(m),hint=fromHints(app,m);
+                    final boolean notInSubscription=hint==null;
+                    if(hint!=null&&guide!=null&&contradicts(hint,m))hint=null;
+                    LiveData.Channel ch=notRefused(app,m.key,hint!=null?hint:guide);
+                    if(notInSubscription&&!ChannelHints.channelsFor(m).isEmpty()&&hintMissed.add(m.key)){
+                        try{PlayLog.add(app,-1,"قناة المباراة: "+m.home+" × "+m.away+" ← "+ChannelHints.channelsFor(m)+" ("+ChannelHints.siteFor(m)+") ليست في اشتراكك"+(guide!=null?" · استعملت الدليل":""));}catch(Throwable ignored){}
+                    }
                     confirmed.put(m.key,ch==null?NONE:ch);
                     fire();
                 }catch(Throwable ignored){}finally{resolving.remove(m.key);}
@@ -467,6 +495,7 @@ final class MatchChannels {
     static boolean resolved(Context c,MatchCarouselView.Match m){
         return m!=null&&(!m.epgChannelId.isEmpty()||confirmed.containsKey(m.key)||matchPick(c,m.key)!=null);
     }
+    private static final java.util.Set<String> hintMissed=java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<String,Boolean>());   // each match is logged once
     private static final java.util.Set<String> resolving=java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<String,Boolean>());
     private static final java.util.concurrent.ExecutorService resolver=java.util.concurrent.Executors.newSingleThreadExecutor();
 
