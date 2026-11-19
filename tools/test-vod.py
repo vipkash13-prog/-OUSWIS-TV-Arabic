@@ -351,7 +351,7 @@ try:
     def menu_labels():
         return [l for l in labels() if l.startswith('الصوت: ') or l.startswith('الترجمة: ') or 'مسار صوت واحد' in l or 'لا توجد ترجمات' in l]
     def play(mid, name, ext):
-        adb('shell', 'am', 'start', '-W', '-n', PKG + '/.VodPlayerActivity', '--es', 'id', mid, '--es', 'name', "'" + name + "'",   # quoted: adb shell joins the words again '--es', 'ext', ext, '--es', 'cat', '2')
+        adb('shell', 'am', 'start', '-W', '-n', PKG + '/.VodPlayerActivity', '--es', 'id', mid, '--es', 'name', "'" + name + "'", '--es', 'ext', ext, '--es', 'cat', '2')
         front('VodPlayerActivity'); time.sleep(6)
     adb('shell', 'am', 'force-stop', PKG); time.sleep(1)
     play('604', 'Two Voices', 'mkv')
