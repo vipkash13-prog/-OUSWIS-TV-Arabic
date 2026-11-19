@@ -115,7 +115,7 @@ final class MatchChannels {
     /** The subscription changed: nothing read for the old one stays in memory (the files and preferences are AccountData's). */
     static void reset(){
         epoch++;
-        guides.clear();guideChannels.clear();confirmed.clear();optionsMap.clear();
+        guides.clear();guideChannels.clear();idxExact=null;idxLoose=null;confirmed.clear();optionsMap.clear();
         merged=null;mergedFor=null;leaguePicks=null;matchPicksJson=null;bad=null;guideAt=0;
         fire();
     }
@@ -154,6 +154,7 @@ final class MatchChannels {
      */
     static void scanGuides(Context c,XtreamAccount a){
         if(a==null||scanning||System.currentTimeMillis()-guideAt<GUIDE_TTL)return;
+        if(Busy.on())return;   // later: not while a channel list or a channel is on screen
         scanning=true;
         final int ep=epoch;
         final Context app=c.getApplicationContext();
@@ -167,6 +168,7 @@ final class MatchChannels {
                 final long now=System.currentTimeMillis();
                 for(LiveData.Channel ch:list)jobs.add(pool.submit(()->{
                     try{
+                        while(Busy.on()&&ep==epoch)Thread.sleep(500);   // wait while the viewer is in the live screen, then go on
                         if(ep!=epoch)return;   // the subscription changed: no more requests for the old one
                         java.util.List<LiveData.Program> day=null;
                         try{day=LiveData.fetchDay(a,ch.id);}catch(Exception ignored){}
@@ -177,7 +179,10 @@ final class MatchChannels {
                         if(ep==epoch){guides.put(ch.id,keep);guideChannels.put(ch.id,ch);}   // not if the subscription changed meanwhile
                     }catch(Exception ignored){}
                 }));
-                for(java.util.concurrent.Future<?> j:jobs){try{j.get(60,java.util.concurrent.TimeUnit.SECONDS);}catch(Exception ignored){}}
+                for(java.util.concurrent.Future<?> j:jobs){   // up to a minute of quiet waiting each; the time the viewer spends in the live screen does not count
+                    int idle=0;
+                    while(idle<12){try{j.get(5,java.util.concurrent.TimeUnit.SECONDS);break;}catch(java.util.concurrent.TimeoutException te){if(Busy.on())idle=0;else idle++;}catch(Exception e){break;}}
+                }
                 pool.shutdownNow();
                 if(ep==epoch&&!guides.isEmpty())saveGuideFile(app,a);
             }catch(Throwable ignored){}
@@ -373,6 +378,83 @@ final class MatchChannels {
         return PlayerActivity.intent(c,ch,"").putExtra(PlayerActivity.EXTRA_MATCH_KEY,m.key).putExtra(PlayerActivity.EXTRA_LINKED,"1")
                 .putExtra(PlayerActivity.EXTRA_SUGGESTED,android.text.TextUtils.join(",",suggestions(c,m)));
     }
+    /** Told by {@link ChannelHints} when the sites' channels changed: the answers are worked out again (the guide is not read again). */
+    static void hintsChanged(){clearAnswers();fire();}
+    /**
+     * The viewer's own channel for what the sites (Yallakora, Filgoal) say broadcasts the match: "beIN Sports MENA 4" is
+     * the subscription's "beIN SPORTS 4 HD". The same channel under any prefix and quality tag counts; HD first, then the
+     * other copies, RAW, LQ, 4K and H.265 only when nothing better exists. A copy this device can't decode is skipped.
+     */
+    static LiveData.Channel fromHints(Context c,MatchCarouselView.Match m){
+        java.util.List<String> names=ChannelHints.channelsFor(m);
+        java.util.Map<String,java.util.List<LiveData.Channel>> exact=idxExact,loose=idxLoose;
+        for(int pass=0;pass<2;pass++){   // the exact name first, then the loose one (a decorated "SP⚽RTS" that is not a clean O)
+            for(String raw:names){
+                String key=pass==0?ChannelHints.hintKey(raw):ChannelHints.looseKey(raw);
+                if(key.length()<4)continue;
+                java.util.List<LiveData.Channel> pool=null;
+                java.util.Map<String,java.util.List<LiveData.Channel>> idx=pass==0?exact:loose;
+                if(idx!=null)pool=idx.get(key);
+                if(pool==null){   // no index yet: only what the guide scan read
+                    pool=new ArrayList<>();
+                    for(LiveData.Channel ch:guideChannels.values()){
+                        String mine=pass==0?ChannelHints.hintKey(ch.name):ChannelHints.looseKey(ch.name);
+                        if(mine.equals(key))pool.add(ch);
+                    }
+                }
+                LiveData.Channel best=null;
+                for(LiveData.Channel ch:pool){
+                    if(isUnsupported(c,ch.id))continue;
+                    if(best==null||hintRank(ch)<hintRank(best))best=ch;
+                }
+                if(best!=null)return best;
+            }
+        }
+        return null;
+    }
+    private static final Pattern PROVIDER_PREFIX=Pattern.compile("^\\s*(?:[A-Za-z]{2,3}|\\d{1,2}[Kk])\\s*[|:]\\s*");
+    /** The quality of a copy by its name without the provider's prefix: "UHD: beIN Sports 3 HD" is an HD copy, not a 4K one. */
+    private static int bodyQuality(String name){return qualityPenalty(PROVIDER_PREFIX.matcher(name==null?"":name).replaceFirst(""));}
+    /** Which copy of the channel the site named: quality first (HD, then FHD, unmarked, SD, RAW/LQ/H.265 last), then an Arabic or unprefixed name before a foreign one ("UHD:" is no language). */
+    private static int hintRank(LiveData.Channel ch){
+        String n=ch.name==null?"":ch.name;
+        boolean foreign=FOREIGN.matcher(n).find()&&!n.trim().toUpperCase(java.util.Locale.ROOT).startsWith("UHD");
+        return bodyQuality(n)*100_000_000+(foreign?10_000_000:0)+(FHD.matcher(n).find()&&!HD_ONLY.matcher(n).find()?500_000:0)+number(canonical(n))*1000+(n.hashCode()&511);
+    }
+    // Every sports channel of every saved section, by name key: the guide scan reads only the sections it chose, and an HD copy may sit in another one.
+    private static volatile java.util.Map<String,java.util.List<LiveData.Channel>> idxExact,idxLoose;
+    private static volatile long idxAt;
+    private static volatile int idxEpoch=-1;
+    /** Builds that index from the saved sections (background only; again every few hours or when the subscription changes). */
+    static void ensureIndex(Context c,XtreamAccount a){
+        if(a==null)return;
+        long now=System.currentTimeMillis();
+        if(idxExact!=null&&idxEpoch==epoch&&now-idxAt<GUIDE_TTL)return;
+        final int ep=epoch;
+        java.util.Map<String,java.util.List<LiveData.Channel>> ex=new java.util.HashMap<>(),lo=new java.util.HashMap<>();
+        java.util.Set<String> seen=new java.util.HashSet<>();
+        try{
+            File[] files=c.getFilesDir().listFiles();
+            String prefix="live-cat-"+Integer.toHexString((a.server+"|"+a.user).hashCode())+"-";
+            if(files!=null)for(File f:files){
+                String fn=f.getName();
+                if(!fn.startsWith(prefix)||!fn.endsWith(".json"))continue;
+                try{
+                    JSONArray items=new JSONObject(new String(Files.readAllBytes(f.toPath()),StandardCharsets.UTF_8)).getJSONArray("items");
+                    for(int i=0;i<items.length();i++){
+                        LiveData.Channel ch=LiveData.Channel.from(items.optJSONObject(i));
+                        if(ch==null||ch.name==null||sportRank(ch.name)>=2||!seen.add(ch.id))continue;
+                        String k=ChannelHints.hintKey(ch.name),l=ChannelHints.looseKey(ch.name);
+                        if(k.length()<4)continue;
+                        ex.computeIfAbsent(k,x->new ArrayList<>()).add(ch);
+                        lo.computeIfAbsent(l,x->new ArrayList<>()).add(ch);
+                    }
+                }catch(Exception ignored){}
+            }
+        }catch(Throwable ignored){}
+        if(ep!=epoch||ex.isEmpty())return;
+        idxExact=ex;idxLoose=lo;idxEpoch=ep;idxAt=now;
+    }
     /** A channel the feed itself names for the match ("beIN SPORTS 2"), when the subscription has exactly that channel. */
     static LiveData.Channel fromBroadcast(MatchCarouselView.Match m){
         if(m==null||m.broadcasts.isEmpty())return null;
@@ -444,6 +526,7 @@ final class MatchChannels {
     static LiveData.Channel forMatch(Context c,XtreamAccount a,MatchCarouselView.Match m){
         if(m==null)return null;
         scanGuides(c,a);
+        ChannelHints.refreshIfStale(c);   // background, at most every 30 minutes
         LiveData.Channel manual=matchPick(c,m.key);
         if(manual!=null&&!contradicts(manual,m)&&!isUnsupported(c,manual.id))return manual;
         if(!m.epgChannelId.isEmpty())return notRefused(c,m.key,guideChannels.get(m.epgChannelId));
@@ -454,8 +537,20 @@ final class MatchChannels {
             final Context app=c.getApplicationContext();
             resolver.execute(()->{
                 try{
-                    // only the guide confirms a channel: the feed's broadcaster and the league's pick are suggestions (see suggestions)
-                    LiveData.Channel ch=notRefused(app,m.key,fromGuide(m));
+                    // the sites' broadcaster first (unless the guide says that channel shows another match), the guide as the backup;
+                    // the league's pick stays a suggestion (see suggestions)
+                    ensureIndex(app,a);
+                    LiveData.Channel guide=fromGuide(m),hint=fromHints(app,m);
+                    final boolean notInSubscription=hint==null;
+                    if(hint!=null&&guide!=null&&contradicts(hint,m))hint=null;
+                    LiveData.Channel ch=notRefused(app,m.key,hint!=null?hint:guide);
+                    if(notInSubscription&&!ChannelHints.channelsFor(m).isEmpty()&&hintMissed.add(m.key)){
+                        try{PlayLog.add(app,-1,"قناة المباراة: "+m.home+" × "+m.away+" ← "+ChannelHints.channelsFor(m)+" ("+ChannelHints.siteFor(m)+") ليست في اشتراكك"+(guide!=null?" · استعملت الدليل":""));}catch(Throwable ignored){}
+                    }
+                    // a channel that is not a plain HD copy: say which other copies the subscription has (in every section, not only the sports ones the scan reads), once per channel
+                    if(hint!=null&&a!=null&&bodyQuality(hint.name)>0&&copiesLogged.add(ChannelHints.hintKey(hint.name))){
+                        try{PlayLog.add(app,-1,"نسخ القناة: "+hint.name+" ← اخترتها لأنها الوحيدة التي قرأتها؛ في كل أقسامك: "+copiesOnDisk(app,a,ChannelHints.hintKey(hint.name),hint.id));}catch(Throwable ignored){}
+                    }
                     confirmed.put(m.key,ch==null?NONE:ch);
                     fire();
                 }catch(Throwable ignored){}finally{resolving.remove(m.key);}
@@ -467,6 +562,31 @@ final class MatchChannels {
     static boolean resolved(Context c,MatchCarouselView.Match m){
         return m!=null&&(!m.epgChannelId.isEmpty()||confirmed.containsKey(m.key)||matchPick(c,m.key)!=null);
     }
+    private static final java.util.Set<String> copiesLogged=java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<String,Boolean>());
+    /** Every channel of the subscription's saved sections that reads as the same channel (name only, for the playback log); off the UI thread. */
+    private static String copiesOnDisk(Context c,XtreamAccount a,String key,String chosenId){
+        StringBuilder sb=new StringBuilder();int n=0;
+        File[] files=c.getFilesDir().listFiles();
+        if(files==null)return "—";
+        String prefix="live-cat-"+Integer.toHexString((a.server+"|"+a.user).hashCode())+"-";
+        for(File f:files){
+            String fn=f.getName();
+            if(!fn.startsWith(prefix)||!fn.endsWith(".json"))continue;
+            try{
+                JSONArray items=new JSONObject(new String(Files.readAllBytes(f.toPath()),StandardCharsets.UTF_8)).getJSONArray("items");
+                for(int i=0;i<items.length()&&n<8;i++){
+                    LiveData.Channel x=LiveData.Channel.from(items.optJSONObject(i));
+                    if(x==null||x.name==null||!ChannelHints.hintKey(x.name).equals(key))continue;
+                    if(n++>0)sb.append(" | ");
+                    sb.append(x.name);
+                    if(x.id.equals(chosenId))sb.append(" (المختارة)");
+                    else if(!guideChannels.containsKey(x.id))sb.append(" (خارج ما قرأه)");
+                }
+            }catch(Exception ignored){}
+        }
+        return n==0?"—":sb.toString();
+    }
+    private static final java.util.Set<String> hintMissed=java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<String,Boolean>());   // each match is logged once
     private static final java.util.Set<String> resolving=java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<String,Boolean>());
     private static final java.util.concurrent.ExecutorService resolver=java.util.concurrent.Executors.newSingleThreadExecutor();
 

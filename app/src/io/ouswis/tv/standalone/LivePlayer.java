@@ -39,7 +39,7 @@ final class LivePlayer {
     static ExoPlayer create(Context c){return create(c,false);}
 
     /**
-     * `full`: the full-screen channel, with a longer buffer (15 to 50 s, never more than about 24 or 48 MB) and a short start (1 s, 2.5 s after a stall).
+     * `full`: the full-screen channel, with a longer buffer (15 to 50 s, never more than about 24 or 48 MB) and a start after 2 s of buffer (4 s after a stall).
      * Whatever player still exists is released first: the provider's account may allow only one connection.
      */
     static synchronized ExoPlayer create(Context c,boolean full){
@@ -50,7 +50,7 @@ final class LivePlayer {
         if(full){
             ActivityManager am=(ActivityManager)c.getSystemService(Context.ACTIVITY_SERVICE);
             int mb=am!=null&&am.isLowRamDevice()?24:48;
-            lb.setBufferDurationsMs(20_000,60_000,8_000,10_000)   // wait for 8 s before the first picture and 10 s after a stall, even if the channel is 10-15 s behind live
+            lb.setBufferDurationsMs(20_000,60_000,2_000,4_000)   // the picture starts after 2 s of buffer (4 s after a stall); the buffer keeps filling up to 60 s for steadiness
                .setTargetBufferBytes(mb*1024*1024).setPrioritizeTimeOverSizeThresholds(false);
         }else lb.setBufferDurationsMs(4_000,16_000,1_500,3_000);
         current=new ExoPlayer.Builder(c.getApplicationContext())

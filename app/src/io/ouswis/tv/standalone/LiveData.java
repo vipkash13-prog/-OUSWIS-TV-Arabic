@@ -37,8 +37,8 @@ final class LiveData {
         }
     }
     static final class Category {
-        final String id,name;int count=-1;
-        Category(String id,String name){this.id=id;this.name=name;}
+        final String id,name,shown;int count=-1;   // shown: the name without the provider's language prefix, made once
+        Category(String id,String name){this.id=id;this.name=name;this.shown=Titles.sectionName(name);}
     }
     static final class Program {
         final String title,shown;final long start,end;   // shown: the Arabic text of a match title, else the title itself
@@ -51,7 +51,8 @@ final class LiveData {
     private final XtreamAccount account;
     private final SharedPreferences store;
     private final Handler main=new Handler(Looper.getMainLooper());
-    private final ExecutorService io=Executors.newFixedThreadPool(2);
+    private final ExecutorService io=Executors.newFixedThreadPool(2);      // guides
+    private final ExecutorService lists=Executors.newFixedThreadPool(2);   // sections and their channels: never queued behind guide requests
     private final Map<String,List<Channel>> channels=new HashMap<>();
     private final Map<String,Long> epgAt=new HashMap<>();
     private final Map<String,List<Program>> epg=new HashMap<>();
@@ -65,7 +66,7 @@ final class LiveData {
         this.ctx=c.getApplicationContext();this.account=account;
         store=ctx.getSharedPreferences("ouswis-live",Context.MODE_PRIVATE);
     }
-    void shutdown(){io.shutdownNow();}
+    void shutdown(){io.shutdownNow();lists.shutdownNow();}
     private File file(String name){return new File(ctx.getFilesDir(),"live-"+name+".json");}
     private String key(){return AccountData.key(account);}
 
@@ -73,7 +74,7 @@ final class LiveData {
 
     /** Shows the cached categories at once and refreshes them in the background when they are over a day old. */
     void loadCategories(Runnable changed){
-        io.execute(()->{
+        lists.execute(()->{
             boolean fresh=false;
             try{
                 File f=file("categories-"+key());
@@ -90,7 +91,7 @@ final class LiveData {
         });
     }
     void refresh(Runnable changed){
-        io.execute(()->{
+        lists.execute(()->{
             synchronized(channels){channels.clear();}
             refreshCategories(changed);
         });
@@ -143,13 +144,16 @@ final class LiveData {
             if(w!=null){w.add(changed);return;}   // already on its way: one request, every screen is told
             w=new ArrayList<>();w.add(changed);waiting.put(category,w);
         }
-        io.execute(()->{
+        final long asked=android.os.SystemClock.elapsedRealtime();
+        lists.execute(()->{
             boolean fresh=false,ok=false;
+            final long started=android.os.SystemClock.elapsedRealtime();
             try{
                 File f=file("cat-"+key()+"-"+category.replaceAll("[^A-Za-z0-9_-]",""));
                 if(f.exists()){
                     JSONObject o=new JSONObject(new String(Files.readAllBytes(f.toPath()),StandardCharsets.UTF_8));
                     putChannels(category,parse(o.getJSONArray("items")));
+                    noteLoad(category,"من الملف",asked,started);
                     fresh=System.currentTimeMillis()-o.optLong("at")<DAY;
                     ok=true;
                     if(!fresh)main.post(()->tell(category,false));   // an old file is shown at once, the network answer follows
@@ -160,6 +164,7 @@ final class LiveData {
                 JSONArray rows=new JSONArray(XtreamAccount.get(account.api("get_live_streams","category_id="+XtreamAccount.enc(category))));
                 List<Channel> list=parse(rows);
                 putChannels(category,list);ok=true;
+                noteLoad(category,"من المزوّد",asked,started);
                 JSONArray slim=new JSONArray();for(Channel c:list)slim.put(c.json());
                 JSONObject o=new JSONObject().put("at",System.currentTimeMillis()).put("items",slim);
                 Files.write(file("cat-"+key()+"-"+category.replaceAll("[^A-Za-z0-9_-]","")).toPath(),o.toString().getBytes(StandardCharsets.UTF_8));
@@ -174,6 +179,16 @@ final class LiveData {
                 if(n<=3)main.postDelayed(()->{synchronized(channels){if(channels.containsKey(category))return;}loadChannels(category,changed);},4000L*n);
             }else synchronized(waiting){tries.remove(category);}
         });
+    }
+    /** One line in the playback log: how long a section took to appear (the wait before its request started, and the request itself). */
+    private void noteLoad(String category,String via,long asked,long started){
+        try{
+            String name=category;
+            synchronized(categories){for(Category c:categories)if(c.id.equals(category)){name=c.name;break;}}
+            int n;synchronized(channels){List<Channel> l=channels.get(category);n=l==null?0:l.size();}
+            long now=android.os.SystemClock.elapsedRealtime();
+            PlayLog.add(ctx,-1,"قسم «"+Titles.sectionName(name)+"»: ظهرت قنواته بعد "+String.format(java.util.Locale.US,"%.1f",(now-asked)/1000.0)+" ث ("+via+") · انتظر الدور "+String.format(java.util.Locale.US,"%.1f",(started-asked)/1000.0)+" ث · "+n+" قناة");
+        }catch(Throwable ignored){}
     }
     private final java.util.Map<String,List<Runnable>> waiting=new java.util.HashMap<>();
     private final java.util.Map<String,Integer> tries=new java.util.HashMap<>();

@@ -192,8 +192,10 @@ public final class PlayerActivity extends Activity {
     }
     private String str(String key){String s=getIntent().getStringExtra(key);return s==null?"":s;}
 
+    private boolean busy;   // counted in Busy while the channel is on screen
     @Override protected void onStart(){
         super.onStart();
+        if(!busy){busy=true;Busy.enter();}
         if(account==null)return;
         player=LivePlayer.create(this,true);   // the only player: the preview's is released first
         player.setVideoSurfaceView(surface);
@@ -247,6 +249,7 @@ public final class PlayerActivity extends Activity {
         playCurrent();
     }
     @Override protected void onStop(){
+        if(busy){busy=false;Busy.leave();}
         leaveChannel();
         main.removeCallbacksAndMessages(null);
         if(player!=null){log("إغلاق المشغّل ("+playerState()+")");try{player.release();}catch(Exception ignored){}LivePlayer.released(player);player=null;}

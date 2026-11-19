@@ -20,10 +20,12 @@ final class MatchStore {
     private static long updatedAt,attemptAt;
     private static boolean failed;
     private static int answered;
+    private static int version;   // goes up every time the saved list is replaced: a screen that shows it knows when to read it again
     private MatchStore(){}
 
     static List<MatchCarouselView.Match> snapshot(){synchronized(LOCK){return new ArrayList<>(all);}}
     static long updatedAt(){synchronized(LOCK){return updatedAt;}}
+    static int version(){synchronized(LOCK){return version;}}
     static boolean failed(){synchronized(LOCK){return failed;}}
     /** How many competitions answered in the last good refresh: 0 means the feed was never reached. */
     static int answered(){synchronized(LOCK){return answered;}}
@@ -152,7 +154,7 @@ final class MatchStore {
                 if(m.live()&&!freshKeys.contains(m.key)&&m.kickoffMillis<now-4L*3600_000)continue;   // a match that cannot still be on
                 out.add(m);
             }
-            all=out;failed=!complete;
+            all=out;failed=!complete;version++;
             if(complete||updatedAt==0&&!out.isEmpty())updatedAt=now;
         }
     }

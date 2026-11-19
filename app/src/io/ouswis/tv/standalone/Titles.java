@@ -309,6 +309,12 @@ final class Titles {
         String n=channelName(java.text.Normalizer.normalize(name==null?"":name,java.text.Normalizer.Form.NFKD));
         return n.toLowerCase(java.util.Locale.ROOT).replaceAll("[^\\p{L}\\p{Nd}]","");
     }
+    /** A section's name for a list row: without the provider's language prefix ("AR|", "AR :"), which every section shares. */
+    static String sectionName(String name){
+        if(name==null)return "";
+        String n=name.replaceFirst("^\\s*(?i:AR|ARB|ARABIC)\\s*[|:\\-]\\s*","").trim();
+        return n.isEmpty()?name.trim():n;
+    }
     static String channelName(String name){
         if(name==null)return "";
         String n=PREFIX.matcher(PREFIX.matcher(name).replaceFirst("")).replaceFirst("");   // "8K: FR| beIN…": both prefixes

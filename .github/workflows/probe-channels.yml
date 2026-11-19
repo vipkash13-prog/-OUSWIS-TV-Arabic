@@ -1,0 +1,12 @@
+name: Probe channel sources
+on:
+  push:
+    branches: ['feature/match-channels']
+    paths: ['.github/workflows/probe-channels.yml', 'tools/probe-channel-sources.py']
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Which source names the channel of today's matches
+        run: python3 tools/probe-channel-sources.py

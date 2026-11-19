@@ -57,6 +57,7 @@ jobs:
           bash tools/test-video-fit.sh
           bash tools/test-xtream-catalog.sh
           bash tools/test-home-enhancements.sh
+          bash tools/test-channel-hints.sh
           bash tools/test-saudi-dates.sh
       - name: Publish as a pre-release (never the latest release)
         env:

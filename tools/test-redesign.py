@@ -378,7 +378,9 @@ with tempfile.TemporaryDirectory() as temp:
     live = ('<?xml version="1.0" encoding="utf-8"?><map><string name="last">%s</string><string name="recent">%s</string><string name="dataFor">%s</string>'
             '<string name="espnBase">http://127.0.0.1:%d</string><string name="sportsDbBase">http://127.0.0.1:%d</string></map>') % (last, recent, A_KEY, port, port)
     subprocess.run([ADB, 'shell', 'cat > %s/ouswis-live.xml' % folder], input=live.encode(), check=True)
-    adb('shell', 'chown', '-R', uid + ':' + uid, folder)
+    # the mock feeds are the only source of channels in this test: the two real sites (Yallakora, Filgoal) are switched off in the emulator
+    adb('shell', 'sh', '-c', "'mkdir -p /data/user/0/%s/files && touch /data/user/0/%s/files/no-sites'" % (PKG, PKG))
+    adb('shell', 'chown', '-R', uid + ':' + uid, folder, '/data/user/0/%s/files' % PKG)
     adb('logcat', '-c')
 
     # 0. no green anywhere in the sources of the preview and the player (the preview's empty place was a dark green gradient)
@@ -764,10 +766,27 @@ with tempfile.TemporaryDirectory() as temp:
     # the guide of the sports channels names one match (الهلال × النصر): it is a match on the screen, with its channel
     guide_card = wait_label('الهلال ضد النصر', 'the match found only in the guide')
     assert any(('SSC 1' in l or 'beIN Sports 1' in l or 'AD Sports 1' in l) for l in guide_card), 'The guide match must carry the channel it was found on: ' + str(guide_card)
+    # a channel may also be named by the two sites the app asks for the broadcaster (Yallakora, Filgoal): their cached answers are in the app's own folder
+    try: site_rows = json.loads(adb('shell', 'cat', '/data/user/0/%s/files/channel-hints.json' % PKG, check=False) or '{}').get('rows', [])
+    except Exception: site_rows = []
+    def sp(t):
+        t = re.sub(r'[\u064B-\u0652\u0640]', '', t or '')
+        for a, b in (('أ', 'ا'), ('إ', 'ا'), ('آ', 'ا'), ('ة', 'ه'), ('ى', 'ي')): t = t.replace(a, b)
+        return ' '.join(w[2:] if w.startswith('ال') and len(w) > 4 else w for w in t.split())
+    def named_by_sites(card):
+        pair = card.split(' · ')[0].split(' ضد ')
+        if len(pair) != 2: return False
+        a, b = sp(pair[0]), sp(pair[1])
+        def same(x, y): return bool(x) and bool(y) and (x == y or x in y or y in x)
+        return any((same(sp(r.get('h')), a) and same(sp(r.get('a')), b)) or (same(sp(r.get('h')), b) and same(sp(r.get('a')), a)) for r in site_rows if r.get('c'))
+    from_sites = 0
     for l in cards:
         if any(t in l for t in ('الهلال', 'يوفنتوس', 'آرسنال', 'غانا', 'إنجلترا', 'مولدوفا', 'مصر', 'إسبانيا', 'النرويج')): continue   # found in the mock guide: confirmed
+        if ('beIN' in l or 'SSC' in l or 'AD Sports' in l) and named_by_sites(l):
+            from_sites += 1; continue   # confirmed by a site that names both teams
         assert 'beIN' not in l and 'SSC' not in l and 'AD Sports' not in l and 'beIN SPORTS' not in l, 'No channel may be named without a confirmation: ' + l
         if 'انتهت' not in l: assert 'اختر القناة' in l, 'An unconfirmed match must ask to pick the channel: ' + l
+    note('PASS: a channel is named only when the guide or a site naming both teams confirms it (%d from the sites); every other match asks to pick one.' % from_sites)
     labs = labels(); i_all = [i for i, l in enumerate(labs) if l.startswith('الكل')][0]
     favs = [i for i, l in enumerate(labs) if '★ المفضلة' in l]   # the row scrolls: with many leagues the favourites chip is past the edge
     league_chips = labs[i_all + 1:favs[0] if favs else i_all + 12]
@@ -790,7 +809,10 @@ with tempfile.TemporaryDirectory() as temp:
         assert part in focused_label(), 'Wrong card focused: ' + focused_label() + ' | wanted index ' + str(at[0]) + ' of ' + str(cards)
     # 6b. the reported case: Ghana v Somalia is in beIN Sports 2's guide as "غانا × الصومال" and must carry that channel
     ghana = wait_label('غانا ضد الصومال', 'the Ghana v Somalia match (mock feed: Somalia at Ghana)', tries=60)
-    assert any('beIN Sports 2' in l for l in ghana) and not any('اختر القناة' in l for l in ghana), 'Ghana v Somalia must show beIN Sports 2 from its guide: ' + str(ghana)
+    if named_by_sites(ghana[0]):   # the real sites also list this fixture (today's real Ghana v Somalia): their channel wins, the guide is the fallback
+        assert any(('beIN' in l or 'SSC' in l or 'AD Sports' in l) for l in ghana) and not any('اختر القناة' in l for l in ghana), 'Ghana v Somalia must show the channel a site names: ' + str(ghana)
+    else:
+        assert any('beIN Sports 2' in l for l in ghana) and not any('اختر القناة' in l for l in ghana), 'Ghana v Somalia must show beIN Sports 2 from its guide: ' + str(ghana)
     shot('redesign-matches-ghana.png')
     note('PASS: "غانا × الصومال" in beIN Sports 2\'s guide linked to the feed\'s "Somalia at Ghana": the card reads ' + ghana[0][-70:] + '.')
     # club crests: the feed's own logo first; TheSportsDB only for a team whose feed logo is missing or does not load, once, in the background
@@ -1217,6 +1239,21 @@ with tempfile.TemporaryDirectory() as temp:
     assert not any('لا توجد مباريات' in l for l in labels()), 'The list must not be empty after 15 minutes'
     note('PASS: 15 minutes on the matches screen: %d refresh line(s) in the log, e.g. %s' % (len(lines), lines[-1][:140]))
     keys('BACK', pause=1)
+
+    # 6f. the home row writes when it updates and how many matches it shows (a fresh start: nothing saved yet)
+    adb('shell', 'am', 'force-stop', PKG); time.sleep(2)
+    adb('shell', 'rm', '-f', '/data/user/0/%s/files/playlog.txt' % PKG)
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.HomeActivity'); front('HomeActivity')
+    row_lines = []
+    for _ in range(30):
+        time.sleep(2)
+        plog = adb('shell', 'cat', '/data/user/0/%s/files/playlog.txt' % PKG, check=False)
+        row_lines = [l for l in plog.splitlines() if 'الرئيسية: صف المباريات' in l]
+        if row_lines: break
+    (OUT / 'redesign-home-row-playlog.txt').write_text(plog)
+    assert row_lines, 'The home row must write its update (when and how many matches) in the playback log: ' + plog[-600:]
+    assert 'عرض ' in row_lines[-1] and 'مباراة' in row_lines[-1], row_lines[-1]
+    note('PASS: the home row logged its update: ' + row_lines[-1][:200])
 
     # 7. sections: order and hiding (Settings)
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.SectionOrderActivity')

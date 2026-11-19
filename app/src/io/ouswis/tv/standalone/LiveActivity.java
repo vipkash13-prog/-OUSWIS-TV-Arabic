@@ -195,9 +195,10 @@ public final class LiveActivity extends Activity {
                 .setNegativeButton("مسح",(d,w)->done.accept("")).show();
     }
 
-    @Override protected void onResume(){super.onResume();foreground=true;if(view!=null){view.dataChanged();if(data!=null)data.loadCategories(()->view.dataChanged());}}   // reload: Settings may have reordered or hidden sections
-    @Override protected void onPause(){foreground=false;releasePreview();super.onPause();}
-    @Override protected void onDestroy(){releasePreview();if(data!=null)data.shutdown();super.onDestroy();}
+    @Override protected void onResume(){super.onResume();foreground=true;if(!busy){busy=true;Busy.enter();}if(view!=null){view.dataChanged();if(data!=null)data.loadCategories(()->view.dataChanged());}}   // reload: Settings may have reordered or hidden sections
+    private boolean busy;   // counted in Busy while this screen is in front
+    @Override protected void onPause(){foreground=false;if(busy){busy=false;Busy.leave();}releasePreview();super.onPause();}
+    @Override protected void onDestroy(){if(busy){busy=false;Busy.leave();}releasePreview();if(data!=null)data.shutdown();super.onDestroy();}
 
     // MARK: the drawn screen
 
@@ -346,7 +347,18 @@ public final class LiveActivity extends Activity {
                 if(secFocus){r.set(1563,y-30,1833,y+26);Design.grown(r,g);Design.focusRing(c,g,16,1,p);}
                 a11y.add(1563,y-30,1833,y+26,"قسم "+s.name+(s.count>=0?" ("+s.count+")":"")+(i==cat?" — محدد":""),secFocus,true);
                 small.setColor(i==cat?Design.TEXT:Design.MUTED);
-                Design.right(c,Design.fit(s.name,small,190),1812,y+7,small);
+                String secName=s.shown;
+                float secWidth=small.measureText(secName);
+                if(i==cat&&secWidth>190){
+                    // the focused section's name too long for its row: it slides to show all of it, then back
+                    long t=android.os.SystemClock.uptimeMillis()%(long)((secWidth-190)*30+3000);
+                    float k=Math.max(0,Math.min(1,(t-800f)/Math.max(1f,(secWidth-190)*30)));
+                    c.save();c.clipRect(1622,y-30,1812,y+26);
+                    small.setTextAlign(Paint.Align.LEFT);
+                    c.drawText(secName,1622-k*(secWidth-190),y+7,small);
+                    c.restore();
+                    postInvalidateOnAnimation();
+                }else Design.right(c,Design.fit(secName,small,190),1812,y+7,small);
                 if(s.count>=0){Design.left(c,String.valueOf(s.count),1583,y+2,muted);}
             }
             // channels column

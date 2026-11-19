@@ -100,6 +100,7 @@ jobs:
           bash tools/test-xtream-catalog.sh
           bash tools/test-matches-feed.sh --live
           bash tools/test-home-enhancements.sh
+          bash tools/test-channel-hints.sh
           bash tools/test-saudi-dates.sh
           bash tools/test-prayer-times.sh --live
       - name: Playback test image reader
