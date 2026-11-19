@@ -378,7 +378,9 @@ with tempfile.TemporaryDirectory() as temp:
     live = ('<?xml version="1.0" encoding="utf-8"?><map><string name="last">%s</string><string name="recent">%s</string><string name="dataFor">%s</string>'
             '<string name="espnBase">http://127.0.0.1:%d</string><string name="sportsDbBase">http://127.0.0.1:%d</string></map>') % (last, recent, A_KEY, port, port)
     subprocess.run([ADB, 'shell', 'cat > %s/ouswis-live.xml' % folder], input=live.encode(), check=True)
-    adb('shell', 'chown', '-R', uid + ':' + uid, folder)
+    # the mock feeds are the only source of channels in this test: the two real sites (Yallakora, Filgoal) are switched off in the emulator
+    adb('shell', 'sh', '-c', "'mkdir -p /data/user/0/%s/files && touch /data/user/0/%s/files/no-sites'" % (PKG, PKG))
+    adb('shell', 'chown', '-R', uid + ':' + uid, folder, '/data/user/0/%s/files' % PKG)
     adb('logcat', '-c')
 
     # 0. no green anywhere in the sources of the preview and the player (the preview's empty place was a dark green gradient)

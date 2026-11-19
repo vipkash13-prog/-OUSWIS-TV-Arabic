@@ -165,6 +165,9 @@ final class ChannelHints {
             long now = System.currentTimeMillis();
             if (loaded && now < dueAt) return;
             if (Busy.on()) return;   // not while a channel list or a channel is on screen
+            // test switch: the emulator test (root) creates this file in the app's private folder so the two real sites are not asked;
+            // no one else can write there, so on a TV it never exists
+            if (new java.io.File(c.getFilesDir(), "no-sites").exists()) return;
             if (!running.compareAndSet(false, true)) return;
             final Context app = c.getApplicationContext();
             WORKER.execute(() -> {
