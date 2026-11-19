@@ -74,7 +74,7 @@ public final class SeriesActivity extends Activity {
                 badge=Design.text(0xFFFFFFFF,15,Design.regular()),btn=Design.text(0xFF1A1408,26,Design.bold()),hint=Design.text(Design.MUTED,17,Design.regular()),
                 msg=Design.text(Design.MUTED,26,Design.regular());
         private final TextPaint plotPaint=new TextPaint(Paint.ANTI_ALIAS_FLAG);
-        private final RectF r=new RectF(),g=new RectF(),t=new RectF();
+        private final RectF r=new RectF(),g=new RectF(),t=new RectF(),tag=new RectF();
         private java.util.Map<String,VodData.Progress> progress=new java.util.HashMap<>();
         private boolean started;
         private final android.graphics.Rect srcI=new android.graphics.Rect();
@@ -225,8 +225,8 @@ public final class SeriesActivity extends Activity {
                     boolean seen=VodData.watched(pr);
                     if(seen){
                         float bw=badge.measureText("✓ شوهدت")+22;
-                        g.set(1023,y+23,1023+bw,y+51);Design.fill(c,g,14,p,0xCC0B0D1A);
-                        Design.center(c,"✓ شوهدت",g.centerX(),y+42,badge);
+                        tag.set(1023,y+23,1023+bw,y+51);Design.fill(c,tag,14,p,0xCC0B0D1A);   // not g: g holds the focused row's box
+                        Design.center(c,"✓ شوهدت",tag.centerX(),y+42,badge);
                     }
                     String head="الحلقة "+e.num;
                     Design.right(c,head,993,y+64,epTitle);
