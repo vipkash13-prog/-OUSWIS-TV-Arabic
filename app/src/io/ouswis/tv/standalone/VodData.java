@@ -33,6 +33,8 @@ import org.json.JSONObject;
  * (get_vod_streams&category_id=), a film's details (get_vod_info) and where the viewer stopped. Each section is kept on
  * disk for a day and in memory only while its screen is open. "Newest" and the search read the whole catalogue as a
  * stream from a copy on disk (never a whole list in memory: a 32-bit TV). Files are per subscription (its key in the name).
+ * With `series` the same goes for the subscription's series (get_series_categories, get_series, get_series_info), and
+ * "continue watching" holds the series whose last episode was started (where each episode stopped is kept apart).
  */
 final class VodData {
     static final class Movie {
@@ -89,10 +91,16 @@ final class VodData {
     private volatile List<Movie> searchResult=new ArrayList<>();
     volatile String searchFor="";
 
-    VodData(Context c,XtreamAccount account){this.ctx=c.getApplicationContext();this.account=account;}
+    final boolean series;
+    VodData(Context c,XtreamAccount account){this(c,account,false);}
+    VodData(Context c,XtreamAccount account,boolean series){this.ctx=c.getApplicationContext();this.account=account;this.series=series;}
+    private String act(String films){
+        if(!series)return films;
+        switch(films){case "get_vod_categories":return "get_series_categories";case "get_vod_streams":return "get_series";default:return films;}
+    }
     void shutdown(){lists.shutdownNow();catalogue.shutdownNow();}
     private String key(){return AccountData.key(account);}
-    private File file(String name){return new File(ctx.getFilesDir(),"vod-"+name+".json");}
+    private File file(String name){return new File(ctx.getFilesDir(),(series?"series-":"vod-")+name+".json");}
     private static String safe(String id){return id.replaceAll("[^A-Za-z0-9_-]","");}
 
     // MARK: sections
@@ -112,7 +120,7 @@ final class VodData {
             }catch(Exception ignored){}
             if(fresh)return;
             try{
-                JSONArray rows=new JSONArray(XtreamAccount.get(account.api("get_vod_categories",null)));
+                JSONArray rows=new JSONArray(XtreamAccount.get(account.api(act("get_vod_categories"),null)));
                 readCategories(rows);categoriesFailed=false;
                 JSONObject o=new JSONObject().put("at",System.currentTimeMillis()).put("items",rows);
                 Files.write(file("categories-"+key()).toPath(),o.toString().getBytes(StandardCharsets.UTF_8));
@@ -175,9 +183,9 @@ final class VodData {
             }catch(Exception ignored){}
             if(!fresh){
                 try{
-                    JSONArray rows=new JSONArray(XtreamAccount.get(account.api("get_vod_streams","category_id="+XtreamAccount.enc(category))));
+                    JSONArray rows=new JSONArray(XtreamAccount.get(account.api(act("get_vod_streams"),"category_id="+XtreamAccount.enc(category))));
                     List<Movie> list=new ArrayList<>();
-                    for(int i=0;i<rows.length();i++){Movie m=fromStream(rows.optJSONObject(i),category);if(m!=null)list.add(m);}
+                    for(int i=0;i<rows.length();i++){Movie m=series?fromSeries(rows.optJSONObject(i),category):fromStream(rows.optJSONObject(i),category);if(m!=null)list.add(m);}
                     put(category,list);failedCats.remove(category);
                     JSONArray slim=new JSONArray();for(Movie m:list)slim.put(m.json());
                     Files.write(f.toPath(),new JSONObject().put("at",System.currentTimeMillis()).put("items",slim).toString().getBytes(StandardCharsets.UTF_8));
@@ -200,6 +208,12 @@ final class VodData {
         String name=r.optString("name").trim();if(name.isEmpty())return null;
         return new Movie(id,name,r.optString("stream_icon"),r.optString("container_extension"),r.optString("category_id",category),rating(r.optString("rating")),r.optLong("added",0));
     }
+    private static Movie fromSeries(JSONObject r,String category){
+        if(r==null)return null;
+        String id=r.optString("series_id");if(id.isEmpty())return null;
+        String name=r.optString("name").trim();if(name.isEmpty())return null;
+        return new Movie(id,name,r.optString("cover"),"",r.optString("category_id",category),rating(r.optString("rating")),r.optLong("last_modified",0));
+    }
     private static float rating(String s){
         try{float f=Float.parseFloat(s.trim());return f>0&&f<=10?f:0;}catch(Exception e){return 0;}
     }
@@ -212,7 +226,7 @@ final class VodData {
         File f=allFile();
         if(f.isFile()&&f.length()>2&&System.currentTimeMillis()-f.lastModified()<DAY)return f;
         File part=new File(f.getPath()+".part");
-        HttpURLConnection c=(HttpURLConnection)new URL(account.api("get_vod_streams",null)).openConnection();
+        HttpURLConnection c=(HttpURLConnection)new URL(account.api(act("get_vod_streams"),null)).openConnection();
         c.setConnectTimeout(10000);c.setReadTimeout(30000);
         try{
             if(c.getResponseCode()!=200)throw new Exception("HTTP "+c.getResponseCode());
@@ -240,13 +254,16 @@ final class VodData {
                     JsonToken t=r.peek();
                     if(t==JsonToken.BEGIN_OBJECT||t==JsonToken.BEGIN_ARRAY||t==JsonToken.BOOLEAN){r.skipValue();continue;}
                     switch(k){
-                        case "stream_id":id=r.nextString();break;
+                        case "stream_id":if(!series)id=r.nextString();else r.skipValue();break;
+                        case "series_id":if(series)id=r.nextString();else r.skipValue();break;
+                        case "cover":if(series)icon=r.nextString();else r.skipValue();break;
+                        case "last_modified":if(series)try{added=Long.parseLong(r.nextString().trim());}catch(Exception e){added=0;}else r.skipValue();break;
                         case "name":name=r.nextString().trim();break;
                         case "stream_icon":icon=r.nextString();break;
                         case "container_extension":ext=r.nextString();break;
                         case "category_id":cat=r.nextString();break;
                         case "rating":rate=r.nextString();break;
-                        case "added":try{added=Long.parseLong(r.nextString().trim());}catch(Exception e){added=0;}break;
+                        case "added":if(series){r.skipValue();break;}try{added=Long.parseLong(r.nextString().trim());}catch(Exception e){added=0;}break;
                         default:r.skipValue();
                     }
                 }
@@ -368,7 +385,7 @@ final class VodData {
 
     private static SharedPreferences store(Context c){return c.getApplicationContext().getSharedPreferences("ouswis-vod",Context.MODE_PRIVATE);}
     private static String pKey(XtreamAccount a){return "progress-"+AccountData.key(a);}
-    private static String fKey(XtreamAccount a){return "favorites-"+AccountData.key(a);}
+    private String fKey(XtreamAccount a){return (series?"seriesFavorites-":"favorites-")+AccountData.key(a);}
     private static JSONObject progressAll(Context c,XtreamAccount a){
         try{return new JSONObject(store(c).getString(pKey(a),"{}"));}catch(Exception e){return new JSONObject();}
     }
@@ -390,8 +407,18 @@ final class VodData {
             store(c).edit().putString(pKey(a),all.toString()).apply();
         }catch(Exception ignored){}
     }
-    /** Films started and not finished, the latest first. */
+    /** Films started and not finished, the latest first (series: the series last watched, the latest first). */
     List<Movie> continueList(){
+        if(series){
+            JSONObject all=lastAll(ctx,account);
+            List<JSONObject> rows=new ArrayList<>();
+            java.util.Iterator<String> it=all.keys();
+            while(it.hasNext()){JSONObject o=all.optJSONObject(it.next());if(o!=null)rows.add(o);}
+            Collections.sort(rows,(x,y)->Long.compare(y.optLong("at"),x.optLong("at")));
+            List<Movie> out=new ArrayList<>();
+            for(JSONObject o:rows){Movie m=Movie.from(o.optJSONObject("series"));if(m!=null)out.add(m);}
+            return out;
+        }
         JSONObject all=progressAll(ctx,account);
         List<JSONObject> rows=new ArrayList<>();
         java.util.Iterator<String> it=all.keys();
@@ -418,6 +445,132 @@ final class VodData {
         store(ctx).edit().putString(fKey(account),a.toString()).apply();
         return !removed;
     }
+
+    // MARK: series: seasons and episodes (get_series_info), where each episode stopped, and the last one watched
+
+    static final class Episode {
+        final String id,title,ext,plot,image;final int season,num,seconds;
+        Episode(String id,int season,int num,String title,String ext,String plot,String image,int seconds){
+            this.id=id;this.season=season;this.num=num;this.title=title;this.ext=ext==null||ext.isEmpty()?"mp4":ext;this.plot=plot;this.image=image;this.seconds=seconds;
+        }
+    }
+    static final class SeriesInfo {
+        final Info info=new Info();
+        final List<Integer> seasons=new ArrayList<>();
+        final Map<Integer,List<Episode>> episodes=new HashMap<>();
+        final Map<Integer,String> seasonCovers=new HashMap<>();
+        boolean failed;
+        List<Episode> of(int season){List<Episode> l=episodes.get(season);return l==null?new ArrayList<>():l;}
+        /** The episode after this one (the next season's first after a season's last), or null. */
+        Episode after(Episode e){
+            List<Episode> l=of(e.season);
+            for(int i=0;i<l.size();i++)if(l.get(i).id.equals(e.id)){
+                if(i+1<l.size())return l.get(i+1);
+                int at=seasons.indexOf(e.season);
+                for(int s=at+1;s>0&&s<seasons.size();s++){List<Episode> n=of(seasons.get(s));if(!n.isEmpty())return n.get(0);}
+                return null;
+            }
+            return null;
+        }
+        Episode find(String id){for(List<Episode> l:episodes.values())for(Episode e:l)if(e.id.equals(id))return e;return null;}
+        Episode first(){for(int s:seasons){List<Episode> l=of(s);if(!l.isEmpty())return l.get(0);}return null;}
+    }
+    private static final Map<String,SeriesInfo> SERIES=new java.util.LinkedHashMap<String,SeriesInfo>(8,0.75f,true){
+        @Override protected boolean removeEldestEntry(Map.Entry<String,SeriesInfo> e){return size()>4;}
+    };
+    SeriesInfo seriesInfo(String id){synchronized(SERIES){return SERIES.get(id);}}
+    void loadSeries(String id,Runnable done){
+        if(seriesInfo(id)!=null){main.post(done);return;}
+        lists.execute(()->{
+            SeriesInfo out=new SeriesInfo();
+            try{
+                JSONObject o=new JSONObject(XtreamAccount.get(account.api("get_series_info","series_id="+XtreamAccount.enc(id))));
+                JSONObject i=o.optJSONObject("info");
+                if(i!=null){
+                    out.info.plot=first(i,"plot","description");out.info.cast=first(i,"cast","actors");out.info.director=first(i,"director");
+                    out.info.genre=first(i,"genre");out.info.cover=first(i,"cover");out.info.rating=rating(first(i,"rating"));
+                    java.util.regex.Matcher y=Pattern.compile("(19|20)\\d\\d").matcher(first(i,"releaseDate","release_date","releasedate","year"));
+                    if(y.find())out.info.year=y.group();
+                    out.info.cat=first(i,"category_id");
+                }
+                JSONArray seasons=o.optJSONArray("seasons");
+                if(seasons!=null)for(int k=0;k<seasons.length();k++){
+                    JSONObject s=seasons.optJSONObject(k);if(s==null)continue;
+                    int n=s.optInt("season_number",-1);if(n<0)continue;
+                    String cover=first(s,"cover_big","cover");if(!cover.isEmpty())out.seasonCovers.put(n,cover);
+                }
+                Object eps=o.opt("episodes");
+                List<JSONArray> groups=new ArrayList<>();
+                if(eps instanceof JSONObject){java.util.Iterator<String> it=((JSONObject)eps).keys();while(it.hasNext()){JSONArray a=((JSONObject)eps).optJSONArray(it.next());if(a!=null)groups.add(a);}}
+                else if(eps instanceof JSONArray){JSONArray a=(JSONArray)eps;for(int k=0;k<a.length();k++){Object g=a.opt(k);if(g instanceof JSONArray)groups.add((JSONArray)g);}}
+                for(JSONArray g:groups)for(int k=0;k<g.length();k++){
+                    JSONObject e=g.optJSONObject(k);if(e==null)continue;
+                    String eid=e.optString("id");if(eid.isEmpty())continue;
+                    JSONObject ei=e.optJSONObject("info");
+                    int season=e.optInt("season",ei==null?1:ei.optInt("season",1)),num=e.optInt("episode_num",k+1);
+                    int secs=ei==null?0:ei.optInt("duration_secs",0);
+                    if(secs<=0&&ei!=null)secs=clockSeconds(first(ei,"duration"));
+                    Episode ep=new Episode(eid,season,num,e.optString("title"),e.optString("container_extension"),ei==null?"":first(ei,"plot","description"),ei==null?"":first(ei,"movie_image","cover_big"),secs);
+                    List<Episode> l=out.episodes.get(season);if(l==null){l=new ArrayList<>();out.episodes.put(season,l);}
+                    l.add(ep);
+                }
+                for(List<Episode> l:out.episodes.values())Collections.sort(l,(a,b)->Integer.compare(a.num,b.num));
+                out.seasons.addAll(out.episodes.keySet());
+                Collections.sort(out.seasons);
+                if(out.seasons.size()>1&&out.seasons.get(0)==0){out.seasons.remove(0);out.seasons.add(0);}   // "season 0" (extras) last
+            }catch(Exception e){out.failed=true;AppLog.w("series info failed");}
+            synchronized(SERIES){if(!out.failed)SERIES.put(id,out);}
+            final SeriesInfo got=out;
+            main.post(()->{if(got.failed){synchronized(SERIES){SERIES.remove(id);}failedInfo.add(id);}else failedInfo.remove(id);done.run();});
+        });
+    }
+    private final Set<String> failedInfo=Collections.synchronizedSet(new HashSet<>());
+    boolean seriesFailed(String id){return failedInfo.contains(id);}
+
+    private static String eKey(XtreamAccount a){return "episodes-"+AccountData.key(a);}
+    private static String lKey(XtreamAccount a){return "seriesLast-"+AccountData.key(a);}
+    private static JSONObject read(Context c,String key){try{return new JSONObject(store(c).getString(key,"{}"));}catch(Exception e){return new JSONObject();}}
+    private static JSONObject lastAll(Context c,XtreamAccount a){return read(c,lKey(a));}
+    /** Where this episode stopped (done: watched to the credits). Null when it was never started. */
+    static Progress episode(Context c,XtreamAccount a,String id){
+        JSONObject o=read(c,eKey(a)).optJSONObject(id);
+        return o==null?null:new Progress(o.optLong("pos"),o.optLong("dur"),o.optLong("at"));
+    }
+    /** Where every episode stopped, read once (a page draws from this, not from the store). */
+    static Map<String,Progress> episodes(Context c,XtreamAccount a){
+        Map<String,Progress> out=new HashMap<>();
+        JSONObject all=read(c,eKey(a));java.util.Iterator<String> it=all.keys();
+        while(it.hasNext()){String id=it.next();JSONObject o=all.optJSONObject(id);if(o!=null)out.put(id,new Progress(o.optLong("pos"),o.optLong("dur"),o.optLong("at")));}
+        return out;
+    }
+    static boolean watched(Progress p){return p!=null&&p.dur>0&&p.pos>=p.dur*0.95;}
+    /** The id of the last episode watched in this series, or "". */
+    static String lastEpisode(Context c,XtreamAccount a,String seriesId){
+        JSONObject o=lastAll(c,a).optJSONObject(seriesId);return o==null?"":o.optString("episode");
+    }
+    /** Saves where an episode stopped (at the credits it counts as watched) and makes it the series' last one. */
+    static synchronized void saveEpisode(Context c,XtreamAccount a,Movie seriesItem,String episodeId,long pos,long dur){
+        try{
+            JSONObject all=read(c,eKey(a));
+            if(pos>=5_000||(dur>0&&pos>=dur*0.95)){
+                if(dur>0&&pos>=dur*0.95)pos=dur;
+                all.put(episodeId,new JSONObject().put("pos",pos).put("dur",dur).put("at",System.currentTimeMillis()));
+                trim(all,1500);
+                JSONObject last=lastAll(c,a);
+                last.put(seriesItem.id,new JSONObject().put("series",seriesItem.json()).put("episode",episodeId).put("at",System.currentTimeMillis()));
+                trim(last,200);
+                store(c).edit().putString(eKey(a),all.toString()).putString(lKey(a),last.toString()).apply();
+            }
+        }catch(Exception ignored){}
+    }
+    private static void trim(JSONObject all,int max){
+        if(all.length()<=max)return;
+        List<String> ids=new ArrayList<>();java.util.Iterator<String> it=all.keys();while(it.hasNext())ids.add(it.next());
+        Collections.sort(ids,(x,y)->Long.compare(all.optJSONObject(x)==null?0:all.optJSONObject(x).optLong("at"),all.optJSONObject(y)==null?0:all.optJSONObject(y).optLong("at")));
+        for(int i=0;i<ids.size()-max;i++)all.remove(ids.get(i));
+    }
+    /** "4 مواسم" in Arabic. */
+    static String seasons(int n){return n==1?"موسم واحد":n==2?"موسمان":n<=10?n+" مواسم":n+" موسماً";}
 
     // MARK: words
 

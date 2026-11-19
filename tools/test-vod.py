@@ -118,6 +118,8 @@ def stream(i, m):
     return {'num': int(i), 'name': name, 'stream_type': 'movie', 'stream_id': int(i), 'stream_icon': 'http://127.0.0.1:%d/poster/%s.png' % (PORT[0], i),
             'rating': rate, 'rating_5based': float(rate) / 2, 'added': str(NOW - ago * 86400 - int(i)), 'category_id': cat, 'container_extension': 'mkv' if i == '604' else 'mp4', 'custom_sid': None, 'direct_source': ''}
 PORT = [0]
+SERIES = [('701', 'الوادي البعيد', '21', '8.6'), ('702', 'Night Shift', '21', '7.0'), ('901', 'Adult Show', '22', '5.0')]
+EPISODES = [('1001', 1, 1), ('1002', 1, 2), ('1003', 1, 3), ('1004', 2, 1), ('1005', 2, 2), ('1006', 2, 3)]
 CLIP = [b'']
 MKV = [b'']
 
@@ -151,6 +153,17 @@ class Provider(BaseHTTPRequestHandler):
                                  'cast': 'ممثل أول، ممثلة ثانية، ممثل ثالث', 'director': 'مخرج الاختبار', 'genre': 'أكشن', 'releasedate': '2025-03-01',
                                  'duration_secs': 120, 'duration': '00:02:00', 'rating': rate, 'video': {'width': 1920, 'height': 1080}},
                         'movie_data': {'stream_id': int(i), 'name': name, 'category_id': cat, 'container_extension': 'mp4'}}
+            elif action == 'get_series_categories': body = [{'category_id': '21', 'category_name': 'AR| مسلسلات عربية', 'parent_id': 0}, {'category_id': '22', 'category_name': 'XXX Adult', 'parent_id': 0}]
+            elif action == 'get_series':
+                cat = q.get('category_id', [''])[0]
+                body = [{'num': n + 1, 'name': name, 'series_id': int(sid), 'cover': 'http://127.0.0.1:%d/poster/%s.png' % (PORT[0], sid), 'plot': '', 'rating': rate,
+                         'last_modified': str(NOW - n * 3600), 'category_id': c} for n, (sid, name, c, rate) in enumerate(SERIES) if cat in ('', c)]
+            elif action == 'get_series_info':
+                sid = q.get('series_id', [''])[0]
+                body = {'seasons': [{'season_number': 1, 'name': 'Season 1', 'episode_count': 3}, {'season_number': 2, 'name': 'Season 2', 'episode_count': 3}],
+                        'info': {'name': 'الوادي البعيد', 'plot': 'قصة المسلسل من بيانات الاشتراك.', 'cast': 'ممثل', 'director': 'مخرج', 'releaseDate': '2023-05-01', 'rating': '8.6', 'category_id': '21'},
+                        'episodes': {str(se): [{'id': eid, 'episode_num': num, 'title': 'الوادي البعيد S0%dE0%d' % (se, num), 'container_extension': 'mkv' if eid == '1006' else 'mp4', 'season': se,
+                                                'info': {'plot': 'ملخص الحلقة %d' % num, 'duration_secs': 120}} for eid, se, num in EPISODES if se == season] for season in (1, 2)} if sid == '701' else {}}
             elif action in ('get_live_categories',): body = [{'category_id': '11', 'category_name': 'رياضة'}]
             elif action in ('get_live_streams',): body = [{'num': 101, 'name': 'SSC 1 HD', 'stream_id': '101', 'category_id': '11', 'stream_icon': '', 'container_extension': 'ts'}]
             elif action in ('get_short_epg', 'get_simple_data_table'): body = {'epg_listings': []}
@@ -160,6 +173,10 @@ class Provider(BaseHTTPRequestHandler):
         if m:
             b = BytesIO(); Image.new('RGB', (300, 450), COLOURS[int(m[1]) % len(COLOURS)]).save(b, 'PNG')
             return self.send_bytes(b.getvalue(), 'image/png')
+        if url.path == '/series/demo/demo/1006.mkv':
+            return self.send_bytes(MKV[0], 'video/x-matroska')
+        if re.fullmatch(r'/series/demo/demo/10\d\d\.mp4', url.path):
+            return self.send_bytes(CLIP[0], 'video/mp4')
         if url.path == '/movie/demo/demo/604.mkv':
             return self.send_bytes(MKV[0], 'video/x-matroska')
         m = re.fullmatch(r'/movie/demo/demo/(\d+)\.mp4', url.path)
@@ -208,14 +225,14 @@ try:
     # 1. the home: "أفلام" sits beside "البث المباشر", and the remote opens it
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.HomeActivity'); front('HomeActivity'); time.sleep(3)
     labs = labels()
-    for need in ('البث المباشر', 'أفلام', 'المباريات', 'كل التطبيقات', 'الأخيرة', 'التحديثات', 'الإعدادات'):
+    for need in ('البث المباشر', 'أفلام', 'مسلسلات', 'المباريات', 'كل التطبيقات', 'الأخيرة', 'التحديثات', 'الإعدادات'):
         assert any(l == need for l in labs), 'Missing shortcut: ' + need + ' | ' + str(labs[:40])
-    keys(*['DPAD_DOWN'] * 5, pause=0.4); keys(*['DPAD_RIGHT'] * 8, pause=0.25)
+    keys(*['DPAD_DOWN'] * 5, pause=0.4); keys(*['DPAD_RIGHT'] * 9, pause=0.25)
     assert 'البث المباشر' in focused_label(), 'The first shortcut must be البث المباشر: ' + focused_label()
     keys('DPAD_LEFT')
     assert 'أفلام' in focused_label(), 'The second shortcut, beside Live TV, must be أفلام: ' + focused_label()
     shot('vod-home-shortcut.png')
-    note('PASS: the home has seven shortcuts and أفلام is the one beside البث المباشر.')
+    note('PASS: the home has eight shortcuts: أفلام beside البث المباشر, then مسلسلات.')
     keys('DPAD_CENTER', pause=1.5); front('MoviesActivity')
 
     # 2. the films screen: newest first, the adult section and its films never shown
@@ -391,10 +408,76 @@ try:
     note('PASS: a file with one sound track and no subtitles says so in the menu.')
     no_crash('Sound and subtitles')
 
-    # 7. Live TV still opens from its shortcut, with the account
+    # 7. series: the shortcut, the grid, the page (seasons, episodes, watched, continue) and the same sound/subtitle choice
+    adb('shell', 'am', 'force-stop', PKG); time.sleep(1)
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.HomeActivity'); front('HomeActivity'); time.sleep(2)
+    keys(*['DPAD_DOWN'] * 5, pause=0.4); keys(*['DPAD_RIGHT'] * 9, pause=0.25); keys('DPAD_LEFT', 'DPAD_LEFT')
+    assert 'مسلسلات' in focused_label(), 'The third shortcut must be مسلسلات: ' + focused_label()
+    keys('DPAD_CENTER', pause=1.5); front('MoviesActivity')
+    head = wait_label('المسلسلات · أحدث الإضافات · ', 'the series screen with its count')
+    assert '2 مسلسل' in head[0], 'Two series (the adult one left out): ' + head[0]
+    wait_label('الوادي البعيد', 'the newest series')
+    assert not any('Adult' in l for l in labels()), 'An adult series shows'
+    shot('series-grid.png')
+    note('PASS: مسلسلات opens the series screen: ' + head[0] + ', no adult section or series.')
+    keys('DPAD_CENTER', pause=1.5); front('SeriesActivity')
+    wait_label('الحلقة 1', 'the episodes of season 1')
+    labs = labels()
+    for need in ('الموسم 1 — محدد', 'الموسم 2', '▶ تشغيل: م1 · ح1', 'موسمان', '2023', 'التقييم 8.6', 'الحلقة 3'):
+        assert any(need in l for l in labs), 'The series page lacks ' + need + ': ' + str(labs)
+    shot('series-page.png')
+    note('PASS: series page: seasons as tabs, season 1\'s episodes, rating, seasons count, year, "▶ تشغيل: م1 · ح1".')
+    # season 2, episode 1, watched to the end
+    keys('DPAD_LEFT', pause=1)
+    assert any(l.startswith('الموسم 2 — محدد') for l in labels()), 'LEFT must move to season 2: ' + str(labels()[:12])
+    keys('DPAD_CENTER', pause=4); front('VodPlayerActivity')
+    assert ('/series/demo/demo/1004.mp4', '') in HITS, 'The episode was not asked for at /series/USER/PASS/ID.ext: ' + str(HITS[-4:])
+    keys(*['DPAD_RIGHT'] * 13, pause=0.3)
+    for _ in range(20):
+        if 'SeriesActivity' in adb('shell', 'dumpsys', 'activity', 'activities').split('topResumedActivity')[-1][:300]: break
+        time.sleep(1)
+    front('SeriesActivity'); time.sleep(1)
+    labs = labels()
+    assert any(l.startswith('الحلقة 1 · شوهدت') for l in labs), 'Episode 1 must show as watched: ' + str(labs)
+    assert any(l.startswith('▶ كمّل: م2 · ح2') for l in labs), 'Continue must move on to the next episode: ' + str(labs)
+    shot('series-watched.png')
+    note('PASS: an episode played to the end shows "✓ شوهدت", and continue moves on to "م2 · ح2".')
+    # continue: plays S2E2; stop part way
+    keys('DPAD_RIGHT', 'DPAD_RIGHT', pause=0.8)
+    assert focused_label().startswith('▶ كمّل: م2 · ح2'), 'RIGHT past season 1 reaches continue: ' + focused_label()
+    keys('DPAD_CENTER', pause=4); front('VodPlayerActivity')
+    assert ('/series/demo/demo/1005.mp4', '') in HITS, 'Continue must play S2E2: ' + str(HITS[-4:])
+    keys(*['DPAD_RIGHT'] * 4, pause=0.3); time.sleep(2)
+    keys('BACK', pause=2); front('SeriesActivity')
+    keys('DPAD_LEFT', 'DPAD_LEFT', pause=0.8)   # off continue, to season 2
+    labs = labels()
+    assert any(l.startswith('الحلقة 2 · متوقفة عند ') for l in labs), 'Episode 2 must show where it stopped: ' + str(labs)
+    assert any(l.startswith('▶ كمّل: م2 · ح2') for l in labs), 'Continue stays on the started episode: ' + str(labs)
+    shot('series-progress.png')
+    note('PASS: an episode stopped part way shows its progress, and continue resumes it.')
+    keys('BACK', pause=1.5); front('MoviesActivity')
+    keys('DPAD_RIGHT', pause=0.5); keys('DPAD_UP', 'DPAD_UP', pause=0.8)
+    assert focused_label().startswith('قسم ▶ تابع المشاهدة'), focused_label()
+    time.sleep(1)
+    assert any(l.startswith('الوادي البعيد') for l in labels()), 'Continue watching holds the series: ' + str(labels())
+    note('PASS: تابع المشاهدة in the series screen holds الوادي البعيد.')
+    # the sound and subtitle choice made on a film carries over to an episode
+    adb('shell', 'am', 'force-stop', PKG); time.sleep(1)
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.VodPlayerActivity', '--es', 'id', '1006', '--es', 'name', "'ep3'", '--es', 'ext', 'mkv', '--es', 'show', '701', '--es', 'showName', "'show'")
+    front('VodPlayerActivity'); time.sleep(6)
+    assert ('/series/demo/demo/1006.mkv', '') in HITS
+    keys('DPAD_DOWN', pause=1.5)
+    ml = menu_labels()
+    assert 'الصوت: عربي — مختار' in ml and 'الترجمة: عربي — مختار' in ml, 'An episode must open with the kept choice: ' + str(ml)
+    shot('series-tracks.png')
+    keys('BACK', pause=1); keys('BACK', pause=1.5)
+    note('PASS: an episode opens with the same kept sound and subtitle choice (Arabic sound, Arabic subtitles), and ▼ opens the same menu.')
+    no_crash('Series')
+
+    # 8. Live TV still opens from its shortcut, with the account
     keys('BACK', pause=2)
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.HomeActivity'); front('HomeActivity'); time.sleep(2)
-    keys(*['DPAD_DOWN'] * 5, pause=0.4); keys(*['DPAD_RIGHT'] * 8, pause=0.25)
+    keys(*['DPAD_DOWN'] * 5, pause=0.4); keys(*['DPAD_RIGHT'] * 9, pause=0.25)
     keys('DPAD_CENTER', pause=2); front('LiveActivity')
     wait_label('SSC 1 HD', 'the live channel list')
     shot('vod-live-still.png')
