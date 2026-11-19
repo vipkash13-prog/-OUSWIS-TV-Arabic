@@ -141,6 +141,8 @@ public final class VodPlayerActivity extends Activity {
         if(show!=null)VodData.saveEpisode(this,account,show,movie.id,pos,dur);
         else VodData.saveProgress(this,account,movie,pos,dur);
     }
+    /** Saved here, not only on stop: the page under the player resumes (and reads it) before this one stops. */
+    @Override protected void onPause(){save();super.onPause();}
     @Override protected void onStop(){
         if(busy){busy=false;Busy.leave();}
         main.removeCallbacksAndMessages(null);
