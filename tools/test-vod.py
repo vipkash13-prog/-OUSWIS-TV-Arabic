@@ -162,7 +162,7 @@ class Provider(BaseHTTPRequestHandler):
                 sid = q.get('series_id', [''])[0]
                 body = {'seasons': [{'season_number': 1, 'name': 'Season 1', 'episode_count': 3}, {'season_number': 2, 'name': 'Season 2', 'episode_count': 3}],
                         'info': {'name': 'الوادي البعيد', 'plot': 'قصة المسلسل من بيانات الاشتراك.', 'cast': 'ممثل', 'director': 'مخرج', 'releaseDate': '2023-05-01', 'rating': '8.6', 'category_id': '21'},
-                        'episodes': {str(se): [{'id': eid, 'episode_num': num, 'title': 'الوادي البعيد S0%dE0%d' % (se, num), 'container_extension': 'mkv' if eid == '1006' else 'mp4', 'season': se,
+                        'episodes': {str(season): [{'id': eid, 'episode_num': num, 'title': 'الوادي البعيد S0%dE0%d' % (se, num), 'container_extension': 'mkv' if eid == '1006' else 'mp4', 'season': se,
                                                 'info': {'plot': 'ملخص الحلقة %d' % num, 'duration_secs': 120}} for eid, se, num in EPISODES if se == season] for season in (1, 2)} if sid == '701' else {}}
             elif action in ('get_live_categories',): body = [{'category_id': '11', 'category_name': 'رياضة'}]
             elif action in ('get_live_streams',): body = [{'num': 101, 'name': 'SSC 1 HD', 'stream_id': '101', 'category_id': '11', 'stream_icon': '', 'container_extension': 'ts'}]
