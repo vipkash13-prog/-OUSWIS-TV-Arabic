@@ -110,21 +110,22 @@ COLOURS = [(200, 40, 40), (40, 160, 60), (40, 70, 200), (200, 150, 30), (150, 40
 MOVIES = {   # id: (name, category, rating, added days ago)
     '501': ('ظل الصحراء', '1', '7.5', 1), '502': ('المدينة الأخيرة', '1', '7.9', 0), '503': ('سرّ البحر', '1', '6.6', 3), '504': ('رحلة النجوم', '1', '8.5', 5),
     '505': ('الحارس', '1', '9.0', 7), '506': ('طريق الذهب', '1', '6.9', 9), '507': ('ليلة في جدة', '1', '6.5', 11), '508': ('الصقر', '1', '6.4', 13),
-    '601': ('Desert Storm', '2', '7.1', 2), '602': ('Night Run', '2', '5.9', 4), '603': ('Last Train', '2', '8.0', 6),
+    '601': ('Desert Storm', '2', '7.1', 2), '602': ('Night Run', '2', '5.9', 4), '603': ('Last Train', '2', '8.0', 6), '604': ('Two Voices', '2', '6.2', 8),
     '901': ('Adult Film', '3', '5.0', 0),
 }
 def stream(i, m):
     name, cat, rate, ago = m
     return {'num': int(i), 'name': name, 'stream_type': 'movie', 'stream_id': int(i), 'stream_icon': 'http://127.0.0.1:%d/poster/%s.png' % (PORT[0], i),
-            'rating': rate, 'rating_5based': float(rate) / 2, 'added': str(NOW - ago * 86400 - int(i)), 'category_id': cat, 'container_extension': 'mp4', 'custom_sid': None, 'direct_source': ''}
+            'rating': rate, 'rating_5based': float(rate) / 2, 'added': str(NOW - ago * 86400 - int(i)), 'category_id': cat, 'container_extension': 'mkv' if i == '604' else 'mp4', 'custom_sid': None, 'direct_source': ''}
 PORT = [0]
 CLIP = [b'']
+MKV = [b'']
 
 class Provider(BaseHTTPRequestHandler):
     def log_message(self, *a): pass
     def send_bytes(self, payload, kind):
         rng = self.headers.get('Range')
-        if rng and kind == 'video/mp4':
+        if rng and kind.startswith('video/'):
             a, b = re.match(r'bytes=(\d*)-(\d*)', rng).groups()
             start = int(a) if a else 0; end = int(b) if b else len(payload) - 1
             end = min(end, len(payload) - 1)
@@ -159,6 +160,8 @@ class Provider(BaseHTTPRequestHandler):
         if m:
             b = BytesIO(); Image.new('RGB', (300, 450), COLOURS[int(m[1]) % len(COLOURS)]).save(b, 'PNG')
             return self.send_bytes(b.getvalue(), 'image/png')
+        if url.path == '/movie/demo/demo/604.mkv':
+            return self.send_bytes(MKV[0], 'video/x-matroska')
         m = re.fullmatch(r'/movie/demo/demo/(\d+)\.mp4', url.path)
         if m:
             assert m[1] != '901'
@@ -168,9 +171,20 @@ class Provider(BaseHTTPRequestHandler):
 
 with tempfile.TemporaryDirectory() as temp:
     clip = Path(temp) / 'film.mp4'
-    subprocess.run(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', 'testsrc=s=640x360:r=10', '-t', '120', '-c:v', 'libx264', '-preset', 'ultrafast',
-                    '-g', '10', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', str(clip)], check=True)
+    # one sound track, no subtitles
+    subprocess.run(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', 'testsrc=s=640x360:r=10', '-f', 'lavfi', '-i', 'sine=f=440', '-t', '120', '-map', '0:v', '-map', '1:a',
+                    '-c:v', 'libx264', '-preset', 'ultrafast', '-g', '10', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-movflags', '+faststart', str(clip)], check=True)
     CLIP[0] = clip.read_bytes()
+    # English and Arabic sound (English first and default), English and Arabic subtitles
+    (Path(temp) / 'en.srt').write_text('1\n00:00:00,000 --> 00:02:00,000\nWelcome\n', encoding='utf-8')
+    (Path(temp) / 'ar.srt').write_text('1\n00:00:00,000 --> 00:02:00,000\nمرحبا بكم\n', encoding='utf-8')
+    mkv = Path(temp) / 'two.mkv'
+    subprocess.run(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', 'testsrc=s=640x360:r=10', '-f', 'lavfi', '-i', 'sine=f=440', '-f', 'lavfi', '-i', 'sine=f=880',
+                    '-i', str(Path(temp) / 'en.srt'), '-i', str(Path(temp) / 'ar.srt'), '-t', '120',
+                    '-map', '0:v', '-map', '1:a', '-map', '2:a', '-map', '3:s', '-map', '4:s', '-c:v', 'libx264', '-preset', 'ultrafast', '-g', '10', '-pix_fmt', 'yuv420p',
+                    '-c:a', 'aac', '-c:s', 'srt', '-metadata:s:a:0', 'language=eng', '-metadata:s:a:1', 'language=ara', '-metadata:s:s:0', 'language=eng',
+                    '-metadata:s:s:1', 'language=ara', '-disposition:a:0', 'default', '-disposition:a:1', '0', '-disposition:s:0', '0', '-disposition:s:1', '0', str(mkv)], check=True)
+    MKV[0] = mkv.read_bytes()
 server = ThreadingHTTPServer(('127.0.0.1', 0), Provider); PORT[0] = server.server_port
 threading.Thread(target=server.serve_forever, daemon=True).start()
 adb('reverse', 'tcp:%d' % PORT[0], 'tcp:%d' % PORT[0])
@@ -206,7 +220,7 @@ try:
 
     # 2. the films screen: newest first, the adult section and its films never shown
     head = wait_label('أحدث الإضافات · ', 'the newest additions with the catalogue count')
-    assert '11 فيلم' in head[0], 'The count must leave out the adult section (11 films): ' + head[0]
+    assert '12 فيلم' in head[0], 'The count must leave out the adult section (12 films): ' + head[0]
     wait_label('المدينة الأخيرة', 'the newest film in the grid')
     time.sleep(3)
     labs = labels(); img = shot('vod-movies.png')
@@ -217,7 +231,7 @@ try:
         assert any(l.startswith('قسم ') and need in l for l in labs), 'Missing section: ' + need + ' | ' + str(labs)
     grid = [l for l in labs if ' · ★ ' in l]
     assert grid and grid[0].startswith('المدينة الأخيرة'), 'Newest first (المدينة الأخيرة, added today): ' + str(grid)
-    assert len(grid) == 11, 'Two rows of six would show 11 films (all of them): ' + str(grid)
+    assert len(grid) == 12, 'Two rows of six show the 12 films: ' + str(grid)
     assert colourful(img, (0.62, 0.14, 0.79, 0.42)) > 0.3, 'The first poster is not drawn from the provider'
     assert 'المدينة الأخيرة' in focused_label(), 'The first film holds the focus: ' + focused_label()
     note('PASS: films screen: newest first, ' + head[0] + ', posters from the provider, sections on the right, no adult section or film.')
@@ -333,7 +347,51 @@ try:
     note('PASS: تابع المشاهدة and المفضلة hold the film.')
     no_crash('Films')
 
-    # 6. Live TV still opens from its shortcut, with the account
+    # 6. sound and subtitles (▼): by language, Arabic sound by default, a picked subtitle kept for later
+    def menu_labels():
+        return [l for l in labels() if l.startswith('الصوت: ') or l.startswith('الترجمة: ') or 'مسار صوت واحد' in l or 'لا توجد ترجمات' in l]
+    def play(mid, name, ext):
+        adb('shell', 'am', 'start', '-W', '-n', PKG + '/.VodPlayerActivity', '--es', 'id', mid, '--es', 'name', name, '--es', 'ext', ext, '--es', 'cat', '2')
+        front('VodPlayerActivity'); time.sleep(6)
+    adb('shell', 'am', 'force-stop', PKG); time.sleep(1)
+    play('604', 'Two Voices', 'mkv')
+    keys('DPAD_DOWN', pause=1.5)
+    ml = menu_labels()
+    for need in ('الصوت: عربي — مختار', 'الصوت: إنجليزي', 'الترجمة: بدون ترجمة — مختار', 'الترجمة: عربي', 'الترجمة: إنجليزي'):
+        assert need in ml, 'Sound/subtitles menu lacks ' + need + ': ' + str(ml)
+    shot('vod-tracks-menu.png')
+    note('PASS: ▼ opens the sound and subtitles menu: ' + ' | '.join(ml) + ' (Arabic sound chosen by itself, no subtitles with Arabic sound).')
+    for _ in range(6):
+        if focused_label().startswith('الترجمة: عربي'): break
+        keys('DPAD_DOWN', pause=0.5)
+    keys('DPAD_CENTER', pause=2)
+    assert 'الترجمة: عربي — مختار' in menu_labels(), 'The Arabic subtitles were not chosen: ' + str(menu_labels())
+    keys('BACK', pause=1)
+    front('VodPlayerActivity')
+    wait_label('ترجمة: مرحبا بكم', 'the Arabic subtitle on screen', tries=15)
+    shot('vod-subtitles.png')
+    kept = adb('shell', 'cat', folder + '/ouswis-tracks.xml')
+    assert 'name="text">ar<' in kept, 'The Arabic subtitle choice must be kept: ' + kept
+    note('PASS: the Arabic subtitles show on screen ("مرحبا بكم") and the choice is kept for the next films.')
+    keys('BACK', pause=1.5)
+    adb('shell', 'am', 'force-stop', PKG); time.sleep(1)
+    play('604', 'Two Voices', 'mkv')
+    wait_label('ترجمة: مرحبا بكم', 'the kept Arabic subtitles on the next play', tries=15)
+    keys('DPAD_DOWN', pause=1.5)
+    ml = menu_labels()
+    assert 'الصوت: عربي — مختار' in ml and 'الترجمة: عربي — مختار' in ml, 'The kept choice on a new play: ' + str(ml)
+    keys('BACK', pause=1); keys('BACK', pause=1.5)
+    note('PASS: played again, the file opens with Arabic sound and the kept Arabic subtitles.')
+    play('601', 'Desert Storm', 'mp4')
+    keys('DPAD_DOWN', pause=1.5)
+    ml = menu_labels()
+    assert any('مسار صوت واحد فقط' in l for l in ml) and any('لا توجد ترجمات' in l for l in ml), 'A one-track file must say there is nothing else: ' + str(ml)
+    shot('vod-tracks-single.png')
+    keys('BACK', pause=1); keys('BACK', pause=1.5)
+    note('PASS: a file with one sound track and no subtitles says so in the menu.')
+    no_crash('Sound and subtitles')
+
+    # 7. Live TV still opens from its shortcut, with the account
     keys('BACK', pause=2)
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.HomeActivity'); front('HomeActivity'); time.sleep(2)
     keys(*['DPAD_DOWN'] * 5, pause=0.4); keys(*['DPAD_RIGHT'] * 8, pause=0.25)

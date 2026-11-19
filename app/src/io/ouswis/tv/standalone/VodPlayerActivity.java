@@ -19,13 +19,19 @@ import android.widget.FrameLayout;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
+import androidx.media3.common.Tracks;
 import androidx.media3.common.VideoSize;
+import androidx.media3.common.text.Cue;
+import androidx.media3.common.text.CueGroup;
+import java.util.ArrayList;
+import java.util.List;
 import androidx.media3.exoplayer.ExoPlayer;
 
 /**
  * A film, full screen, on the app's own player (Media3 ExoPlayer from LivePlayer, the same one the channels use) from
  * /movie/USER/PASS/ID.ext. The remote moves through it (▶ forward and ◀ back, the bar filling from left to right; held,
- * the steps grow), OK pauses, and where it stopped is saved every 10 s and on leaving.
+ * the steps grow), OK pauses, ▼ opens the sound and subtitles menu (TrackChoice), and where it stopped is saved every
+ * 10 s and on leaving. Subtitles are drawn here (the app has no Media3 UI module).
  */
 public final class VodPlayerActivity extends Activity {
     private final Handler main=new Handler(Looper.getMainLooper());
@@ -39,6 +45,9 @@ public final class VodPlayerActivity extends Activity {
     private long startAt,knownDur;
     private boolean ended,failedOnce;
     private String error="";
+    private boolean tracksApplied;
+    private List<Cue> cues=new ArrayList<>();
+    private TrackMenu menu;
 
     static Intent intent(Context c,VodData.Movie m,String ext,long from,long dur){
         return new Intent(c,VodPlayerActivity.class).putExtra("id",m.id).putExtra("name",m.name).putExtra("icon",m.icon).putExtra("ext",ext)
@@ -63,6 +72,8 @@ public final class VodPlayerActivity extends Activity {
         root.addView(surface,new FrameLayout.LayoutParams(-1,-1,Gravity.CENTER));
         bar=new Bar(this);
         root.addView(bar,new FrameLayout.LayoutParams(-1,-1));
+        menu=new TrackMenu(this);menu.setVisibility(View.GONE);
+        root.addView(menu,new FrameLayout.LayoutParams(-1,-1));
         setContentView(root);
     }
     private String str(String k){String s=getIntent().getStringExtra(k);return s==null?"":s;}
@@ -81,6 +92,14 @@ public final class VodPlayerActivity extends Activity {
                 bar.invalidate();
             }
             @Override public void onIsPlayingChanged(boolean playing){bar.invalidate();}
+            @Override public void onTracksChanged(Tracks tracks){
+                if(!tracksApplied&&!tracks.getGroups().isEmpty()&&player!=null){
+                    tracksApplied=true;
+                    try{log("المسارات: "+TrackChoice.applyDefaults(VodPlayerActivity.this,player,tracks));}catch(RuntimeException x){log("المسارات: تعذّر الاختيار "+x.getClass().getSimpleName());}
+                }
+                if(menu.getVisibility()==View.VISIBLE)menu.refresh();
+            }
+            @Override public void onCues(CueGroup group){cues=group.cues;bar.invalidate();}
             @Override public void onVideoSizeChanged(VideoSize size){
                 int[] s=VideoFit.size(size.width,size.height,root.getWidth(),root.getHeight());
                 surface.setLayoutParams(new FrameLayout.LayoutParams(s[0],s[1],Gravity.CENTER));
@@ -142,7 +161,11 @@ public final class VodPlayerActivity extends Activity {
         bar.show(false);
     }
     @Override public boolean onKeyDown(int key,KeyEvent e){
+        if(menu.getVisibility()==View.VISIBLE)return menu.key(key,e)||super.onKeyDown(key,e);
         switch(key){
+            case KeyEvent.KEYCODE_DPAD_DOWN:case KeyEvent.KEYCODE_CAPTIONS:case KeyEvent.KEYCODE_MEDIA_AUDIO_TRACK:
+                if(e.getRepeatCount()==0)menu.open();
+                return true;
             case KeyEvent.KEYCODE_DPAD_RIGHT:case KeyEvent.KEYCODE_MEDIA_FAST_FORWARD:   // the bar fills from left to right: right is forward
                 step(1,e.getRepeatCount());return true;
             case KeyEvent.KEYCODE_DPAD_LEFT:case KeyEvent.KEYCODE_MEDIA_REWIND:
@@ -156,7 +179,7 @@ public final class VodPlayerActivity extends Activity {
                 return true;
             case KeyEvent.KEYCODE_MEDIA_PAUSE:if(player!=null){player.setPlayWhenReady(false);save();bar.show(false);}return true;
             case KeyEvent.KEYCODE_MEDIA_PLAY:if(player!=null){player.setPlayWhenReady(true);bar.show(false);}return true;
-            case KeyEvent.KEYCODE_DPAD_UP:case KeyEvent.KEYCODE_DPAD_DOWN:case KeyEvent.KEYCODE_INFO:bar.show(false);return true;
+            case KeyEvent.KEYCODE_DPAD_UP:case KeyEvent.KEYCODE_INFO:bar.show(false);return true;
         }
         return super.onKeyDown(key,e);
     }
@@ -182,10 +205,40 @@ public final class VodPlayerActivity extends Activity {
             boolean paused=player!=null&&!player.getPlayWhenReady();
             return paused||!error.isEmpty()||seekTarget>=0||android.os.SystemClock.uptimeMillis()<until;
         }
+        private final android.text.TextPaint cueText=new android.text.TextPaint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint cueEdge=new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final RectF cr=new RectF();
+        {cueText.setColor(0xFFFFFFFF);cueText.setTextSize(44);cueText.setTypeface(Design.bold());
+         cueEdge.setStyle(Paint.Style.FILL);cueEdge.setColor(0x99000000);}
+        /** The subtitles of now: text lines centred low on the screen (above the bar when it shows), pictures where the file puts them. */
+        private void drawCues(Canvas c,boolean barUp){
+            if(cues==null||cues.isEmpty())return;
+            float bottom=barUp?830:1010;
+            List<String> lines=new ArrayList<>();
+            for(Cue q:cues){
+                if(q.bitmap!=null){
+                    float w=(q.size==Cue.DIMEN_UNSET?0.5f:q.size)*1920,h=q.bitmapHeight==Cue.DIMEN_UNSET?w*q.bitmap.getHeight()/Math.max(1f,q.bitmap.getWidth()):q.bitmapHeight*1080;
+                    float x=(q.position==Cue.DIMEN_UNSET?0.5f:q.position)*1920,y=(q.line==Cue.DIMEN_UNSET||q.lineType!=Cue.LINE_TYPE_FRACTION?0.85f:q.line)*1080;
+                    if(q.positionAnchor==Cue.ANCHOR_TYPE_MIDDLE)x-=w/2;else if(q.positionAnchor==Cue.ANCHOR_TYPE_END)x-=w;
+                    if(q.lineAnchor==Cue.ANCHOR_TYPE_MIDDLE)y-=h/2;else if(q.lineAnchor==Cue.ANCHOR_TYPE_END)y-=h;
+                    cr.set(x,y,x+w,y+h);c.drawBitmap(q.bitmap,null,cr,null);
+                }else if(q.text!=null)for(String l:q.text.toString().split("\n"))if(!l.trim().isEmpty())lines.add(l.trim());
+            }
+            float lh=58,y=bottom-(lines.size()-1)*lh;
+            for(String l:lines){
+                String t=Design.fit(l,cueText,1700);float tw=cueText.measureText(t);
+                cr.set(960-tw/2-16,y-44,960+tw/2+16,y+14);c.drawRoundRect(cr,8,8,cueEdge);
+                Design.center(c,t,960,y,cueText);
+                a11y.add(cr,"ترجمة: "+t,false,false);
+                y+=lh;
+            }
+        }
         @Override protected void onDraw(Canvas c){
             a11y.begin(k);
             boolean buffering=player!=null&&player.getPlaybackState()==Player.STATE_BUFFERING;
-            if(!visible()){
+            boolean up=visible();
+            c.save();c.scale(k,k);drawCues(c,up);c.restore();
+            if(!up){
                 if(buffering){c.save();c.scale(k,k);Design.center(c,"جارٍ التحميل…",960,560,big);a11y.add(700,520,1220,580,"جارٍ التحميل",false,false);c.restore();}
                 return;
             }
@@ -207,7 +260,75 @@ public final class VodPlayerActivity extends Activity {
             Design.left(c,now,72,975,time);
             if(!all.isEmpty())Design.right(c,all,1848,975,time);
             a11y.add(72,915,1848,985,now+(all.isEmpty()?"":" من "+all)+(paused?" · متوقف":""),false,false);
-            Design.center(c,"▶ تقديم · ◀ رجوع · OK إيقاف/تشغيل · BACK خروج",960,1040,hint);
+            Design.center(c,"▶ تقديم · ◀ رجوع · OK إيقاف/تشغيل · ▼ الصوت والترجمة · BACK خروج",960,1040,hint);
+            c.restore();
+        }
+    }
+
+    /** The sound and subtitles menu (▼): every sound track and subtitle of the file by language, ✓ on the ones playing. */
+    private final class TrackMenu extends View {
+        private final Paint p=new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint head=Design.text(Design.TEXT,34,Design.bold()),section=Design.text(Design.GOLD,24,Design.bold()),
+                item=Design.text(Design.TEXT,26,Design.regular()),note=Design.text(Design.MUTED,21,Design.regular()),hint=Design.text(Design.MUTED,18,Design.regular());
+        private final RectF r=new RectF(),g=new RectF();
+        private final A11y a11y=new A11y(this);
+        @Override public android.view.accessibility.AccessibilityNodeProvider getAccessibilityNodeProvider(){return a11y.provider(null,null);}
+        private List<TrackChoice.Option> audio=new ArrayList<>(),text=new ArrayList<>();
+        private int sel;   // over the audio options, then "no subtitles", then the subtitles
+        private float k=1;
+        TrackMenu(Context c){super(c);}
+        @Override protected void onSizeChanged(int w,int h,int ow,int oh){k=w/1920f;}
+        void open(){refresh();sel=0;for(int i=0;i<audio.size();i++)if(audio.get(i).selected)sel=i;setVisibility(View.VISIBLE);invalidate();}
+        void refresh(){
+            Tracks t=player==null?null:player.getCurrentTracks();
+            audio=TrackChoice.options(t,androidx.media3.common.C.TRACK_TYPE_AUDIO);
+            text=TrackChoice.options(t,androidx.media3.common.C.TRACK_TYPE_TEXT);
+            if(sel>=count())sel=Math.max(0,count()-1);
+            invalidate();
+        }
+        private int count(){return audio.size()+1+text.size();}
+        private boolean textOff(){for(TrackChoice.Option o:text)if(o.selected)return false;return true;}
+        boolean key(int key,KeyEvent e){
+            switch(key){
+                case KeyEvent.KEYCODE_BACK:case KeyEvent.KEYCODE_DPAD_RIGHT:case KeyEvent.KEYCODE_DPAD_LEFT:
+                    setVisibility(View.GONE);bar.show(false);return true;
+                case KeyEvent.KEYCODE_DPAD_UP:if(sel>0)sel--;invalidate();return true;
+                case KeyEvent.KEYCODE_DPAD_DOWN:if(sel<count()-1)sel++;invalidate();return true;
+                case KeyEvent.KEYCODE_DPAD_CENTER:case KeyEvent.KEYCODE_ENTER:
+                    if(e.getRepeatCount()>0||player==null)return true;
+                    if(sel<audio.size())TrackChoice.pick(getContext(),player,androidx.media3.common.C.TRACK_TYPE_AUDIO,audio.get(sel));
+                    else if(sel==audio.size())TrackChoice.pick(getContext(),player,androidx.media3.common.C.TRACK_TYPE_TEXT,null);
+                    else TrackChoice.pick(getContext(),player,androidx.media3.common.C.TRACK_TYPE_TEXT,text.get(sel-audio.size()-1));
+                    main.postDelayed(this::refresh,400);
+                    return true;
+            }
+            return true;
+        }
+        private float row(Canvas c,float y,String label,boolean selected,boolean focus,String a11yLabel){
+            r.set(1290,y,1830,y+64);
+            if(focus){Design.grown(r,g);Design.fill(c,g,16,p,0x29E9C46A);Design.focusRing(c,g,16,1,p);}
+            Design.right(c,label,1790,y+43,item);
+            if(selected)Design.left(c,"✓",1320,y+44,section);
+            a11y.add(r,a11yLabel+(selected?" — مختار":""),focus,true);
+            return y+72;
+        }
+        @Override protected void onDraw(Canvas c){
+            a11y.begin(k);
+            c.drawColor(0x66000000);
+            c.save();c.scale(k,k);
+            r.set(1260,60,1860,1020);Design.card(c,r,28,1,p,0xF00E1124);
+            Design.right(c,"الصوت والترجمة",1820,128,head);
+            a11y.add(1270,90,1850,140,"الصوت والترجمة",false,false);
+            float y=170;
+            Design.right(c,"الصوت",1820,y+28,section);y+=46;
+            for(int i=0;i<audio.size();i++)y=row(c,y,audio.get(i).label,audio.get(i).selected,sel==i,"الصوت: "+audio.get(i).label);
+            if(audio.size()<=1){String m=audio.isEmpty()?"لا يوجد مسار صوت في هذا الملف":"مسار صوت واحد فقط · لا توجد خيارات أخرى";Design.right(c,m,1810,y+30,note);a11y.add(1290,y,1830,y+40,m,false,false);y+=50;}
+            y+=20;
+            Design.right(c,"الترجمة",1820,y+28,section);y+=46;
+            y=row(c,y,"بدون ترجمة",textOff(),sel==audio.size(),"الترجمة: بدون ترجمة");
+            for(int i=0;i<text.size();i++)y=row(c,y,text.get(i).label,text.get(i).selected,sel==audio.size()+1+i,"الترجمة: "+text.get(i).label);
+            if(text.isEmpty()){String m="لا توجد ترجمات في هذا الملف";Design.right(c,m,1810,y+30,note);a11y.add(1290,y,1830,y+40,m,false,false);}
+            Design.center(c,"▲▼ تنقل · OK اختيار · BACK إغلاق",1560,995,hint);
             c.restore();
         }
     }
