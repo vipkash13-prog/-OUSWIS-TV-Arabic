@@ -421,9 +421,9 @@ with tempfile.TemporaryDirectory() as temp:
     assert 'demo' not in vault and '127.0.0.1' not in vault, 'The vault must not hold the login in the clear'
     note('PASS: the plain-text Xtream login was sealed (AES-GCM blob) and erased from the old preferences; the vault holds no readable server, user or password.')
     labs = labels()
-    for need in ('البث المباشر', 'المباريات', 'كل التطبيقات', 'الأخيرة', 'التحديثات', 'الإعدادات', 'إضافة تطبيق'):
+    for need in ('البث المباشر', 'أفلام', 'المباريات', 'كل التطبيقات', 'الأخيرة', 'التحديثات', 'الإعدادات', 'إضافة تطبيق'):
         assert any(l == need for l in labs), 'Missing control: ' + need
-    note('PASS: new home: last-channel card holds the first focus; six shortcuts and the + tile are reachable controls.')
+    note('PASS: new home: last-channel card holds the first focus; seven shortcuts and the + tile are reachable controls.')
 
     measure(os.environ.get('PERF_TAG', 'run'))
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.HomeActivity'); wait_label('آخر قناة شاهدتها: SSC 1', 'the home again after the measurement')
@@ -996,8 +996,8 @@ with tempfile.TemporaryDirectory() as temp:
     # All Apps through the home shortcut (the row below the apps): the remote opens a grid of the installed apps
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.HomeActivity'); wait_label('غانا ضد الصومال', 'the home before All Apps')
     keys('DPAD_DOWN', 'DPAD_DOWN', 'DPAD_DOWN', pause=0.8)
-    keys('DPAD_LEFT', 'DPAD_LEFT', pause=0.8)
-    assert 'كل التطبيقات' in focused_label(), 'The third shortcut must be كل التطبيقات: ' + focused_label()
+    keys('DPAD_LEFT', 'DPAD_LEFT', 'DPAD_LEFT', pause=0.8)
+    assert 'كل التطبيقات' in focused_label(), 'The fourth shortcut must be كل التطبيقات: ' + focused_label()
     keys('DPAD_CENTER', pause=0.3); front('AllAppsActivity')
     first_open = labels()   # the very first look: the list was read ahead when the home opened
     assert not any('جارٍ التحميل' in l or 'جارٍ تحميل' in l for l in first_open), 'All Apps opened for the first time must show its list at once (read ahead): ' + str(first_open[:8])
@@ -1047,7 +1047,7 @@ with tempfile.TemporaryDirectory() as temp:
     for _ in range(8):
         if 'الأخيرة' in focused_label(): break
         keys('DPAD_LEFT', pause=0.8)
-    assert 'الأخيرة' in focused_label(), 'The fourth shortcut must be الأخيرة: ' + focused_label()
+    assert 'الأخيرة' in focused_label(), 'The fifth shortcut must be الأخيرة: ' + focused_label()
     keys('DPAD_CENTER', pause=0.5); front('RecentsActivity')
     wait_label('التطبيقات الأخيرة', 'the Recent Apps title')
     time.sleep(3)
