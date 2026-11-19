@@ -24,7 +24,7 @@ import androidx.media3.exoplayer.ExoPlayer;
 
 /**
  * A film, full screen, on the app's own player (Media3 ExoPlayer from LivePlayer, the same one the channels use) from
- * /movie/USER/PASS/ID.ext. The remote moves through it (◀ forward and ▶ back, as the bar fills from the right; held,
+ * /movie/USER/PASS/ID.ext. The remote moves through it (▶ forward and ◀ back, the bar filling from left to right; held,
  * the steps grow), OK pauses, and where it stopped is saved every 10 s and on leaving.
  */
 public final class VodPlayerActivity extends Activity {
@@ -143,9 +143,9 @@ public final class VodPlayerActivity extends Activity {
     }
     @Override public boolean onKeyDown(int key,KeyEvent e){
         switch(key){
-            case KeyEvent.KEYCODE_DPAD_LEFT:case KeyEvent.KEYCODE_MEDIA_FAST_FORWARD:   // the bar fills from the right: left is forward
+            case KeyEvent.KEYCODE_DPAD_RIGHT:case KeyEvent.KEYCODE_MEDIA_FAST_FORWARD:   // the bar fills from left to right: right is forward
                 step(1,e.getRepeatCount());return true;
-            case KeyEvent.KEYCODE_DPAD_RIGHT:case KeyEvent.KEYCODE_MEDIA_REWIND:
+            case KeyEvent.KEYCODE_DPAD_LEFT:case KeyEvent.KEYCODE_MEDIA_REWIND:
                 step(-1,e.getRepeatCount());return true;
             case KeyEvent.KEYCODE_DPAD_CENTER:case KeyEvent.KEYCODE_ENTER:case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
                 if(e.getRepeatCount()==0&&player!=null){
@@ -161,7 +161,7 @@ public final class VodPlayerActivity extends Activity {
         return super.onKeyDown(key,e);
     }
 
-    /** The bar at the bottom: name, the time, how far it is (filling from the right) and the keys. Shown for 4 s after a key, and while paused. */
+    /** The bar at the bottom: name, the time, how far it is (filling from left to right) and the keys. Shown for 4 s after a key, and while paused. */
     private final class Bar extends View {
         private final Paint p=new Paint(Paint.ANTI_ALIAS_FLAG),fade=new Paint();
         private final Paint name=Design.text(Design.TEXT,34,Design.bold()),time=Design.text(Design.TEXT,24,Design.regular()),
@@ -201,13 +201,13 @@ public final class VodPlayerActivity extends Activity {
             if(paused)Design.left(c,"❚❚ متوقف",72,880,time);
             float f=dur>0?Math.max(0,Math.min(1,pos/(float)dur)):0;
             r.set(72,925,1848,933);Design.fill(c,r,4,p,0x40FFFFFF);
-            r.set(1848-1776*f,925,1848,933);Design.fill(c,r,4,p,Design.GOLD);
-            p.setColor(0xFFFFFFFF);c.drawCircle(1848-1776*f,929,11,p);
+            r.set(72,925,72+1776*f,933);Design.fill(c,r,4,p,Design.GOLD);
+            p.setColor(0xFFFFFFFF);c.drawCircle(72+1776*f,929,11,p);
             String now=VodData.clock(pos),all=dur>0?VodData.clock(dur):"";
-            Design.right(c,now,1848,975,time);
-            if(!all.isEmpty())Design.left(c,all,72,975,time);
+            Design.left(c,now,72,975,time);
+            if(!all.isEmpty())Design.right(c,all,1848,975,time);
             a11y.add(72,915,1848,985,now+(all.isEmpty()?"":" من "+all)+(paused?" · متوقف":""),false,false);
-            Design.center(c,"◀ تقديم · ▶ رجوع · OK إيقاف/تشغيل · BACK خروج",960,1040,hint);
+            Design.center(c,"▶ تقديم · ◀ رجوع · OK إيقاف/تشغيل · BACK خروج",960,1040,hint);
             c.restore();
         }
     }

@@ -285,18 +285,22 @@ try:
     assert colourful(img, (0.2, 0.2, 0.8, 0.6)) > 0.2, 'No picture from the film'
     keys('DPAD_UP', pause=0.3)   # shows the bar
     p0, l0 = bar_position()
-    keys('DPAD_LEFT', 'DPAD_LEFT', 'DPAD_LEFT', 'DPAD_LEFT', pause=0.3); time.sleep(1.5)
+    keys('DPAD_RIGHT', 'DPAD_RIGHT', 'DPAD_RIGHT', 'DPAD_RIGHT', pause=0.3); time.sleep(1.5)
     p1, l1 = bar_position()
-    assert p0 >= 0 and p1 >= p0 + 35, 'Four ◀ presses must move forward about 40 s: %s → %s' % (l0, l1)
-    keys('DPAD_RIGHT', pause=0.3); time.sleep(1.5)
+    assert p0 >= 0 and p1 >= p0 + 35, 'Four ▶ presses must move forward about 40 s: %s → %s' % (l0, l1)
+    img = shot('vod-seek-forward.png')
+    # the bar fills from left to right: at about 40 % of the film, gold on the left part of the bar, grey on the right
+    gold = lambda px: px[0] > 180 and px[1] > 140 and px[2] < 140
+    assert gold(img.getpixel((200, 929))) and not gold(img.getpixel((1700, 929))), 'The bar must fill from left to right: %s %s' % (img.getpixel((200, 929)), img.getpixel((1700, 929)))
+    keys('DPAD_LEFT', pause=0.3); time.sleep(1.5)
     p2, l2 = bar_position()
-    assert p2 <= p1 - 5, '▶ must move back: %s → %s' % (l1, l2)
+    assert p2 <= p1 - 5, '◀ must move back: %s → %s' % (l1, l2)
     shot('vod-seek.png')
     keys('DPAD_CENTER', pause=1.5)
     assert any('متوقف' in l for l in labels()), 'OK must pause'
     shot('vod-paused.png')
     keys('DPAD_CENTER', pause=4)
-    note('PASS: the film plays on the app\'s player from /movie/demo/demo/601.mp4; ◀ moved %s → %s, ▶ back to %s; OK pauses and plays.' % (l0, l1, l2))
+    note('PASS: the film plays on the app\'s player from /movie/demo/demo/601.mp4; ▶ moved forward %s → %s, ◀ back to %s, the bar fills from left to right; OK pauses and plays.' % (l0, l1, l2))
     keys('BACK', pause=2); front('MovieActivity')
     resume = wait_label('▶ كمّل من ', 'continue from… after watching')
     assert seconds(resume[0]) >= p2, 'The saved position must be where it stopped: ' + resume[0]
