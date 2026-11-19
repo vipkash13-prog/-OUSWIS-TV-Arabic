@@ -1,0 +1,104 @@
+name: Films preview (signed, emulator tested)
+# Round "films 1": the signed preview APK for the MECOOL, after the offline checks, the redesigned-home test and the films
+# test (tools/test-vod.py) pass on a 1920x1080 Android 14 emulator. Published as a pre-release, never the official release.
+on:
+  push:
+    branches: ['feature/vod-movies']
+    paths: ['app/**', 'build.sh', 'tools/test-vod.py', 'tools/test-gold-home.py', '.github/workflows/vod-preview.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: ouswis-vod-preview
+  cancel-in-progress: false
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - name: Android SDK
+        shell: bash
+        run: |
+          set +o pipefail
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$RUNNER_TEMP/sdk" "build-tools;34.0.0" "platforms;android-34" > /dev/null
+          echo "ANDROID_HOME=$RUNNER_TEMP/sdk" >> "$GITHUB_ENV"
+      - name: Restore the permanent repository signing key
+        env:
+          KEY_PASS: ${{ secrets.OUSWIS_SIGNING_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KEY_PASS" || { echo "OUSWIS_SIGNING_PASSWORD is required. No replacement key will be generated."; exit 1; }
+          test -s signing/ouswis-release.jks.b64 || { echo "Permanent signing key is missing. Restore it; do not create a new one."; exit 1; }
+          umask 077
+          base64 --decode signing/ouswis-release.jks.b64 > "$RUNNER_TEMP/ouswis-official.keystore"
+          derived=$(printf '%s' "$KEY_PASS" | sha256sum | cut -d ' ' -f1)
+          echo "::add-mask::$derived"
+          echo "FREEMYTV_KEYSTORE=$RUNNER_TEMP/ouswis-official.keystore" >> "$GITHUB_ENV"
+          echo "FREEMYTV_KEYSTORE_PASS=$derived" >> "$GITHUB_ENV"
+      - name: Version code above every earlier build (one counter for official and preview)
+        run: |
+          code=$(python3 tools/version-code.py --set app/AndroidManifest.xml)
+          test "$code" -gt 110253
+          grep -q 'android:versionName="1.0"' app/AndroidManifest.xml
+          grep -q 'package="io.ouswis.tv.standalone"' app/AndroidManifest.xml
+          echo "versionCode $code" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Offline checks and the signed APK
+        run: |
+          set -euo pipefail
+          python3 tools/translate.py --check
+          node tests/ArabicI18nTest.js
+          ./build.sh --generic --release
+          python3 tools/verify-release-apk.py FreeMyTV.apk
+          bash tools/test-remote.sh
+          bash tools/test-order.sh
+          bash tools/test-video-fit.sh
+          bash tools/test-xtream-catalog.sh
+          bash tools/test-home-enhancements.sh
+          bash tools/test-channel-hints.sh
+          bash tools/test-saudi-dates.sh
+      - name: Tools
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y ffmpeg python3-pil > /dev/null
+          sudo chmod 666 /dev/kvm
+      - name: Emulator, 1920x1080 (home shortcuts, then films)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: default
+          arch: x86_64
+          profile: tv_1080p
+          avd-name: ouswis-vod
+          ram-size: 4096M
+          heap-size: 512M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -skin 1920x1080
+          script: |
+            adb install -r FreeMyTV.apk
+            python3 tools/test-gold-home.py vod-evidence
+            python3 tools/test-vod.py vod-evidence
+      - name: Save the evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: OUSWIS-TV-films-evidence
+          path: vod-evidence/
+          if-no-files-found: warn
+      - name: Publish the preview (only after the tests passed; never the official release)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          shopt -s nullglob
+          code=$(sed -n 's/.*android:versionCode="\([0-9]*\)".*/\1/p' app/AndroidManifest.xml)
+          cp FreeMyTV.apk OUSWIS-TV-preview.apk
+          tag="preview-vod-${GITHUB_RUN_ID}"
+          gh release create "$tag" --prerelease --target "$GITHUB_SHA" --title "OUSWIS TV films preview (round 1, not an official release)" \
+            --notes "Films round 1 (movies only) from feature/vod-movies. Signed with the repository key, versionCode $code, versionName 1.0: installs over the current build. Emulator tests passed (run ${GITHUB_RUN_ID}); not tested on the MECOOL KM2 Plus." \
+            OUSWIS-TV-preview.apk vod-evidence/*.png vod-evidence/vod.log vod-evidence/gold-home.log
+          echo "https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/OUSWIS-TV-preview.apk" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Remove runner signing key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/ouswis-official.keystore"

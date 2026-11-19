@@ -29,6 +29,8 @@ final class XtreamAccount {
     String liveUrl(String id,String ext){return server+"/live/"+enc(user)+"/"+enc(pass)+"/"+enc(id)+"."+ext;}
     /** The older form of the HLS address, without "/live" (some panels answer only that one). It holds the password too. */
     String liveUrlAlt(String id,String ext){return server+"/"+enc(user)+"/"+enc(pass)+"/"+enc(id)+"."+ext;}
+    /** A film's address, /movie/USER/PASS/ID.ext (it holds the password too). */
+    String movieUrl(String id,String ext){return server+"/movie/"+enc(user)+"/"+enc(pass)+"/"+enc(id)+"."+(ext==null||ext.isEmpty()?"mp4":ext);}
     String api(String action,String extra){
         return server+"/player_api.php?username="+enc(user)+"&password="+enc(pass)
                 +(action==null?"":"&action="+action)+(extra==null?"":"&"+extra);

@@ -90,8 +90,8 @@ try:
     for px,py in ((960,1000),(300,1010),(1700,1010)):
         got=im.getpixel((int(px*k),int(py*k)));want=ref.getpixel((int(px*k),int(py*k)))
         assert max(abs(a-b) for a,b in zip(got,want))<=28,('The home background must be the supplied wallpaper, not darkened further',(px,py),got,want)
-    # the six shortcuts exist, once each, and run right to left in the SPEC order
-    order=['البث المباشر','المباريات','كل التطبيقات','الأخيرة','التحديثات','الإعدادات']
+    # the seven shortcuts exist, once each, and run right to left in the SPEC order
+    order=['البث المباشر','أفلام','المباريات','كل التطبيقات','الأخيرة','التحديثات','الإعدادات']
     xs=[]
     for name in order:
         hits=[n for n in nodes if n.get('text')==name and n.get('clickable')=='true' and bounds(n)[1]>h*0.7]
@@ -144,7 +144,7 @@ try:
            if n.get('clickable')=='true' and bounds(n)[1]>h*0.55 and bounds(n)[3]<h*0.86]
     assert len(after)==len(before)+1,(before,after)
     # shortcuts open their screens with the remote's keys
-    for index,name in [(4,'UpdatesActivity'),(1,'MatchesScreenActivity'),(0,'XtreamActivity')]:   # Live TV asks to sign in when nobody has
+    for index,name in [(5,'UpdatesActivity'),(2,'MatchesScreenActivity'),(1,'XtreamActivity'),(0,'XtreamActivity')]:   # Live TV and Movies ask to sign in when nobody has
         launch()
         for _ in range(5):key('DPAD_DOWN',0.3)
         for _ in range(8):key('DPAD_RIGHT',0.2)
@@ -153,7 +153,7 @@ try:
         adb('shell','input','keyevent','KEYCODE_BACK');time.sleep(1)
     crash=adb('logcat','-d','-b','crash')
     assert 'Process: '+PKG not in crash,crash
-    with (OUT/'gold-home.log').open('a') as f:f.write('PASS: redesigned home at '+suffix+': Arabic RTL, six shortcuts in order, weather as a top chip, prayer card with real data, apps row with the + picker (installed apps list, pick joins the shelf), physical LEFT/DOWN/UP and OK to Updates, Matches and Live TV. Physical TV performance not measured.\n')
+    with (OUT/'gold-home.log').open('a') as f:f.write('PASS: redesigned home at '+suffix+': Arabic RTL, seven shortcuts in order, weather as a top chip, prayer card with real data, apps row with the + picker (installed apps list, pick joins the shelf), physical LEFT/DOWN/UP and OK to Updates, Matches, Movies and Live TV. Physical TV performance not measured.\n')
     print((OUT/'gold-home.log').read_text(),flush=True)
 finally:
     adb('shell','am','force-stop',PKG);write(saved)

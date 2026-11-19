@@ -692,12 +692,12 @@ final class RedesignHomeView extends View {
         }
     }
 
-    private static final String[] SHORTCUT_LABELS={"البث المباشر","المباريات","كل التطبيقات","الأخيرة","التحديثات","الإعدادات"};
-    private static final String[] SHORTCUT_ICONS={"▣","⚽","⠿","↻","⤓","⚙"};
+    private static final String[] SHORTCUT_LABELS={"البث المباشر","أفلام","المباريات","كل التطبيقات","الأخيرة","التحديثات","الإعدادات"};
+    private static final String[] SHORTCUT_ICONS={"▣","🎬","⚽","⠿","↻","⤓","⚙"};
     private void drawShortcuts(Canvas c){
-        for(int i=0;i<6;i++){
-            float right=1847-i*299;
-            r.set(right-283,828,right,904);RectF box=ring(r,focus(4,i));
+        for(int i=0;i<SHORTCUT_LABELS.length;i++){   // seven across the same width: 240 wide, 16 apart
+            float right=1847-i*256;
+            r.set(right-240,828,right,904);RectF box=ring(r,focus(4,i));
             Design.card(c,box,26,1,p,Design.SURFACE);
             Paint lab=tx(Design.TEXT,23,Design.bold());
             float tw=lab.measureText(SHORTCUT_LABELS[i]);
@@ -718,7 +718,7 @@ final class RedesignHomeView extends View {
             case 1:return 2;
             case 2:return Math.min(today.size(),4)+1;
             case 3:return apps.size()+1;
-            default:return 6;
+            default:return SHORTCUT_LABELS.length;
         }
     }
     private boolean rowShown(int rw){return rw!=2||!today.isEmpty();}
@@ -775,10 +775,11 @@ final class RedesignHomeView extends View {
             default:
                 switch(cl){
                     case 0:start(new Intent(ctx,LiveActivity.class));break;
-                    case 1:start(new Intent(ctx,MatchesScreenActivity.class));break;
-                    case 2:start(new Intent(ctx,AllAppsActivity.class));break;
-                    case 3:host.openClassic(true);break;
-                    case 4:start(new Intent(ctx,UpdatesActivity.class));break;
+                    case 1:start(new Intent(ctx,MoviesActivity.class));break;
+                    case 2:start(new Intent(ctx,MatchesScreenActivity.class));break;
+                    case 3:start(new Intent(ctx,AllAppsActivity.class));break;
+                    case 4:host.openClassic(true);break;
+                    case 5:start(new Intent(ctx,UpdatesActivity.class));break;
                     default:start(new Intent().setComponent(new ComponentName(ctx,SettingsActivity.class)));
                 }
         }
