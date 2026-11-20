@@ -486,7 +486,7 @@ try:
 
     # 8. the home's films and series row (home_vod.png): started and unfinished first with their progress, then the newest
     adb('shell', 'am', 'force-stop', PKG); time.sleep(1)
-    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.VodPlayerActivity', '--es', 'id', '602', '--es', 'name', "'Night Run'", '--es', 'ext', 'mp4', '--es', 'cat', '2', '--el', 'from', '50000')
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.VodPlayerActivity', '--es', 'id', '602', '--es', 'name', "'Night Run'", '--es', 'icon', 'http://127.0.0.1:%d/poster/602.png' % PORT[0], '--es', 'ext', 'mp4', '--es', 'cat', '2', '--el', 'from', '50000')
     front('VodPlayerActivity'); time.sleep(5); keys('BACK', pause=2)   # a film stopped part way (about 55 s of 2 min)
     adb('shell', 'am', 'force-stop', PKG); time.sleep(1)
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.HomeActivity'); front('HomeActivity')
@@ -508,7 +508,12 @@ try:
         time.sleep(1)
     time.sleep(2)
     img = shot('vod-home-row.png')
-    assert colourful(img, (0.86, 0.40, 0.96, 0.62)) > 0.2 or colourful(img, (0.86, 0.45, 0.96, 0.70)) > 0.2, 'The first poster is not drawn from the provider'
+    first = [list(map(int, re.findall(r'\d+', n.get('bounds')))) for n in tree().iter('node') if n.get('package') == PKG and (n.get('text', '') or n.get('content-desc', '')).startswith('Night Run · ')]
+    assert first, 'The first poster has no node'
+    x1, y1, x2, y2 = first[0]
+    W, H = img.size
+    inner = ((x1 + 12) / W, (y1 + 40) / H, (x2 - 12) / W, (y1 + (y2 - y1) * 0.5) / H)   # under the tag chip, above the fade
+    assert colourful(img, inner) > 0.3, 'The first poster is not drawn from the provider: ' + str(first[0])
     note('PASS: the home row: ' + rl[0] + ' and ' + rl[1] + ' first, then the newest (المدينة الأخيرة, Night Shift, ظل الصحراء), each tagged فيلم or مسلسل.')
     # every row whole on the screen, in order, nothing overlapping, the side margins as before
     def group(test):
