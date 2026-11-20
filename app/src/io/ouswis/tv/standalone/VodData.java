@@ -295,6 +295,7 @@ final class VodData {
                 });
                 total=count[0];
                 synchronized(movies){movies.put(NEWEST,top);}
+                saveNewest(top);
                 failedCats.remove(NEWEST);
             }catch(Exception e){
                 synchronized(movies){if(!movies.containsKey(NEWEST))failedCats.add(NEWEST);}
@@ -304,6 +305,82 @@ final class VodData {
             main.post(changed);
         });
     }
+    // MARK: the home screen's row (films and series): read from small files and the saved progress only, never the network
+
+    private static final int HOME_NEWEST=30;
+    static File newestFile(Context c,XtreamAccount a,boolean series){return new File(c.getFilesDir(),(series?"series-":"vod-")+"newest-"+AccountData.key(a)+".json");}
+    /** The newest of the catalogue (adult sections left out), kept small for the home row. */
+    private void saveNewest(List<Movie> top){
+        try{
+            JSONArray a=new JSONArray();for(int i=0;i<Math.min(HOME_NEWEST,top.size());i++)a.put(top.get(i).json());
+            File f=newestFile(ctx,account,series),part=new File(f.getPath()+".part");
+            Files.write(part.toPath(),a.toString().getBytes(StandardCharsets.UTF_8));
+            if(!part.renameTo(f))part.delete();
+        }catch(Exception ignored){}
+    }
+    private static List<Movie> savedNewest(Context c,XtreamAccount a,boolean series){
+        List<Movie> out=new ArrayList<>();
+        try{
+            File f=newestFile(c,a,series);
+            if(!f.isFile())return out;
+            JSONArray arr=new JSONArray(new String(Files.readAllBytes(f.toPath()),StandardCharsets.UTF_8));
+            for(int i=0;i<arr.length();i++){Movie m=Movie.from(arr.optJSONObject(i));if(m!=null)out.add(m);}
+        }catch(Exception ignored){}
+        return out;
+    }
+    /** True when the films' or the series' saved newest list is missing or over a day old. */
+    static boolean newestStale(Context c,XtreamAccount a,boolean series){
+        File f=newestFile(c,a,series);
+        return !f.isFile()||System.currentTimeMillis()-f.lastModified()>DAY;
+    }
+    /** One poster of the home row. `progress` is how far it got (0..1), or -1 when it is not being watched. */
+    static final class RowItem {
+        final Movie m;final boolean series;final String tag;final float progress;
+        RowItem(Movie m,boolean series,String tag,float progress){this.m=m;this.series=series;this.tag=tag;this.progress=progress;}
+        boolean same(RowItem o){return o!=null&&series==o.series&&m.id.equals(o.m.id)&&tag.equals(o.tag)&&Math.abs(progress-o.progress)<0.005f&&m.icon.equals(o.m.icon)&&m.name.equals(o.m.name);}
+    }
+    /**
+     * The home row: first what was started and not finished (films, and series whose last episode stopped part way),
+     * the latest first, with how far it got; then the newest films and series, the newest first. Saved data only.
+     */
+    static List<RowItem> homeRow(Context c,XtreamAccount a){
+        List<Object[]> started=new ArrayList<>();   // {at, RowItem}
+        JSONObject films=progressAll(c,a);
+        java.util.Iterator<String> it=films.keys();
+        while(it.hasNext()){
+            JSONObject o=films.optJSONObject(it.next());if(o==null)continue;
+            Progress p=new Progress(o.optLong("pos"),o.optLong("dur"),o.optLong("at"));
+            Movie m=Movie.from(o);
+            if(m==null||!p.resumable())continue;
+            float f=p.dur>0?Math.max(0,Math.min(1,p.pos/(float)p.dur)):0;
+            started.add(new Object[]{p.at,new RowItem(m,false,"فيلم",f)});
+        }
+        JSONObject last=lastAll(c,a),eps=read(c,eKey(a));
+        it=last.keys();
+        while(it.hasNext()){
+            JSONObject o=last.optJSONObject(it.next());if(o==null)continue;
+            Movie m=Movie.from(o.optJSONObject("series"));if(m==null)continue;
+            JSONObject e=eps.optJSONObject(o.optString("episode"));if(e==null)continue;
+            Progress p=new Progress(e.optLong("pos"),e.optLong("dur"),e.optLong("at"));
+            if(watched(p)||p.pos<=0)continue;   // finished: not something left to finish
+            int num=o.optInt("num",0);
+            float f=p.dur>0?Math.max(0,Math.min(1,p.pos/(float)p.dur)):0;
+            started.add(new Object[]{o.optLong("at"),new RowItem(m,true,num>0?"مسلسل · ح"+num:"مسلسل",f)});
+        }
+        Collections.sort(started,(x,y)->Long.compare((Long)y[0],(Long)x[0]));
+        List<RowItem> out=new ArrayList<>();
+        Set<String> seen=new HashSet<>();
+        for(int i=0;i<Math.min(10,started.size());i++){RowItem r=(RowItem)started.get(i)[1];if(seen.add((r.series?"s":"f")+r.m.id))out.add(r);}
+        List<Movie> nf=savedNewest(c,a,false),ns=savedNewest(c,a,true);
+        int i=0,j=0;
+        while(out.size()<20&&(i<nf.size()||j<ns.size())){
+            boolean takeFilm=j>=ns.size()||(i<nf.size()&&nf.get(i).added>=ns.get(j).added);
+            Movie m=takeFilm?nf.get(i++):ns.get(j++);
+            if(seen.add((takeFilm?"f":"s")+m.id))out.add(new RowItem(m,!takeFilm,takeFilm?"فيلم":"مسلسل",-1));
+        }
+        return out;
+    }
+
     /** Films whose name holds the words typed, from the whole catalogue (at most 150). */
     void search(String query,Runnable changed){
         final String q=XtreamCatalog.normalize(query==null?"":query);
@@ -549,7 +626,7 @@ final class VodData {
         JSONObject o=lastAll(c,a).optJSONObject(seriesId);return o==null?"":o.optString("episode");
     }
     /** Saves where an episode stopped (at the credits it counts as watched) and makes it the series' last one. */
-    static synchronized void saveEpisode(Context c,XtreamAccount a,Movie seriesItem,String episodeId,long pos,long dur){
+    static synchronized void saveEpisode(Context c,XtreamAccount a,Movie seriesItem,String episodeId,int season,int num,long pos,long dur){
         try{
             JSONObject all=read(c,eKey(a));
             if(pos>=5_000||(dur>0&&pos>=dur*0.95)){
@@ -557,7 +634,7 @@ final class VodData {
                 all.put(episodeId,new JSONObject().put("pos",pos).put("dur",dur).put("at",System.currentTimeMillis()));
                 trim(all,1500);
                 JSONObject last=lastAll(c,a);
-                last.put(seriesItem.id,new JSONObject().put("series",seriesItem.json()).put("episode",episodeId).put("at",System.currentTimeMillis()));
+                last.put(seriesItem.id,new JSONObject().put("series",seriesItem.json()).put("episode",episodeId).put("season",season).put("num",num).put("at",System.currentTimeMillis()));
                 trim(last,200);
                 store(c).edit().putString(eKey(a),all.toString()).putString(lKey(a),last.toString()).apply();
             }

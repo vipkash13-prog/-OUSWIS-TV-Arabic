@@ -62,4 +62,38 @@ final class VodDraw {
         }
         c.restore();
     }
+
+    /**
+     * The home row's poster (home_vod.png): the picture, the name over the fade, "فيلم" or "مسلسل · ح3" in a dark chip at
+     * the top left, and, for something being watched, how far it got in a thin bar along the bottom (filling from the right).
+     */
+    void drawHome(Canvas c,RectF box,Bitmap poster,String title,String tag,float progress){
+        c.save();
+        c.translate(box.left,box.top);c.scale(box.width()/w,box.height()/h);
+        c.save();c.clipPath(clip);
+        p.setShader(null);p.setStyle(Paint.Style.FILL);p.setColor(0xFF1A1F3A);c.drawRect(0,0,w,h,p);
+        if(poster!=null){
+            float s=Math.max(w/poster.getWidth(),h/poster.getHeight());
+            float sw=w/s,sh=h/s;
+            srcI.set(Math.round((poster.getWidth()-sw)/2),Math.round((poster.getHeight()-sh)/2),Math.round((poster.getWidth()+sw)/2),Math.round((poster.getHeight()+sh)/2));
+            dst.set(0,0,w,h);p.setColor(0xFFFFFFFF);c.drawBitmap(poster,srcI,dst,p);
+        }
+        c.drawRect(0,h*0.55f,w,h,fade);
+        boolean bar=progress>=0;
+        Design.center(c,Design.fitShrink(title,name,w-16),w/2,bar?h-26:h-18,name);
+        if(bar){
+            float f=Math.max(0,Math.min(1,progress));
+            r.set(12,h-12,w-12,h-8);p.setStyle(Paint.Style.FILL);p.setColor(0x40FFFFFF);c.drawRoundRect(r,2,2,p);
+            r.set(w-12-(w-24)*f,h-12,w-12,h-8);p.setColor(Design.GOLD);c.drawRoundRect(r,2,2,p);
+        }
+        c.restore();
+        p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(1.5f);p.setColor(Design.STROKE);r.set(0,0,w,h);c.drawRoundRect(r,14,14,p);
+        if(tag!=null&&!tag.isEmpty()){
+            float bw=rate.measureText(tag)+18,bh=rate.getTextSize()*1.55f;
+            r.set(9,9,9+bw,9+bh);
+            p.setStyle(Paint.Style.FILL);p.setColor(0xCC0B0D1A);c.drawRoundRect(r,6,6,p);
+            Design.center(c,tag,9+bw/2,9+bh/2+rate.getTextSize()*0.36f,rate);
+        }
+        c.restore();
+    }
 }

@@ -46,6 +46,7 @@ public final class VodPlayerActivity extends Activity {
     private boolean ended,failedOnce;
     private String error="";
     private VodData.Movie show;   // set when this is an episode of that series
+    private int episodeSeason,episodeNum;
     private boolean tracksApplied;
     private List<Cue> cues=new ArrayList<>();
     private TrackMenu menu;
@@ -53,7 +54,7 @@ public final class VodPlayerActivity extends Activity {
     /** An episode: `show` is the series (saved as its last episode), `title` what the bar shows (the series · S2 · E3). */
     static Intent episode(Context c,VodData.Movie show,VodData.Episode e,long from,String title){
         return new Intent(c,VodPlayerActivity.class).putExtra("id",e.id).putExtra("name",title).putExtra("ext",e.ext).putExtra("from",from).putExtra("dur",e.seconds*1000L)
-                .putExtra("show",show.id).putExtra("showName",show.name).putExtra("showIcon",show.icon).putExtra("showCat",show.cat).putExtra("showRating",show.rating).putExtra("showAdded",show.added);
+                .putExtra("show",show.id).putExtra("showName",show.name).putExtra("showIcon",show.icon).putExtra("showCat",show.cat).putExtra("showRating",show.rating).putExtra("showAdded",show.added).putExtra("season",e.season).putExtra("num",e.num);
     }
     static Intent intent(Context c,VodData.Movie m,String ext,long from,long dur){
         return new Intent(c,VodPlayerActivity.class).putExtra("id",m.id).putExtra("name",m.name).putExtra("icon",m.icon).putExtra("ext",ext)
@@ -73,6 +74,7 @@ public final class VodPlayerActivity extends Activity {
         movie=new VodData.Movie(str("id"),str("name"),str("icon"),str("ext"),str("cat"),i.getFloatExtra("rating",0),i.getLongExtra("added",0));
         ext=str("ext").isEmpty()?movie.ext:str("ext");
         startAt=i.getLongExtra("from",0);knownDur=i.getLongExtra("dur",0);
+        episodeSeason=i.getIntExtra("season",0);episodeNum=i.getIntExtra("num",0);
         if(!str("show").isEmpty())show=new VodData.Movie(str("show"),str("showName"),str("showIcon"),"",str("showCat"),i.getFloatExtra("showRating",0),i.getLongExtra("showAdded",0));
         root=new FrameLayout(this);root.setBackgroundColor(Color.BLACK);
         surface=new SurfaceView(this);
@@ -138,7 +140,7 @@ public final class VodPlayerActivity extends Activity {
         long dur=player.getDuration()>0?player.getDuration():knownDur;
         long pos=ended?dur:player.getCurrentPosition();
         if(pos<=0&&!ended)return;
-        if(show!=null)VodData.saveEpisode(this,account,show,movie.id,pos,dur);
+        if(show!=null)VodData.saveEpisode(this,account,show,movie.id,episodeSeason,episodeNum,pos,dur);
         else VodData.saveProgress(this,account,movie,pos,dur);
     }
     /** Saved here, not only on stop: the page under the player resumes (and reads it) before this one stops. */

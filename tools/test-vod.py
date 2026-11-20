@@ -142,6 +142,16 @@ class Provider(BaseHTTPRequestHandler):
         url = urlparse(self.path); q = parse_qs(url.query)
         action = q.get('action', [''])[0]
         HITS.append((action or url.path, url.query))
+        if url.path.startswith('/apis/site/v2/sports/soccer/'):   # four matches being played now, so the home shows its matches row
+            events = []
+            if url.path.split('/')[6] == 'eng.1':
+                def ev(eid, home, away, minutes_ago):
+                    kick = time.strftime('%Y-%m-%dT%H:%MZ', time.gmtime(time.time() - minutes_ago * 60))
+                    team = lambda n, ha: {'homeAway': ha, 'score': '1', 'team': {'id': n[:3], 'displayName': n, 'logo': ''}}
+                    return {'id': eid, 'date': kick, 'status': {'displayClock': "%d'" % minutes_ago, 'type': {'state': 'in', 'name': 'STATUS_FIRST_HALF', 'shortDetail': "%d'" % minutes_ago}},
+                            'competitions': [{'competitors': [team(home, 'home'), team(away, 'away')], 'broadcasts': []}]}
+                events = [ev('9101', 'Liverpool', 'Arsenal', 10), ev('9102', 'Chelsea', 'Everton', 20), ev('9103', 'Fulham', 'Brentford', 30), ev('9104', 'Leeds', 'Burnley', 40)]
+            return self.send_bytes(json.dumps({'leagues': [{'name': 'English Premier League', 'logos': []}], 'events': events}).encode(), 'application/json')
         if url.path == '/player_api.php':
             if action == 'get_vod_categories': body = [{'category_id': i, 'category_name': n, 'parent_id': 0} for i, n in CATS]
             elif action == 'get_vod_streams':
@@ -227,7 +237,7 @@ try:
     labs = labels()
     for need in ('البث المباشر', 'أفلام', 'مسلسلات', 'المباريات', 'كل التطبيقات', 'الأخيرة', 'التحديثات', 'الإعدادات'):
         assert any(l == need for l in labs), 'Missing shortcut: ' + need + ' | ' + str(labs[:40])
-    keys(*['DPAD_DOWN'] * 5, pause=0.4); keys(*['DPAD_RIGHT'] * 9, pause=0.25)
+    keys(*['DPAD_DOWN'] * 7, pause=0.4); keys(*['DPAD_RIGHT'] * 9, pause=0.25)
     assert 'البث المباشر' in focused_label(), 'The first shortcut must be البث المباشر: ' + focused_label()
     keys('DPAD_LEFT')
     assert 'أفلام' in focused_label(), 'The second shortcut, beside Live TV, must be أفلام: ' + focused_label()
@@ -411,7 +421,7 @@ try:
     # 7. series: the shortcut, the grid, the page (seasons, episodes, watched, continue) and the same sound/subtitle choice
     adb('shell', 'am', 'force-stop', PKG); time.sleep(1)
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.HomeActivity'); front('HomeActivity'); time.sleep(2)
-    keys(*['DPAD_DOWN'] * 5, pause=0.4); keys(*['DPAD_RIGHT'] * 9, pause=0.25); keys('DPAD_LEFT', 'DPAD_LEFT')
+    keys(*['DPAD_DOWN'] * 7, pause=0.4); keys(*['DPAD_RIGHT'] * 9, pause=0.25); keys('DPAD_LEFT', 'DPAD_LEFT')
     assert 'مسلسلات' in focused_label(), 'The third shortcut must be مسلسلات: ' + focused_label()
     keys('DPAD_CENTER', pause=1.5); front('MoviesActivity')
     head = wait_label('المسلسلات · أحدث الإضافات · ', 'the series screen with its count')
@@ -463,7 +473,7 @@ try:
     note('PASS: تابع المشاهدة in the series screen holds الوادي البعيد.')
     # the sound and subtitle choice made on a film carries over to an episode
     adb('shell', 'am', 'force-stop', PKG); time.sleep(1)
-    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.VodPlayerActivity', '--es', 'id', '1006', '--es', 'name', "'ep3'", '--es', 'ext', 'mkv', '--es', 'show', '701', '--es', 'showName', "'show'")
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.VodPlayerActivity', '--es', 'id', '1006', '--es', 'name', "'ep3'", '--es', 'ext', 'mkv', '--es', 'show', '701', '--es', 'showName', "'show'", '--ei', 'season', '2', '--ei', 'num', '3')
     front('VodPlayerActivity'); time.sleep(6)
     assert ('/series/demo/demo/1006.mkv', '') in HITS
     keys('DPAD_DOWN', pause=1.5)
@@ -474,10 +484,80 @@ try:
     note('PASS: an episode opens with the same kept sound and subtitle choice (Arabic sound, Arabic subtitles), and ▼ opens the same menu.')
     no_crash('Series')
 
-    # 8. Live TV still opens from its shortcut, with the account
+    # 8. the home's films and series row (home_vod.png): started and unfinished first with their progress, then the newest
+    adb('shell', 'am', 'force-stop', PKG); time.sleep(1)
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.VodPlayerActivity', '--es', 'id', '602', '--es', 'name', "'Night Run'", '--es', 'ext', 'mp4', '--es', 'cat', '2', '--el', 'from', '50000')
+    front('VodPlayerActivity'); time.sleep(5); keys('BACK', pause=2)   # a film stopped part way (about 55 s of 2 min)
+    adb('shell', 'am', 'force-stop', PKG); time.sleep(1)
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.HomeActivity'); front('HomeActivity')
+    wait_label('أفلام ومسلسلات', 'the films and series heading on the home', tries=20)
+    def row_labels():
+        return [l for l in labels() if re.search(r' · (فيلم|مسلسل)', l)]
+    for _ in range(20):
+        if len(row_labels()) >= 5: break
+        time.sleep(1)
+    rl = row_labels()
+    note('Home row (right to left): ' + ' | '.join(rl[:7]))
+    assert rl and rl[0].startswith('Night Run · فيلم · تابع المشاهدة '), 'The last film started comes first, with its progress: ' + str(rl[:4])
+    assert len(rl) > 1 and rl[1].startswith('الوادي البعيد · مسلسل · ح3 · تابع المشاهدة '), 'Then the series left part way, with its episode: ' + str(rl[:4])
+    assert [l.split(' · ')[0] for l in rl[2:5]] == ['المدينة الأخيرة', 'Night Shift', 'ظل الصحراء'], 'Then the newest films and series, newest first: ' + str(rl[2:6])
+    assert all('تابع المشاهدة' not in l for l in rl[2:]), 'Only what is being watched carries a progress bar: ' + str(rl)
+    assert not any('Adult' in l for l in rl), 'No adult film or series on the home: ' + str(rl)
+    for _ in range(40):   # the matches row too, so every row is on screen
+        if sum(1 for l in labels() if ' ضد ' in l) >= 3: break
+        time.sleep(1)
+    time.sleep(2)
+    img = shot('vod-home-row.png')
+    assert colourful(img, (0.86, 0.40, 0.96, 0.62)) > 0.2 or colourful(img, (0.86, 0.45, 0.96, 0.70)) > 0.2, 'The first poster is not drawn from the provider'
+    note('PASS: the home row: ' + rl[0] + ' and ' + rl[1] + ' first, then the newest (المدينة الأخيرة, Night Shift, ظل الصحراء), each tagged فيلم or مسلسل.')
+    # every row whole on the screen, in order, nothing overlapping, the side margins as before
+    def group(test):
+        bs = [list(map(int, re.findall(r'\d+', n.get('bounds')))) for n in tree().iter('node') if n.get('package') == PKG and test((n.get('text', '') or n.get('content-desc', '')).strip())]
+        return [b for b in bs if len(b) == 4]
+    groups = [('the last-channel and prayer cards', group(lambda l: l.startswith('آخر قناة') or l.startswith('ابدأ المشاهدة') or l.startswith('مواقيت الصلاة'))),
+              ('the matches', group(lambda l: ' ضد ' in l and not l.startswith('تفاصيل'))),
+              ('the films and series', group(lambda l: bool(re.search(r' · (فيلم|مسلسل)', l)))),
+              ('the apps', group(lambda l: l == 'إضافة تطبيق')),
+              ('the shortcuts', group(lambda l: l in ('البث المباشر', 'أفلام', 'مسلسلات', 'المباريات', 'كل التطبيقات', 'الأخيرة', 'التحديثات', 'الإعدادات')))]
+    spans = []
+    for name, bs in groups:
+        assert bs, 'Nothing found for ' + name + ': ' + str(labels()[:40])
+        top, bottom, left, right = min(b[1] for b in bs), max(b[3] for b in bs), min(b[0] for b in bs), max(b[2] for b in bs)
+        assert top >= 0 and bottom <= 1000 and left >= 40 and right <= 1880, name + ' is not whole inside the screen and its margins: ' + str((left, top, right, bottom))   # (a focused card grows 1.8 %)
+        spans.append((name, top, bottom))
+    for (a, at, ab), (b, bt, bb) in zip(spans, spans[1:]):
+        assert ab < bt, a + ' (to ' + str(ab) + ') overlaps ' + b + ' (from ' + str(bt) + ')'
+    note('PASS: every row whole on the 1920x1080 screen, in order, without overlapping: ' + ', '.join('%s %d–%d' % s for s in spans) + '.')
+    # the remote: down to the row, OK opens the film's page, the next poster the series' page, "عرض الكل" the films screen
+    for _ in range(8):
+        if focused_label().startswith('Night Run'): break
+        keys('DPAD_DOWN', pause=0.6)
+    assert focused_label().startswith('Night Run'), 'DOWN reaches the row and its first poster: ' + focused_label()
+    keys('DPAD_CENTER', pause=2); front('MovieActivity')
+    wait_label('Night Run', 'the film page from the home row')
+    assert any(l.startswith('▶ كمّل من ') for l in labels()), 'The film page offers to continue: ' + str(labels()[:20])
+    keys('BACK', pause=2); front('HomeActivity')
+    assert focused_label().startswith('Night Run'), 'Back on the home, the focus stays on the poster: ' + focused_label()
+    keys('DPAD_LEFT', pause=0.6)
+    assert focused_label().startswith('الوادي البعيد'), focused_label()
+    keys('DPAD_CENTER', pause=2); front('SeriesActivity')
+    wait_label('▶ كمّل: ', 'the series page from the home row')
+    keys('BACK', pause=2); front('HomeActivity')
+    for _ in range(30):
+        if focused_label().startswith('عرض الكل'): break
+        keys('DPAD_LEFT', pause=0.3)
+    assert focused_label().startswith('عرض الكل'), 'LEFT past the last poster reaches عرض الكل: ' + focused_label()
+    shot('vod-home-viewall.png')
+    keys('DPAD_CENTER', pause=2); front('MoviesActivity')
+    wait_label('الأفلام · ', 'the films screen from عرض الكل')
+    keys('BACK', pause=2); front('HomeActivity')
+    note('PASS: on the home row, OK opens the film page (with "كمّل من"), the series page, and عرض الكل the films screen; the focus stays on the poster after Back.')
+    no_crash('Home row')
+
+    # 9. Live TV still opens from its shortcut, with the account
     keys('BACK', pause=2)
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.HomeActivity'); front('HomeActivity'); time.sleep(2)
-    keys(*['DPAD_DOWN'] * 5, pause=0.4); keys(*['DPAD_RIGHT'] * 9, pause=0.25)
+    keys(*['DPAD_DOWN'] * 7, pause=0.4); keys(*['DPAD_RIGHT'] * 9, pause=0.25)
     keys('DPAD_CENTER', pause=2); front('LiveActivity')
     wait_label('SSC 1 HD', 'the live channel list')
     shot('vod-live-still.png')
