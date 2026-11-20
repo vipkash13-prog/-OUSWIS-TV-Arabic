@@ -8,7 +8,7 @@ import xml.etree.ElementTree as ET
 from io import BytesIO
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
-from PIL import Image
+from PIL import Image, ImageOps
 
 OUT = Path(sys.argv[1]); OUT.mkdir(parents=True, exist_ok=True)
 ADB = os.environ.get('ADB', 'adb')
@@ -204,6 +204,23 @@ def stability(seconds=300):
         assert 'skeletonAfterData=0' in stats[-1] and 'focusResets=0' in stats[-1], 'The app reports a relapse: ' + stats[-1]
 
 subprocess.run([ADB, 'root'], capture_output=True, timeout=60); subprocess.run([ADB, 'wait-for-device'], timeout=60); time.sleep(3)
+# The mock matches sit from 4 h before "now" to 5 h after it, and the matches screen splits its days at Riyadh's midnight:
+# run near midnight, some fell on the next or the previous day (Nov 20, twice). So outside 06:00-13:59 Riyadh the emulator's
+# clock is set to 10:00 Riyadh on the same date, and the mock server and the guides use that same clock (clock()).
+def _riyadh_day_start(t): return int(t) - (int(t) + 3 * 3600) % 86400
+_real = time.time()
+SHIFT = 0 if 6 * 3600 <= (int(_real) + 3 * 3600) % 86400 < 14 * 3600 else _riyadh_day_start(_real) + 10 * 3600 - int(_real)
+def clock(): return time.time() + SHIFT
+def check_clock(where):
+    dev = int(adb('shell', 'date', '+%s').strip())
+    assert abs(dev - clock()) < 60, 'The emulator clock drifted from the test clock %s: %d vs %d' % (where, dev, clock())
+    sec = (int(clock()) + 3 * 3600) % 86400
+    assert 6 * 3600 <= sec < 20 * 3600, 'The test clock must sit between 06:00 and 20:00 Riyadh %s: %02d:%02d' % (where, sec // 3600, sec % 3600 // 60)
+if SHIFT:
+    adb('shell', 'settings', 'put', 'global', 'auto_time', '0')
+    adb('shell', 'date', '-u', time.strftime('%m%d%H%M%Y.%S', time.gmtime(clock())))
+check_clock('at the start')
+note('Test clock: %s Riyadh (real time %+d s), so every mock match stays on its own Riyadh day.' % (time.strftime('%Y-%m-%d %H:%M', time.gmtime(clock() + 3 * 3600)), SHIFT))
 with tempfile.TemporaryDirectory() as temp:
     clip = Path(temp) / 'clip.ts'
     subprocess.run(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', 'testsrc=s=640x360:r=10', '-t', '90',
@@ -224,12 +241,12 @@ with tempfile.TemporaryDirectory() as temp:
     REQLOG = []            # every stream request: (user, file)
     NOT_FOUND = set()      # stream paths the provider answers 404 for
     # Norway v Wales: 4 h ahead, but never past Riyadh's midnight (the matches screen's "today" ends there)
-    _riyadh_left = 86400 - ((int(time.time()) + 3 * 3600) % 86400)
+    _riyadh_left = 86400 - ((int(clock()) + 3 * 3600) % 86400)
     NOR_AHEAD = max(1500, min(4 * HOUR, _riyadh_left - 1200))
     # two matches tomorrow (Riyadh): Portugal v Morocco is in beIN Sports 2's day guide, Germany v Japan is in no guide.
     # They start at 22:30 tomorrow, but never sooner than 24.5 h from now (the other tomorrow fixture is at 24 h 5 min)
-    _riyadh_start = int(time.time()) - ((int(time.time()) + 3 * 3600) % 86400)
-    TOM_AHEAD = max(24 * HOUR + 1800, _riyadh_start + 86400 + 22 * HOUR + 1800 - int(time.time()))
+    _riyadh_start = _riyadh_day_start(clock())
+    TOM_AHEAD = max(24 * HOUR + 1800, _riyadh_start + 86400 + 22 * HOUR + 1800 - int(clock()))
     LIVE_SECONDS = int(os.environ.get('OUSWIS_LIVE_SECONDS', '600'))   # the live-speed stream is watched this long: 600 = the full test
     # guide programmes other than the default four: (title, start offset, stop offset) in seconds from now
     # item: the day's guide. Norway v Wales starts in 4 hours: only get_simple_data_table lists it, on two channels (the first, beIN Sports 1 HD, is the main one)
@@ -260,18 +277,18 @@ with tempfile.TemporaryDirectory() as temp:
                 slug = url.path.split('/')[6]
                 if FEED_MODE[0] == 'down' and slug != 'eng.1':
                     self.send_response(500); self.end_headers(); return
-                utc = time.gmtime()
+                utc = time.gmtime(clock())
                 events = []
                 if slug == 'caf.nations_qual' and q.get('dates', [''])[0] == time.strftime('%Y%m', utc):
                     def ev(eid, home, away, minutes_ago):
-                        kick = time.strftime('%Y-%m-%dT%H:%MZ', time.gmtime(time.time() - minutes_ago * 60))
+                        kick = time.strftime('%Y-%m-%dT%H:%MZ', time.gmtime(clock() - minutes_ago * 60))
                         team = lambda n, ha: {'homeAway': ha, 'score': '0', 'team': {'id': n[:3], 'displayName': n, 'logo': ''}}
                         return {'id': eid, 'date': kick, 'status': {'displayClock': "%d'" % minutes_ago, 'type': {'state': 'in', 'name': 'STATUS_FIRST_HALF', 'shortDetail': "%d'" % minutes_ago}},
                                 'competitions': [{'competitors': [team(home, 'home'), team(away, 'away')], 'broadcasts': []}]}
                     # the match the user reported: it is in beIN SPORTS 2 HD's guide as "غانا × الصومال"; the second one is in no guide
                     events = [ev('9001', 'Ghana', 'Somalia', 10), ev('9002', 'Suriname', 'Eritrea', 80)]
                 def fx(eid, home, away, state, offset_min, hs='0', as_='0', goals=False, bc='Sky Sports'):
-                    kick = time.strftime('%Y-%m-%dT%H:%MZ', time.gmtime(time.time() + offset_min * 60))
+                    kick = time.strftime('%Y-%m-%dT%H:%MZ', time.gmtime(clock() + offset_min * 60))
                     team = lambda n, ha, sc: {'homeAway': ha, 'score': sc, 'team': {'id': n[:3], 'displayName': n, 'logo': ('http://127.0.0.1:%d' % server.server_port + LOGO_FEED[n]) if n in LOGO_FEED else ''}}
                     name = {'in': 'STATUS_FIRST_HALF', 'post': 'STATUS_FULL_TIME', 'pre': 'STATUS_SCHEDULED'}[state]
                     comp = {'competitors': [team(home, 'home', hs), team(away, 'away', as_)], 'broadcasts': [{'names': [bc]}]}
@@ -297,7 +314,7 @@ with tempfile.TemporaryDirectory() as temp:
                     rows = [(c, s, n, e) for c, v in src.items() for s, n, e in v] if cat == '' else [(cat, s, n, e) for s, n, e in src.get(cat, [])]
                     body = [{'num': int(s), 'name': n, 'stream_id': s, 'category_id': c, 'stream_icon': '', 'container_extension': e} for c, s, n, e in rows]
                 elif action in ('get_short_epg', 'get_simple_data_table'):
-                    now = int(time.time())
+                    now = int(clock())
                     titles = ['الهلال × النصر · دوري روشن', 'الاستوديو التحليلي', 'أهداف الجولة', 'نشرة الرياضة']
                     if q.get('stream_id', [''])[0] == '101':   # a TV guide in English: the app shows Arabic
                         titles = ["Juventus vs OL Lyonnes - UEFA Women's Champions League", 'Arsenal vs Chelsea - English Premier League 2026/2027 - MD4', 'Game of Thrones', 'Week 10']
@@ -315,7 +332,7 @@ with tempfile.TemporaryDirectory() as temp:
                     body = {'user_info': {'auth': 0, 'status': 'Disabled'}}
                 else:
                     UINFO.append(time.time())
-                    body = {'user_info': {'auth': 1, 'status': 'Active', 'max_connections': '1', 'active_cons': ACTIVE[0], 'allowed_output_formats': ALLOWED, 'exp_date': str(int(time.time()) + 86400 * 120)}}
+                    body = {'user_info': {'auth': 1, 'status': 'Active', 'max_connections': '1', 'active_cons': ACTIVE[0], 'allowed_output_formats': ALLOWED, 'exp_date': str(int(clock()) + 86400 * 120)}}
                 payload = json.dumps(body).encode(); kind = 'application/json'
             elif url.path == '/logo/feed.png':
                 payload = png((0, 200, 0)); kind = 'image/png'
@@ -751,6 +768,7 @@ with tempfile.TemporaryDirectory() as temp:
     keys('BACK', pause=1)
 
     # 6. matches (real ESPN data from the emulator's network)
+    check_clock('before the matches')
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.MatchesScreenActivity')
     for _ in range(40):
         ls = labels()
@@ -758,12 +776,16 @@ with tempfile.TemporaryDirectory() as temp:
         time.sleep(1)
     img = shot('redesign-matches.png'); keys('DPAD_DOWN'); keys('DPAD_LEFT'); shot('redesign-matches-focus.png')
     no_crash('Matches')
-    # the matches screen draws the supplied inner wallpaper with no dark layer over it: its edges equal the file's own pixels
-    inner_ref = Image.open(Path(__file__).resolve().parent.parent / 'app' / 'assets' / 'backgrounds' / 'ouswis_bg_stars_inner_1080p.webp').convert('RGB').resize(img.size)
+    # the matches screen draws its own supplied wallpaper (the stadium) with no dark layer over it: its edges equal the file's own pixels
+    inner_ref = Image.open(Path(__file__).resolve().parent.parent / 'app' / 'assets' / 'backgrounds' / 'ouswis_bg_stadium_inner_1080p.webp').convert('RGB').resize(img.size)
     spots_bg = [(30, 300), (30, 700), (1890, 300), (1890, 700), (960, 1068), (960, 8)]
     off_bg = [(sp, img.getpixel(sp), inner_ref.getpixel(sp)) for sp in spots_bg if max(abs(p - q) for p, q in zip(img.getpixel(sp), inner_ref.getpixel(sp))) > 28]
-    assert len(off_bg) <= 1, 'The matches screen background must be the supplied inner wallpaper, not darkened further: ' + str(off_bg)
-    note('PASS: matches screen background equals the supplied inner wallpaper at %d of %d edge spots.' % (len(spots_bg) - len(off_bg), len(spots_bg)))
+    assert len(off_bg) <= 1, 'The matches screen background must be the supplied stadium wallpaper, not darkened further: ' + str(off_bg)
+    note('PASS: matches screen background equals the supplied stadium wallpaper at %d of %d edge spots.' % (len(spots_bg) - len(off_bg), len(spots_bg)))
+    # Nov 21: the match's panel is #FF121A3A (fully opaque): inside its left and right edges it is exactly that colour
+    panel_off = [(sp, img.getpixel(sp)) for sp in ((80, 560), (583, 560)) if max(abs(a - b) for a, b in zip(img.getpixel(sp), (18, 26, 58))) > 12]
+    assert not panel_off, 'The matches panel must be #FF121A3A: ' + str(panel_off)
+    note('PASS: the matches panel is #FF121A3A: %s.' % [img.getpixel(sp) for sp in ((80, 560), (583, 560))])
     cards = [l for l in labels() if ' ضد ' in l and not l.startswith('تفاصيل')]
     # the guide of the sports channels names one match (الهلال × النصر): it is a match on the screen, with its channel
     guide_card = wait_label('الهلال ضد النصر', 'the match found only in the guide')
@@ -1146,12 +1168,19 @@ with tempfile.TemporaryDirectory() as temp:
         adb('shell', 'input', 'keyevent', '23'); time.sleep(2.5)
         front(activity)
         side_img = shot('final-side-' + str(i) + '-' + activity + '.png')
-        if activity in ('LiveActivity', 'MatchesScreenActivity', 'UpdatesActivity', 'ChannelMapActivity', 'SectionOrderActivity', 'IptvActivity'):   # the same dark inner wallpaper on every inner screen, Updates included
-            ref = Image.open(Path(__file__).resolve().parent.parent / 'app' / 'assets' / 'backgrounds' / 'ouswis_bg_stars_inner_1080p.webp').convert('RGB').resize(side_img.size)
+        if activity in ('LiveActivity', 'MatchesScreenActivity', 'UpdatesActivity', 'ChannelMapActivity', 'SectionOrderActivity', 'IptvActivity'):   # each inner screen's dark wallpaper: Live TV the desert, Matches the stadium, the rest (Updates included) the stars
+            wall_file = {'LiveActivity': 'ouswis_bg_desert_inner_1080p.webp', 'MatchesScreenActivity': 'ouswis_bg_stadium_inner_1080p.webp'}.get(activity, 'ouswis_bg_stars_inner_1080p.webp')
+            ref = Image.open(Path(__file__).resolve().parent.parent / 'app' / 'assets' / 'backgrounds' / wall_file).convert('RGB').resize(side_img.size)
+            if activity == 'LiveActivity': ref = ImageOps.mirror(ref)   # Nov 21: Live TV's desert is mirrored, its moon on the left behind the preview
             sp = [(1890, 300), (1890, 700), (960, 1068), (960, 8), (30, 700)] if activity != 'UpdatesActivity' else [(1890, 300), (1890, 700), (960, 1068), (960, 8), (1890, 900)]
             off = [(q, side_img.getpixel(q), ref.getpixel(q)) for q in sp if max(abs(p - r) for p, r in zip(side_img.getpixel(q), ref.getpixel(q))) > 28]
-            assert len(off) <= 1, activity + ' must draw the dark inner wallpaper: ' + str(off)
-            note('PASS: ' + activity + ' background equals the dark inner wallpaper at ' + str(len(sp) - len(off)) + ' of ' + str(len(sp)) + ' spots.')
+            assert len(off) <= 1, activity + ' must draw its dark wallpaper (' + wall_file + '): ' + str(off)
+            note('PASS: ' + activity + ' background equals its dark wallpaper (' + wall_file + (', mirrored' if activity == 'LiveActivity' else '') + ') at ' + str(len(sp) - len(off)) + ' of ' + str(len(sp)) + ' spots.')
+            if activity == 'LiveActivity':   # the sections and channels columns and the guide card are #FF121A3A: inside their edges, that colour
+                live_spots = ((1556, 600), (912, 600), (79, 800))
+                live_off = [(q, side_img.getpixel(q)) for q in live_spots if max(abs(a - b) for a, b in zip(side_img.getpixel(q), (18, 26, 58))) > 12]
+                assert len(live_off) <= 1, 'Live TV\'s columns and guide card must be #FF121A3A: ' + str(live_off)
+                note('PASS: Live TV\'s columns and guide card are #FF121A3A at %d of 3 spots: %s.' % (3 - len(live_off), [side_img.getpixel(q) for q in live_spots]))
         if activity == 'UpdatesActivity':
             lum_u = [sum(side_img.getpixel((x, y))) / 3 for x in range(0, 1920, 40) for y in range(0, 1080, 40)]
             assert sum(lum_u) / len(lum_u) < 60 and sum(1 for v in lum_u if v > 200) / len(lum_u) < 0.03, 'Updates must be dark for an OLED: mean ' + str(round(sum(lum_u) / len(lum_u)))
@@ -1228,6 +1257,7 @@ with tempfile.TemporaryDirectory() as temp:
     keys('BACK', pause=1)
     FEED_MODE[0] = 'ok'
 
+    check_clock('after the matches')
     # 6e. the matches screen left open 15 minutes: the periodic refresh must keep running and write its lines in the playback log
     adb('shell', 'rm', '-f', '/data/user/0/%s/files/playlog.txt' % PKG)
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.MatchesScreenActivity'); time.sleep(3)

@@ -299,7 +299,7 @@ public final class LiveActivity extends Activity {
 
         @Override protected void onSizeChanged(int w,int h,int ow,int oh){
             k=w/1920f;
-            backdrop=Wallpaper.inner(getContext(),w,h);   // the inner wallpaper, already dark: nothing over it
+            backdrop=Wallpaper.desert(getContext(),w,h);   // its own wallpaper, already dark: nothing over it
         }
         private String clock(){
             java.text.SimpleDateFormat f=new java.text.SimpleDateFormat("h:mm a",Design.AR);
@@ -333,7 +333,7 @@ public final class LiveActivity extends Activity {
                 if(i<2&&headerFocus==i){Design.grown(r,g);Design.focusRing(c,g,24,1,p);}
             }
             // sections column
-            r.set(1549,163,1847,981);Design.card(c,r,26,1,p,Design.SURFACE);
+            r.set(1549,163,1847,981);Design.card(c,r,26,1,p,Design.PANEL);
             int visibleCats=12;
             if(cat<catTop)catTop=cat;if(cat>=catTop+visibleCats)catTop=cat-visibleCats+1;
             for(int i=catTop;i<Math.min(secs.size(),catTop+visibleCats);i++){
@@ -362,7 +362,7 @@ public final class LiveActivity extends Activity {
                 if(s.count>=0){Design.left(c,String.valueOf(s.count),1583,y+2,muted);}
             }
             // channels column
-            r.set(905,163,1523,981);Design.card(c,r,26,1,p,Design.SURFACE);
+            r.set(905,163,1523,981);Design.card(c,r,26,1,p,Design.PANEL);
             if(list.isEmpty()){
                 List<LiveData.Category> ss=secs;
                 boolean loading=cat>=2&&cat<ss.size()&&data.cached(ss.get(cat).id)==null;
@@ -432,7 +432,7 @@ public final class LiveActivity extends Activity {
             if(previewOn&&sel>=0&&sel<list.size())a11y.add(72,163,880,582,"معاينة "+list.get(sel).name,column==2&&headerFocus<0,true);
             if(column==2&&headerFocus<0){r.set(72,163,880,582);Design.grown(r,g);Design.focusRing(c,g,26,1,p);}
             // guide card
-            r.set(72,603,880,981);Design.card(c,r,26,1,p,Design.SURFACE);
+            r.set(72,603,880,981);Design.card(c,r,26,1,p,Design.PANEL);
             if(sel>=0&&sel<list.size()){
                 LiveData.Channel ch=list.get(sel);
                 Design.right(c,Design.fit("دليل البرامج — "+ch.name,muted,700),851,645,muted);

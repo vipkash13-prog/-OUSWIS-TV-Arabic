@@ -140,7 +140,7 @@ public final class MatchesScreenActivity extends Activity {
 
         @Override protected void onSizeChanged(int w,int h,int ow,int oh){
             k=w/1920f;
-            backdrop=Wallpaper.inner(getContext(),w,h);   // the inner wallpaper, already dark: nothing over it
+            backdrop=Wallpaper.stadium(getContext(),w,h);   // its own wallpaper, already dark: nothing over it
         }
         private long riyadhDayStart(int offset){
             java.util.Calendar cal=java.util.Calendar.getInstance(TimeZone.getTimeZone("Asia/Riyadh"));
@@ -286,7 +286,7 @@ public final class MatchesScreenActivity extends Activity {
                 boolean focused=area==1&&i==sel;
                 RectF card=r;
                 if(focused){Design.grown(r,g);card=g;}
-                Design.card(c,card,22,1,p,0xFF151A2E);   // opaque: the wallpaper never shows through a result; a live card differs only by the red badge
+                Design.card(c,card,22,1,p,Design.PANEL);   // the wallpaper doesn't show through a result; a live card differs only by the red badge
                 int alpha=done?153:255;
                 crest(c,m.homeLogo,m.home,m.homeEn,right-81,top+62,32);crest(c,m.awayLogo,m.away,m.awayEn,left+81,top+62,32);
                 team.setAlpha(alpha);Design.center(c,Design.fitShrink(m.home,team,170),right-81,top+120,team);
@@ -341,7 +341,7 @@ public final class MatchesScreenActivity extends Activity {
         }
         private void panel(Canvas c,List<MatchCarouselView.Match> list){
             if(list.isEmpty())return;   // no matches: no empty panel
-            r.set(72,243,591,881);Design.card(c,r,28,1,p,0xFF141829);
+            r.set(72,243,591,881);Design.card(c,r,28,1,p,Design.PANEL);
             if(sel<0||sel>=list.size())return;
             MatchCarouselView.Match m=list.get(sel);
             a11y.add(72,243,591,490,"تفاصيل المباراة: "+m.home+" ضد "+m.away+" · "+m.competition,false,false);

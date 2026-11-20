@@ -91,7 +91,7 @@ public final class MovieActivity extends Activity {
             super(c);setFocusable(true);setFocusableInTouchMode(true);
             plotPaint.setColor(0xD9F4EFE4);plotPaint.setTextSize(24);plotPaint.setTypeface(Design.regular());
         }
-        @Override protected void onSizeChanged(int w,int h,int ow,int oh){k=w/1920f;backdrop=Wallpaper.inner(getContext(),w,h);}
+        @Override protected void onSizeChanged(int w,int h,int ow,int oh){k=w/1920f;backdrop=Wallpaper.cinema(getContext(),w,h);}
         void resumed(){progress=VodData.progress(getContext(),account,movie.id);if(col>=buttons().length)col=0;invalidate();}
         void infoReady(){
             VodData.Info in=data.info(movie.id);

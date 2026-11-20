@@ -72,6 +72,23 @@ def no_crash(where):
     log = adb('logcat', '-d', '-b', 'crash', check=False)
     assert not ('FATAL EXCEPTION' in log and PKG in log), where + ' crashed:\n' + log[-2500:]
 
+WALLS = Path(__file__).resolve().parent.parent / 'app' / 'assets' / 'backgrounds'
+def cinema_wall(img, what):
+    """The films and series screens draw the cinema wallpaper, not the stars one: at the spots where the two files differ,
+    the open background matches the cinema file."""
+    ci = Image.open(WALLS / 'ouswis_bg_cinema_inner_1080p.webp').convert('RGB').resize(img.size)
+    st = Image.open(WALLS / 'ouswis_bg_stars_inner_1080p.webp').convert('RGB').resize(img.size)
+    d = lambda a, b: max(abs(x - y) for x, y in zip(a, b))
+    on_ci = on_st = 0
+    for y in range(20, img.size[1], 40):
+        for x in range(20, img.size[0], 40):
+            c, s_, g = ci.getpixel((x, y)), st.getpixel((x, y)), img.getpixel((x, y))
+            if d(c, s_) <= 45: continue
+            if d(g, c) <= 12: on_ci += 1
+            elif d(g, s_) <= 12: on_st += 1
+    assert on_ci >= 20 and on_st * 3 < on_ci, what + ' must draw the cinema wallpaper: %d spots match it, %d the stars one' % (on_ci, on_st)
+    note('PASS: %s draws the cinema wallpaper (%d open spots match it, %d the stars one).' % (what, on_ci, on_st))
+
 def colourful(img, box):
     w, h = img.size
     x1, y1, x2, y2 = [int(v) for v in (box[0] * w, box[1] * h, box[2] * w, box[3] * h)]
@@ -279,6 +296,7 @@ try:
     wait_label('المدينة الأخيرة', 'the newest film in the grid')
     time.sleep(3)
     labs = labels(); img = shot('vod-movies.png')
+    cinema_wall(img, 'The films screen')
     assert not any('Adult' in l or 'XXX' in l for l in labs), 'An adult section or film shows: ' + str(labs)
     for need in ('قسم ▶ تابع المشاهدة', 'قسم ★ المفضلة', 'قسم أحدث الإضافات'):
         assert any(l.startswith(need) for l in labs), 'Missing section: ' + need + ' | ' + str(labs)
@@ -388,9 +406,17 @@ try:
     keys('DPAD_RIGHT', 'DPAD_RIGHT', 'DPAD_RIGHT', 'DPAD_RIGHT', pause=0.3); time.sleep(1.5)
     p1, l1 = bar_position()
     assert p0 >= 0 and p1 >= p0 + 35, 'Four ▶ presses must move forward about 40 s: %s → %s' % (l0, l1)
-    img = shot('vod-seek-forward.png')
-    # the bar fills from left to right: at about 40 % of the film, gold on the left part of the bar, grey on the right
+    # the bar stays 4 s after a key, and reading the position above can take longer (Nov 20: the shot caught the film
+    # without its bar): ▲ shows it again without seeking, and the shot is taken once the bar is drawn (some gold on its line)
     gold = lambda px: px[0] > 180 and px[1] > 140 and px[2] < 140
+    keys('DPAD_UP', pause=0.2)
+    for _ in range(8):
+        img = shot('vod-seek-forward.png')
+        if any(gold(img.getpixel((x, 929))) for x in range(80, 1840, 16)): break
+        time.sleep(0.2)
+    else:
+        raise AssertionError('The bar did not show after ▲: %s %s' % (img.getpixel((200, 929)), img.getpixel((1700, 929))))
+    # the bar fills from left to right: at about 40 % of the film, gold on the left part of the bar, grey on the right
     assert gold(img.getpixel((200, 929))) and not gold(img.getpixel((1700, 929))), 'The bar must fill from left to right: %s %s' % (img.getpixel((200, 929)), img.getpixel((1700, 929)))
     keys('DPAD_LEFT', pause=0.3); time.sleep(1.5)
     p2, l2 = bar_position()
@@ -407,6 +433,7 @@ try:
     assert any(l.startswith('باقي ') for l in labels()), 'The time left under the progress bar'
     assert any('↺ من البداية' in l for l in labels()), 'From the start'
     img = shot('vod-movie-resume.png')
+    cinema_wall(img, 'The film page')
     note('PASS: back on the page: "' + resume[0] + '" with the progress bar and "↺ من البداية".')
     keys('DPAD_CENTER', pause=5); front('VodPlayerActivity')
     p3, l3 = bar_position()
@@ -535,14 +562,14 @@ try:
     assert '2 مسلسل' in head[0], 'Two series (the adult one left out): ' + head[0]
     wait_label('الوادي البعيد', 'the newest series')
     assert not any('Adult' in l for l in labels()), 'An adult series shows'
-    shot('series-grid.png')
+    cinema_wall(shot('series-grid.png'), 'The series screen')
     note('PASS: مسلسلات opens the series screen: ' + head[0] + ', no adult section or series.')
     keys('DPAD_CENTER', pause=1.5); front('SeriesActivity')
     wait_label('الحلقة 1', 'the episodes of season 1')
     labs = labels()
     for need in ('الموسم 1 — محدد', 'الموسم 2', '▶ تشغيل: م1 · ح1', 'موسمان', '2023', 'التقييم 8.6', 'الحلقة 3'):
         assert any(need in l for l in labs), 'The series page lacks ' + need + ': ' + str(labs)
-    shot('series-page.png')
+    cinema_wall(shot('series-page.png'), 'The series page')
     note('PASS: series page: seasons as tabs, season 1\'s episodes, rating, seasons count, year, "▶ تشغيل: م1 · ح1".')
     # season 2, episode 1, watched to the end
     keys('DPAD_LEFT', pause=1)
