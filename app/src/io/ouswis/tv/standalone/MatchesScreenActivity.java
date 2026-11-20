@@ -140,7 +140,7 @@ public final class MatchesScreenActivity extends Activity {
 
         @Override protected void onSizeChanged(int w,int h,int ow,int oh){
             k=w/1920f;
-            backdrop=Wallpaper.inner(getContext(),w,h);   // the inner wallpaper, already dark: nothing over it
+            backdrop=Wallpaper.stadium(getContext(),w,h);   // its own wallpaper, already dark: nothing over it
         }
         private long riyadhDayStart(int offset){
             java.util.Calendar cal=java.util.Calendar.getInstance(TimeZone.getTimeZone("Asia/Riyadh"));

@@ -64,7 +64,10 @@ with zipfile.ZipFile(OLD) as old,zipfile.ZipFile(NEW) as new:
     # The owner replaced the wallpaper (Nov 12: ouswis_bg_1080p.webp, with a 4K copy) and asked for the old flag/gold wallpaper
     # and the gold frame to go; every other asset must stay byte-identical.
     # Nov 15: the starry wallpapers (home and inner, already dark inside the picture) replaced the three earlier ones.
-    ADDED={'assets/fonts/Tajawal-OFL.txt','assets/backgrounds/ouswis_bg_stars_1080p.webp','assets/backgrounds/ouswis_bg_stars_inner_1080p.webp'}
+    # Nov 20: the cinema (films and series), stadium (matches) and desert (Live TV) wallpapers, and the desert home one kept as an option.
+    ADDED={'assets/fonts/Tajawal-OFL.txt','assets/backgrounds/ouswis_bg_stars_1080p.webp','assets/backgrounds/ouswis_bg_stars_inner_1080p.webp',
+           'assets/backgrounds/ouswis_bg_cinema_inner_1080p.webp','assets/backgrounds/ouswis_bg_stadium_inner_1080p.webp',
+           'assets/backgrounds/ouswis_bg_desert_inner_1080p.webp','assets/backgrounds/ouswis_bg_desert_home_1080p.webp'}
     REMOVED={'assets/themes/gold-sunset.png','assets/themes/gold-frame.png','assets/backgrounds/ouswis_bg_1080p.webp','assets/backgrounds/ouswis_bg_4k.webp','assets/backgrounds/ouswis_bg_inner_1080p.webp'}
     assert (names-REMOVED)|ADDED=={n for n in new.namelist() if n.startswith('assets/')},sorted(names^{n for n in new.namelist() if n.startswith('assets/')})
     # Round K dropped two unused translation keys (the Settings subtitle and the English "is on" notice): the i18n catalogues may differ.
