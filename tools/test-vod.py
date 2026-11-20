@@ -127,6 +127,7 @@ B_LACKS = {'601'}
 EPISODES = [('1001', 1, 1), ('1002', 1, 2), ('1003', 1, 3), ('1004', 2, 1), ('1005', 2, 2), ('1006', 2, 3)]
 CLIP = [b'']
 MKV = [b'']
+MANY = [b'']
 
 class Provider(BaseHTTPRequestHandler):
     def log_message(self, *a): pass
@@ -196,6 +197,8 @@ class Provider(BaseHTTPRequestHandler):
             return self.send_bytes(CLIP[0], 'video/mp4')
         if url.path in ('/movie/demo/demo/604.mkv', '/movie/demo2/demo2/5604.mkv'):
             return self.send_bytes(MKV[0], 'video/x-matroska')
+        if url.path in ('/movie/demo/demo/605.mkv', '/movie/demo2/demo2/5605.mkv'):
+            return self.send_bytes(MANY[0], 'video/x-matroska')
         m = re.fullmatch(r'/movie/(?:demo|demo2)/(?:demo|demo2)/(\d+)\.mp4', url.path)
         if m:
             assert m[1] != '901'
@@ -219,6 +222,19 @@ with tempfile.TemporaryDirectory() as temp:
                     '-c:a', 'aac', '-c:s', 'srt', '-metadata:s:a:0', 'language=eng', '-metadata:s:a:1', 'language=ara', '-metadata:s:s:0', 'language=eng',
                     '-metadata:s:s:1', 'language=ara', '-disposition:a:0', 'default', '-disposition:a:1', '0', '-disposition:s:0', '0', '-disposition:s:1', '0', str(mkv)], check=True)
     MKV[0] = mkv.read_bytes()
+    # many tracks (the menu must scroll): English, Arabic and Turkish sound; twelve subtitles, Arabic near the end of the file
+    many_langs = ['eng', 'fre', 'ger', 'spa', 'tur', 'ita', 'por', 'rus', 'hin', 'urd', 'ara', 'kor']
+    cmd = ['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', 'testsrc=s=640x360:r=10', '-f', 'lavfi', '-i', 'sine=f=440', '-f', 'lavfi', '-i', 'sine=f=660', '-f', 'lavfi', '-i', 'sine=f=880']
+    for lang in many_langs:
+        (Path(temp) / (lang + '.srt')).write_text('1\n00:00:00,000 --> 00:02:00,000\n' + lang + '\n', encoding='utf-8')
+        cmd += ['-i', str(Path(temp) / (lang + '.srt'))]
+    cmd += ['-t', '120', '-map', '0:v', '-map', '1:a', '-map', '2:a', '-map', '3:a'] + sum([['-map', '%d:s' % (4 + i)] for i in range(len(many_langs))], [])
+    cmd += ['-c:v', 'libx264', '-preset', 'ultrafast', '-g', '10', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-c:s', 'srt',
+            '-metadata:s:a:0', 'language=eng', '-metadata:s:a:1', 'language=ara', '-metadata:s:a:2', 'language=tur', '-disposition:a:0', 'default', '-disposition:a:1', '0', '-disposition:a:2', '0']
+    for i, lang in enumerate(many_langs): cmd += ['-metadata:s:s:%d' % i, 'language=' + lang, '-disposition:s:%d' % i, '0']
+    many = Path(temp) / 'many.mkv'
+    subprocess.run(cmd + [str(many)], check=True)
+    MANY[0] = many.read_bytes()
 server = ThreadingHTTPServer(('127.0.0.1', 0), Provider); PORT[0] = server.server_port
 threading.Thread(target=server.serve_forever, daemon=True).start()
 adb('reverse', 'tcp:%d' % PORT[0], 'tcp:%d' % PORT[0])
@@ -428,6 +444,49 @@ try:
     shot('vod-tracks-single.png')
     keys('BACK', pause=1); keys('BACK', pause=1.5)
     note('PASS: a file with one sound track and no subtitles says so in the menu.')
+    # many tracks: the sound on top, then the subtitles with "بدون ترجمة" and Arabic first; the list scrolls with the focus,
+    # the focused line always whole inside the panel; an opaque dark panel (#121A3A) with a white focus frame
+    def focused_box():
+        for n in tree().iter('node'):
+            if n.get('package') == PKG and n.get('focused') == 'true' and (n.get('text', '') + n.get('content-desc', '')).strip():
+                return (n.get('text', '') + ' ' + n.get('content-desc', '')).strip(), [int(v) for v in re.findall(r'\d+', n.get('bounds'))]
+        return '', None
+    def whole(what):
+        label, b = focused_box()
+        assert b is not None, 'No focused line in the menu (' + what + ')'
+        assert b[1] >= 150 and b[3] <= 956 and b[3] - b[1] >= 70, 'The focused line must be whole inside the panel (' + what + '): ' + label + ' ' + str(b)
+        return label, b
+    play('605', 'Many Voices', 'mkv')
+    keys('DPAD_DOWN', pause=1.5)
+    ml = menu_labels()
+    subs = [l for l in ml if l.startswith('الترجمة: ')]
+    assert subs[:3] == ['الترجمة: بدون ترجمة — مختار', 'الترجمة: عربي', 'الترجمة: إنجليزي'], 'Subtitles must start with بدون ترجمة, then Arabic, then the rest: ' + str(subs)
+    assert ml[0].startswith('الصوت: ') and ml.index('الترجمة: بدون ترجمة — مختار') > max(i for i, l in enumerate(ml) if l.startswith('الصوت: ')), 'The sound comes before the subtitles: ' + str(ml)
+    img = shot('vod-tracks-many-top.png')
+    panel = img.getpixel((1246, 600))
+    assert abs(panel[0] - 0x12) <= 6 and abs(panel[1] - 0x1A) <= 6 and abs(panel[2] - 0x3A) <= 6, 'The panel must be opaque #121A3A: ' + str(panel)
+    label, b = whole('the first line')
+    assert label.startswith('الصوت: عربي'), 'The menu opens on the chosen sound: ' + label
+    ring = [img.getpixel((x, y)) for x in range(b[0] + 40, b[2] - 40, 37) for y in range(b[1], b[1] + 8)]
+    assert sum(1 for px in ring if min(px) > 225) >= 10, 'The focused line must have a white frame'
+    seen = []
+    for _ in range(20):
+        keys('DPAD_DOWN', pause=0.35)
+        label, b = whole('going down')
+        if label not in seen: seen.append(label)
+    assert seen[-1].startswith('الترجمة: كوري'), 'Down to the last subtitle: ' + str(seen)
+    order = [l.split(' — ')[0] for l in seen if l.startswith('الترجمة: ')]
+    want = ['الترجمة: ' + x for x in ['بدون ترجمة', 'عربي', 'إنجليزي', 'فرنسي', 'ألماني', 'إسباني', 'تركي', 'إيطالي', 'برتغالي', 'روسي', 'هندي', 'أردو', 'كوري']]
+    assert order == want, 'Subtitles in order: ' + str(order)
+    shot('vod-tracks-many-bottom.png')
+    assert not any(l.startswith('الصوت: ') for l in menu_labels()), 'At the bottom the list must have scrolled the sound away: ' + str(menu_labels())
+    for _ in range(20):
+        keys('DPAD_UP', pause=0.35)
+        whole('going up')
+    label, b = whole('back at the top')
+    assert label.startswith('الصوت: إنجليزي'), 'Back up at the first sound: ' + label
+    keys('BACK', pause=1); keys('BACK', pause=1.5)
+    note('PASS: with 3 sounds and 12 subtitles the menu shows the sound first, then بدون ترجمة, Arabic and the rest in the file\'s order; going down to the last subtitle and back up, the focused line stayed whole inside the panel every step; the panel is opaque #121A3A with a white focus frame.')
     no_crash('Sound and subtitles')
 
     # 7. series: the shortcut, the grid, the page (seasons, episodes, watched, continue) and the same sound/subtitle choice

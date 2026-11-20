@@ -3,7 +3,7 @@ name: Films preview (signed, emulator tested)
 # test (tools/test-vod.py) pass on a 1920x1080 Android 14 emulator. Published as a pre-release, never the official release.
 on:
   push:
-    branches: ['feature/vod-movies', 'feature/vod-series', 'feature/home-vod-row']
+    branches: ['feature/vod-movies', 'feature/vod-series', 'feature/home-vod-row', 'feature/tracks-menu']
     paths: ['app/**', 'build.sh', 'tools/test-vod.py', 'tools/test-gold-home.py', '.github/workflows/vod-preview.yml']
   workflow_dispatch:
 permissions:

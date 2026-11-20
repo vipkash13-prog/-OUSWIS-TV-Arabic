@@ -277,24 +277,35 @@ public final class VodPlayerActivity extends Activity {
         }
     }
 
-    /** The sound and subtitles menu (▼): every sound track and subtitle of the file by language, ✓ on the ones playing. */
+    /**
+     * The sound and subtitles menu (▼): two sections, the sound first, then the subtitles ("بدون ترجمة" and Arabic at the
+     * top), ✓ on what plays. An opaque panel in the app's dark colour, white focus frame, text big enough for the sofa;
+     * the list scrolls with the focus so the focused line is always whole.
+     */
     private final class TrackMenu extends View {
+        private static final int PANEL=0xFF121A3A;
+        private static final float L=1236,R=1864,TOP=50,BOTTOM=1030,AREA_TOP=150,AREA_BOTTOM=956,ROW=84,HEAD=60,NOTE=58,GAP=26;
         private final Paint p=new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Paint head=Design.text(Design.TEXT,34,Design.bold()),section=Design.text(Design.GOLD,24,Design.bold()),
-                item=Design.text(Design.TEXT,26,Design.regular()),note=Design.text(Design.MUTED,21,Design.regular()),hint=Design.text(Design.MUTED,18,Design.regular());
-        private final RectF r=new RectF(),g=new RectF();
+        private final Paint head=Design.text(Design.TEXT,38,Design.bold()),section=Design.text(Design.GOLD,30,Design.bold()),
+                item=Design.text(Design.TEXT,30,Design.regular()),itemOn=Design.text(Design.TEXT,30,Design.bold()),check=Design.text(Design.GOLD,32,Design.bold()),
+                note=Design.text(Design.MUTED,25,Design.regular()),hint=Design.text(Design.MUTED,21,Design.regular()),more=Design.text(Design.MUTED,24,Design.bold());
+        private final RectF r=new RectF();
         private final A11y a11y=new A11y(this);
         @Override public android.view.accessibility.AccessibilityNodeProvider getAccessibilityNodeProvider(){return a11y.provider(null,null);}
         private List<TrackChoice.Option> audio=new ArrayList<>(),text=new ArrayList<>();
-        private int sel;   // over the audio options, then "no subtitles", then the subtitles
+        private int sel;        // over the audio options, then "no subtitles", then the subtitles
+        private float scroll;   // how far the list is moved up
         private float k=1;
         TrackMenu(Context c){super(c);}
         @Override protected void onSizeChanged(int w,int h,int ow,int oh){k=w/1920f;}
-        void open(){refresh();sel=0;for(int i=0;i<audio.size();i++)if(audio.get(i).selected)sel=i;setVisibility(View.VISIBLE);invalidate();}
+        void open(){refresh();sel=0;for(int i=0;i<audio.size();i++)if(audio.get(i).selected)sel=i;scroll=0;setVisibility(View.VISIBLE);invalidate();}
         void refresh(){
             Tracks t=player==null?null:player.getCurrentTracks();
             audio=TrackChoice.options(t,androidx.media3.common.C.TRACK_TYPE_AUDIO);
-            text=TrackChoice.options(t,androidx.media3.common.C.TRACK_TYPE_TEXT);
+            List<TrackChoice.Option> subs=TrackChoice.options(t,androidx.media3.common.C.TRACK_TYPE_TEXT);
+            text=new ArrayList<>();   // Arabic first, then the others as the file lists them
+            for(TrackChoice.Option o:subs)if("ar".equals(o.lang))text.add(o);
+            for(TrackChoice.Option o:subs)if(!"ar".equals(o.lang))text.add(o);
             if(sel>=count())sel=Math.max(0,count()-1);
             invalidate();
         }
@@ -316,31 +327,75 @@ public final class VodPlayerActivity extends Activity {
             }
             return true;
         }
-        private float row(Canvas c,float y,String label,boolean selected,boolean focus,String a11yLabel){
-            r.set(1290,y,1830,y+64);
-            if(focus){Design.grown(r,g);Design.fill(c,g,16,p,0x29E9C46A);Design.focusRing(c,g,16,1,p);}
-            Design.right(c,label,1790,y+43,item);
-            if(selected)Design.left(c,"✓",1320,y+44,section);
-            a11y.add(r,a11yLabel+(selected?" — مختار":""),focus,true);
-            return y+72;
+
+        // the list, laid out once per frame: kind 0 section title, 1 line (focusable), 2 note
+        private final List<float[]> lay=new ArrayList<>();      // {kind, y, height, index of the line or -1}
+        private final List<String> layText=new ArrayList<>(),layA11y=new ArrayList<>();
+        private final List<Boolean> layOn=new ArrayList<>();
+        private float add(int kind,float y,float h,int index,String t,String a11yText,boolean on){
+            lay.add(new float[]{kind,y,h,index});layText.add(t);layA11y.add(a11yText);layOn.add(on);return y+h;
+        }
+        private float build(){
+            lay.clear();layText.clear();layA11y.clear();layOn.clear();
+            float y=0;int n=0;
+            y=add(0,y,HEAD,-1,"الصوت",null,false);
+            for(TrackChoice.Option o:audio)y=add(1,y,ROW,n++,o.label,"الصوت: "+o.label,o.selected);
+            if(audio.size()<=1){String m=audio.isEmpty()?"لا يوجد مسار صوت في هذا الملف":"مسار صوت واحد فقط · لا توجد خيارات أخرى";y=add(2,y,NOTE,-1,m,m,false);}
+            y+=GAP;
+            y=add(0,y,HEAD,-1,"الترجمة",null,false);
+            y=add(1,y,ROW,n++,"بدون ترجمة","الترجمة: بدون ترجمة",textOff());
+            for(TrackChoice.Option o:text)y=add(1,y,ROW,n++,o.label,"الترجمة: "+o.label,o.selected);
+            if(text.isEmpty()){String m="لا توجد ترجمات في هذا الملف";y=add(2,y,NOTE,-1,m,m,false);}
+            return y;
+        }
+        /** Moves the list so the focused line is whole (with its section's title when it is the section's first line). */
+        private void follow(float total){
+            float view=AREA_BOTTOM-AREA_TOP;
+            for(int i=0;i<lay.size();i++){
+                float[] e=lay.get(i);
+                if(e[0]!=1||(int)e[3]!=sel)continue;
+                float top=e[1]-6,bottom=e[1]+e[2]+6;
+                if(i>0&&lay.get(i-1)[0]==0)top=lay.get(i-1)[1];
+                if(top<scroll)scroll=top;
+                if(bottom>scroll+view)scroll=bottom-view;
+            }
+            scroll=Math.max(0,Math.min(scroll,Math.max(0,total-view)));
         }
         @Override protected void onDraw(Canvas c){
             a11y.begin(k);
             c.drawColor(0x66000000);
             c.save();c.scale(k,k);
-            r.set(1260,60,1860,1020);Design.card(c,r,28,1,p,0xF00E1124);
-            Design.right(c,"الصوت والترجمة",1820,128,head);
-            a11y.add(1270,90,1850,140,"الصوت والترجمة",false,false);
-            float y=170;
-            Design.right(c,"الصوت",1820,y+28,section);y+=46;
-            for(int i=0;i<audio.size();i++)y=row(c,y,audio.get(i).label,audio.get(i).selected,sel==i,"الصوت: "+audio.get(i).label);
-            if(audio.size()<=1){String m=audio.isEmpty()?"لا يوجد مسار صوت في هذا الملف":"مسار صوت واحد فقط · لا توجد خيارات أخرى";Design.right(c,m,1810,y+30,note);a11y.add(1290,y,1830,y+40,m,false,false);y+=50;}
-            y+=20;
-            Design.right(c,"الترجمة",1820,y+28,section);y+=46;
-            y=row(c,y,"بدون ترجمة",textOff(),sel==audio.size(),"الترجمة: بدون ترجمة");
-            for(int i=0;i<text.size();i++)y=row(c,y,text.get(i).label,text.get(i).selected,sel==audio.size()+1+i,"الترجمة: "+text.get(i).label);
-            if(text.isEmpty()){String m="لا توجد ترجمات في هذا الملف";Design.right(c,m,1810,y+30,note);a11y.add(1290,y,1830,y+40,m,false,false);}
-            Design.center(c,"▲▼ تنقل · OK اختيار · BACK إغلاق",1560,995,hint);
+            r.set(L,TOP,R,BOTTOM);
+            p.setStyle(Paint.Style.FILL);p.setShader(null);p.setColor(PANEL);c.drawRoundRect(r,28,28,p);
+            p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(1.5f);p.setColor(0x26FFFFFF);c.drawRoundRect(r,28,28,p);
+            Design.right(c,"الصوت والترجمة",R-40,116,head);
+            a11y.add(L+20,72,R-20,130,"الصوت والترجمة",false,false);
+            p.setStyle(Paint.Style.FILL);p.setColor(0x1FFFFFFF);c.drawRect(L+30,AREA_TOP-12,R-30,AREA_TOP-10,p);
+            float total=build();
+            follow(total);
+            c.save();c.clipRect(L,AREA_TOP,R,AREA_BOTTOM);
+            for(int i=0;i<lay.size();i++){
+                float[] e=lay.get(i);
+                float y=AREA_TOP+e[1]-scroll,h=e[2];
+                if(y+h<AREA_TOP||y>AREA_BOTTOM)continue;
+                int kind=(int)e[0];
+                if(kind==0){Design.right(c,layText.get(i),R-40,y+h-18,section);continue;}
+                if(kind==2){Design.right(c,layText.get(i),R-48,y+h/2+9,note);a11y.add(L+30,Math.max(AREA_TOP,y),R-30,Math.min(AREA_BOTTOM,y+h),layA11y.get(i),false,false);continue;}
+                boolean focus=(int)e[3]==sel,on=layOn.get(i);
+                r.set(L+28,y+4,R-28,y+h-4);
+                if(focus){
+                    p.setStyle(Paint.Style.FILL);p.setColor(0x1FFFFFFF);c.drawRoundRect(r,18,18,p);
+                    p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(4);p.setColor(0xFFFFFFFF);c.drawRoundRect(r,18,18,p);
+                }
+                Design.right(c,Design.fit(layText.get(i),on?itemOn:item,r.width()-110),r.right-26,r.centerY()+11,on?itemOn:item);
+                if(on)Design.center(c,"✓",r.left+40,r.centerY()+12,check);
+                a11y.add(r.left,Math.max(AREA_TOP,r.top),r.right,Math.min(AREA_BOTTOM,r.bottom),layA11y.get(i)+(on?" — مختار":""),focus,true);
+            }
+            c.restore();
+            // more above or below: a small arrow at that edge
+            if(scroll>0.5f)Design.center(c,"▲",(L+R)/2,AREA_TOP+20,more);
+            if(scroll<total-(AREA_BOTTOM-AREA_TOP)-0.5f)Design.center(c,"▼",(L+R)/2,AREA_BOTTOM-4,more);
+            Design.center(c,"▲▼ تنقل · OK اختيار · BACK إغلاق",(L+R)/2,1002,hint);
             c.restore();
         }
     }
