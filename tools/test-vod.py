@@ -449,7 +449,7 @@ try:
     def focused_box():
         for n in tree().iter('node'):
             if n.get('package') == PKG and n.get('focused') == 'true' and (n.get('text', '') + n.get('content-desc', '')).strip():
-                return (n.get('text', '') + ' ' + n.get('content-desc', '')).strip(), [int(v) for v in re.findall(r'\d+', n.get('bounds'))]
+                return (n.get('text', '') or n.get('content-desc', '')).strip(), [int(v) for v in re.findall(r'\d+', n.get('bounds'))]
         return '', None
     def whole(what):
         label, b = focused_box()
