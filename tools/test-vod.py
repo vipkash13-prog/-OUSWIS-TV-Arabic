@@ -473,7 +473,7 @@ try:
     note('PASS: تابع المشاهدة in the series screen holds الوادي البعيد.')
     # the sound and subtitle choice made on a film carries over to an episode
     adb('shell', 'am', 'force-stop', PKG); time.sleep(1)
-    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.VodPlayerActivity', '--es', 'id', '1006', '--es', 'name', "'ep3'", '--es', 'ext', 'mkv', '--es', 'show', '701', '--es', 'showName', "'show'", '--ei', 'season', '2', '--ei', 'num', '3')
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.VodPlayerActivity', '--es', 'id', '1006', '--es', 'name', "'ep3'", '--es', 'ext', 'mkv', '--es', 'show', '701', '--es', 'showName', "'الوادي البعيد'", '--es', 'showIcon', 'http://127.0.0.1:%d/poster/701.png' % PORT[0], '--es', 'showCat', '21', '--ei', 'season', '2', '--ei', 'num', '3')
     front('VodPlayerActivity'); time.sleep(6)
     assert ('/series/demo/demo/1006.mkv', '') in HITS
     keys('DPAD_DOWN', pause=1.5)
