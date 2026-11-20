@@ -38,10 +38,13 @@ final class XtreamAccount {
                 +(action==null?"":"&action="+action)+(extra==null?"":"&"+extra);
     }
     /** Numeric/diagnostic logging must never include this: it contains the password. */
-    static String get(String address) throws Exception {
+    static String get(String address) throws Exception {return get(address,null);}
+    /** As above; `code[0]` gets the HTTP status (for the log). */
+    static String get(String address,int[] code) throws Exception {
         HttpURLConnection c=(HttpURLConnection)new URL(address).openConnection();
         c.setConnectTimeout(10000);c.setReadTimeout(15000);c.setInstanceFollowRedirects(true);
         try{
+            if(code!=null)code[0]=c.getResponseCode();
             if(c.getResponseCode()!=200)throw new Exception("HTTP "+c.getResponseCode());
             try(BufferedReader r=new BufferedReader(new InputStreamReader(c.getInputStream(),"UTF-8"))){
                 StringBuilder s=new StringBuilder();String line;

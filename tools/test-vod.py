@@ -105,7 +105,10 @@ subprocess.run([ADB, 'root'], capture_output=True, timeout=60); subprocess.run([
 if 'Physical size: 1920x1080' not in adb('shell', 'wm', 'size'): adb('shell', 'wm', 'size', '1920x1080')
 
 NOW = int(time.time())
-CATS = [('1', 'AR| أفلام عربية'), ('2', 'EN| Action'), ('3', 'XXX Adult 18+')]
+CATS = [('1', 'AR| أفلام عربية'), ('2', 'EN| Action'), ('3', 'XXX Adult 18+'), ('4', 'NETFLIX MOVIES DOLBY AUDIO'), ('5', 'NETFLIX DOCU-MOVIES')]
+# sections whose films have them only as a second section (category_ids): the provider answers category_id=4 with an
+# empty list and category_id=5 with HTTP 500, while the whole catalogue lists their films (as on the viewer's subscription)
+EXTRA_CATS = {'501': ['1', '4'], '601': ['2', '4'], '503': ['1', '5'], '702': ['21', '23']}
 COLOURS = [(200, 40, 40), (40, 160, 60), (40, 70, 200), (200, 150, 30), (150, 40, 180), (30, 160, 170), (210, 90, 30), (90, 90, 210), (170, 170, 40), (200, 60, 120)]
 MOVIES = {   # id: (name, category, rating, added days ago)
     '501': ('ظل الصحراء', '1', '7.5', 1), '502': ('المدينة الأخيرة', '1', '7.9', 0), '503': ('سرّ البحر', '1', '6.6', 3), '504': ('رحلة النجوم', '1', '8.5', 5),
@@ -117,7 +120,8 @@ def stream(i, m, off=0):
     name, cat, rate, ago = m
     if off: name = B_NAMES.get(i, name)
     return {'num': int(i), 'name': name, 'stream_type': 'movie', 'stream_id': int(i) + off, 'stream_icon': 'http://127.0.0.1:%d/poster/%s.png' % (PORT[0], i),
-            'rating': rate, 'rating_5based': float(rate) / 2, 'added': str(NOW - ago * 86400 - int(i)), 'category_id': cat, 'container_extension': 'mkv' if i == '604' else 'mp4', 'custom_sid': None, 'direct_source': ''}
+            'rating': rate, 'rating_5based': float(rate) / 2, 'added': str(NOW - ago * 86400 - int(i)), 'category_id': cat, 'category_ids': [int(c) for c in EXTRA_CATS.get(i, [cat])],
+            'container_extension': 'mkv' if i == '604' else 'mp4', 'custom_sid': None, 'direct_source': ''}
 PORT = [0]
 SERIES = [('701', 'الوادي البعيد', '21', '8.6'), ('702', 'AR| Night Shift (2021)', '21', '7.0'), ('901', 'Adult Show', '22', '5.0')]
 # subscription B (user demo2): the same titles under other numbers (+5000) and other prefixes, without Desert Storm
@@ -127,6 +131,7 @@ B_LACKS = {'601'}
 EPISODES = [('1001', 1, 1), ('1002', 1, 2), ('1003', 1, 3), ('1004', 2, 1), ('1005', 2, 2), ('1006', 2, 3)]
 CLIP = [b'']
 MKV = [b'']
+MANY = [b'']
 
 class Provider(BaseHTTPRequestHandler):
     def log_message(self, *a): pass
@@ -163,6 +168,7 @@ class Provider(BaseHTTPRequestHandler):
             if action == 'get_vod_categories': body = [{'category_id': i, 'category_name': n, 'parent_id': 0} for i, n in CATS]
             elif action == 'get_vod_streams':
                 cat = q.get('category_id', [''])[0]
+                if cat == '5': self.send_error(500); return
                 body = [stream(i, m, off) for i, m in MOVIES.items() if cat in ('', m[1]) and not (off and i in B_LACKS)]
             elif action == 'get_vod_info':
                 i = str(int(q.get('vod_id', ['0'])[0] or 0) - off); name, cat, rate, ago = MOVIES.get(i, ('?', '1', '0', 0))
@@ -170,11 +176,11 @@ class Provider(BaseHTTPRequestHandler):
                                  'cast': 'ممثل أول، ممثلة ثانية، ممثل ثالث', 'director': 'مخرج الاختبار', 'genre': 'أكشن', 'releasedate': '2025-03-01',
                                  'duration_secs': 120, 'duration': '00:02:00', 'rating': rate, 'video': {'width': 1920, 'height': 1080}},
                         'movie_data': {'stream_id': int(i), 'name': name, 'category_id': cat, 'container_extension': 'mp4'}}
-            elif action == 'get_series_categories': body = [{'category_id': '21', 'category_name': 'AR| مسلسلات عربية', 'parent_id': 0}, {'category_id': '22', 'category_name': 'XXX Adult', 'parent_id': 0}]
+            elif action == 'get_series_categories': body = [{'category_id': '21', 'category_name': 'AR| مسلسلات عربية', 'parent_id': 0}, {'category_id': '22', 'category_name': 'XXX Adult', 'parent_id': 0}, {'category_id': '23', 'category_name': 'NETFLIX STAND-UP COMEDY', 'parent_id': 0}]
             elif action == 'get_series':
                 cat = q.get('category_id', [''])[0]
                 body = [{'num': n + 1, 'name': B_NAMES.get(sid, name) if off else name, 'series_id': int(sid) + off, 'cover': 'http://127.0.0.1:%d/poster/%s.png' % (PORT[0], sid), 'plot': '', 'rating': rate,
-                         'last_modified': str(NOW - n * 3600), 'category_id': c} for n, (sid, name, c, rate) in enumerate(SERIES) if cat in ('', c)]
+                         'last_modified': str(NOW - n * 3600), 'category_id': c, 'category_ids': [int(x) for x in EXTRA_CATS.get(sid, [c])]} for n, (sid, name, c, rate) in enumerate(SERIES) if cat in ('', c)]
             elif action == 'get_series_info':
                 sid = str(int(q.get('series_id', ['0'])[0] or 0) - off)
                 body = {'seasons': [{'season_number': 1, 'name': 'Season 1', 'episode_count': 3}, {'season_number': 2, 'name': 'Season 2', 'episode_count': 3}],
@@ -196,6 +202,8 @@ class Provider(BaseHTTPRequestHandler):
             return self.send_bytes(CLIP[0], 'video/mp4')
         if url.path in ('/movie/demo/demo/604.mkv', '/movie/demo2/demo2/5604.mkv'):
             return self.send_bytes(MKV[0], 'video/x-matroska')
+        if url.path in ('/movie/demo/demo/605.mkv', '/movie/demo2/demo2/5605.mkv'):
+            return self.send_bytes(MANY[0], 'video/x-matroska')
         m = re.fullmatch(r'/movie/(?:demo|demo2)/(?:demo|demo2)/(\d+)\.mp4', url.path)
         if m:
             assert m[1] != '901'
@@ -219,6 +227,19 @@ with tempfile.TemporaryDirectory() as temp:
                     '-c:a', 'aac', '-c:s', 'srt', '-metadata:s:a:0', 'language=eng', '-metadata:s:a:1', 'language=ara', '-metadata:s:s:0', 'language=eng',
                     '-metadata:s:s:1', 'language=ara', '-disposition:a:0', 'default', '-disposition:a:1', '0', '-disposition:s:0', '0', '-disposition:s:1', '0', str(mkv)], check=True)
     MKV[0] = mkv.read_bytes()
+    # many tracks (the menu must scroll): English, Arabic and Turkish sound; twelve subtitles, Arabic near the end of the file
+    many_langs = ['eng', 'fre', 'ger', 'spa', 'tur', 'ita', 'por', 'rus', 'hin', 'urd', 'ara', 'kor']
+    cmd = ['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', 'testsrc=s=640x360:r=10', '-f', 'lavfi', '-i', 'sine=f=440', '-f', 'lavfi', '-i', 'sine=f=660', '-f', 'lavfi', '-i', 'sine=f=880']
+    for lang in many_langs:
+        (Path(temp) / (lang + '.srt')).write_text('1\n00:00:00,000 --> 00:02:00,000\n' + lang + '\n', encoding='utf-8')
+        cmd += ['-i', str(Path(temp) / (lang + '.srt'))]
+    cmd += ['-t', '120', '-map', '0:v', '-map', '1:a', '-map', '2:a', '-map', '3:a'] + sum([['-map', '%d:s' % (4 + i)] for i in range(len(many_langs))], [])
+    cmd += ['-c:v', 'libx264', '-preset', 'ultrafast', '-g', '10', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-c:s', 'srt',
+            '-metadata:s:a:0', 'language=eng', '-metadata:s:a:1', 'language=ara', '-metadata:s:a:2', 'language=tur', '-disposition:a:0', 'default', '-disposition:a:1', '0', '-disposition:a:2', '0']
+    for i, lang in enumerate(many_langs): cmd += ['-metadata:s:s:%d' % i, 'language=' + lang, '-disposition:s:%d' % i, '0']
+    many = Path(temp) / 'many.mkv'
+    subprocess.run(cmd + [str(many)], check=True)
+    MANY[0] = many.read_bytes()
 server = ThreadingHTTPServer(('127.0.0.1', 0), Provider); PORT[0] = server.server_port
 threading.Thread(target=server.serve_forever, daemon=True).start()
 adb('reverse', 'tcp:%d' % PORT[0], 'tcp:%d' % PORT[0])
@@ -294,6 +315,32 @@ try:
     assert not any('ظل الصحراء' in l for l in labels()), 'Another section\'s films show in Action'
     shot('vod-section.png')
     note('PASS: a section loads by itself (get_vod_streams&category_id=2) and shows only its films.')
+    # a section the provider answers with an empty list, and one it answers with HTTP 500: their films come from the whole
+    # catalogue, by category_ids (NETFLIX MOVIES DOLBY AUDIO: ظل الصحراء, Desert Storm; NETFLIX DOCU-MOVIES: سرّ البحر)
+    adb('logcat', '-c')
+    keys('DPAD_DOWN', pause=1.2)
+    assert 'NETFLIX MOVIES DOLBY AUDIO' in focused_label(), focused_label()
+    wait_label('Desert Storm', 'the films of the section answered with an empty list', tries=30)
+    labs = labels()
+    assert any(l.startswith('ظل الصحراء') for l in labs), 'Both films of the empty-answered section: ' + str(labs)
+    assert not any('لا توجد أفلام' in l for l in labs), '"No films" must not show: ' + str(labs)
+    assert ('get_vod_streams', 'username=demo&password=demo&action=get_vod_streams&category_id=4') in HITS, 'The section was asked for first'
+    shot('vod-section-empty-answer.png')
+    keys('DPAD_DOWN', pause=1.2)
+    assert 'NETFLIX DOCU-MOVIES' in focused_label(), focused_label()
+    wait_label('سرّ البحر', 'the film of the section answered with HTTP 500', tries=30)
+    labs = labels()
+    assert not any('تعذّر' in l or 'لا توجد أفلام' in l for l in labs), 'Neither a failure nor "no films": ' + str(labs)
+    shot('vod-section-http-error.png')
+    log = adb('logcat', '-d', '-s', 'FreeMyTV')
+    for need in ('vod section 4: 0 of 0 rows, HTTP 200', 'vod section 4: 2 from the whole catalogue (2 by category_ids)',
+                 'vod section 5: failed (HTTP 500)', 'vod section 5: 1 from the whole catalogue (1 by category_ids)'):
+        assert need in log, 'The log lacks "' + need + '": ' + log[-1500:]
+    assert 'password=' not in log, 'The log must not hold the address'
+    note('PASS: NETFLIX MOVIES DOLBY AUDIO (the provider gives an empty list) shows ظل الصحراء and Desert Storm, NETFLIX DOCU-MOVIES (HTTP 500) shows سرّ البحر, both from the whole catalogue by category_ids; the log has each section\'s count, HTTP code and time.')
+    keys('DPAD_UP', 'DPAD_UP', pause=1.2)
+    assert 'Action' in focused_label(), focused_label()
+    wait_label('Night Run', 'back on the Action section')
 
     # search by name, across the catalogue
     keys('DPAD_LEFT', 'DPAD_UP', 'DPAD_RIGHT', 'DPAD_RIGHT', pause=0.6)
@@ -428,6 +475,54 @@ try:
     shot('vod-tracks-single.png')
     keys('BACK', pause=1); keys('BACK', pause=1.5)
     note('PASS: a file with one sound track and no subtitles says so in the menu.')
+    # many tracks: the sound on top, then the subtitles with "بدون ترجمة" and Arabic first; the list scrolls with the focus,
+    # the focused line always whole inside the panel; an opaque dark panel (#121A3A) with a white focus frame
+    def focused_box():
+        for n in tree().iter('node'):
+            if n.get('package') == PKG and n.get('focused') == 'true' and (n.get('text', '') + n.get('content-desc', '')).strip():
+                return (n.get('text', '') or n.get('content-desc', '')).strip(), [int(v) for v in re.findall(r'\d+', n.get('bounds'))]
+        return '', None
+    def whole(what):
+        label, b = focused_box()
+        assert b is not None, 'No focused line in the menu (' + what + ')'
+        assert b[1] >= 150 and b[3] <= 956 and b[3] - b[1] >= 70, 'The focused line must be whole inside the panel (' + what + '): ' + label + ' ' + str(b)
+        return label, b
+    play('605', 'Many Voices', 'mkv')
+    keys('DPAD_DOWN', pause=1.5)
+    ml = menu_labels()
+    # (the Arabic subtitles picked earlier in this test are still the kept choice, so they carry the ✓ here)
+    subs = [l.split(' — ')[0] for l in ml if l.startswith('الترجمة: ')]
+    assert subs[:3] == ['الترجمة: بدون ترجمة', 'الترجمة: عربي', 'الترجمة: إنجليزي'], 'Subtitles must start with بدون ترجمة, then Arabic, then the rest: ' + str(subs)
+    assert 'الترجمة: عربي — مختار' in ml, 'The kept Arabic subtitles: ' + str(ml)
+    first_sub = min(i for i, l in enumerate(ml) if l.startswith('الترجمة: '))
+    assert ml[0].startswith('الصوت: ') and first_sub > max(i for i, l in enumerate(ml) if l.startswith('الصوت: ')), 'The sound comes before the subtitles: ' + str(ml)
+    img = shot('vod-tracks-many-top.png')
+    panel = img.getpixel((1246, 600))
+    assert abs(panel[0] - 0x12) <= 6 and abs(panel[1] - 0x1A) <= 6 and abs(panel[2] - 0x3A) <= 6, 'The panel must be opaque #121A3A: ' + str(panel)
+    label, b = whole('the first line')
+    assert label.startswith('الصوت: عربي'), 'The menu opens on the chosen sound: ' + label
+    ring = [img.getpixel((x, y)) for x in range(b[0] + 40, b[2] - 40, 37) for y in range(b[1], b[1] + 8)]
+    assert sum(1 for px in ring if min(px) > 225) >= 10, 'The focused line must have a white frame'
+    seen = []
+    for _ in range(20):
+        keys('DPAD_DOWN', pause=0.35)
+        label, b = whole('going down')
+        if label not in seen: seen.append(label)
+    assert seen[-1].startswith('الترجمة: كوري'), 'Down to the last subtitle: ' + str(seen)
+    order = [l.split(' — ')[0] for l in seen if l.startswith('الترجمة: ')]
+    want = ['الترجمة: ' + x for x in ['بدون ترجمة', 'عربي', 'إنجليزي', 'فرنسي', 'ألماني', 'إسباني', 'تركي', 'إيطالي', 'برتغالي', 'روسي', 'هندي', 'أردو', 'كوري']]
+    assert order == want, 'Subtitles in order: ' + str(order)
+    shot('vod-tracks-many-bottom.png')
+    assert not any(l.startswith('الصوت: ') for l in menu_labels()), 'At the bottom the list must have scrolled the sound away: ' + str(menu_labels())
+    for _ in range(20):
+        keys('DPAD_UP', pause=0.35)
+        whole('going up')
+    label, b = whole('back at the top')
+    assert label.startswith('الصوت: إنجليزي'), 'Back up at the first sound: ' + label
+    # play this test film to its end, so it doesn't stay in "continue watching" (the home row check below counts that list)
+    keys('BACK', pause=1); keys(*['DPAD_RIGHT'] * 13, pause=0.3); time.sleep(4)
+    if 'VodPlayerActivity' in adb('shell', 'dumpsys', 'activity', 'activities').split('topResumedActivity')[-1][:300]: keys('BACK', pause=1.5)
+    note('PASS: with 3 sounds and 12 subtitles the menu shows the sound first, then بدون ترجمة, Arabic and the rest in the file\'s order; going down to the last subtitle and back up, the focused line stayed whole inside the panel every step; the panel is opaque #121A3A with a white focus frame.')
     no_crash('Sound and subtitles')
 
     # 7. series: the shortcut, the grid, the page (seasons, episodes, watched, continue) and the same sound/subtitle choice
@@ -483,6 +578,16 @@ try:
     time.sleep(1)
     assert any(l.startswith('الوادي البعيد') for l in labels()), 'Continue watching holds the series: ' + str(labels())
     note('PASS: تابع المشاهدة in the series screen holds الوادي البعيد.')
+    # a series section the provider answers with an empty list: its series come from the whole list by category_ids
+    adb('logcat', '-c')
+    keys(*['DPAD_DOWN'] * 4, pause=1)
+    assert 'NETFLIX STAND-UP COMEDY' in focused_label(), focused_label()
+    wait_label('Night Shift', 'the series of the section answered with an empty list', tries=30)
+    assert not any('لا توجد مسلسلات' in l for l in labels()), '"No series" must not show'
+    log = adb('logcat', '-d', '-s', 'FreeMyTV')
+    assert 'series section 23: 0 of 0 rows, HTTP 200' in log and 'series section 23: 1 from the whole catalogue (1 by category_ids)' in log, log[-1500:]
+    shot('series-section-empty-answer.png')
+    note('PASS: NETFLIX STAND-UP COMEDY (series, the provider gives an empty list) shows Night Shift from the whole list by category_ids, logged with its count, HTTP code and time.')
     # the sound and subtitle choice made on a film carries over to an episode
     adb('shell', 'am', 'force-stop', PKG); time.sleep(1)
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.VodPlayerActivity', '--es', 'id', '1006', '--es', 'name', "'ep3'", '--es', 'ext', 'mkv', '--es', 'show', '701', '--es', 'showName', "'الوادي البعيد'", '--es', 'showIcon', 'http://127.0.0.1:%d/poster/701.png' % PORT[0], '--es', 'showCat', '21', '--ei', 'season', '2', '--ei', 'num', '3')
