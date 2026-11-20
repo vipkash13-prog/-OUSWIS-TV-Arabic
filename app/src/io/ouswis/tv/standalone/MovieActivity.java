@@ -75,6 +75,10 @@ public final class MovieActivity extends Activity {
         private final RectF r=new RectF(),g=new RectF();
         private final A11y a11y=new A11y(this);
         private final VodDraw big=new VodDraw(470,704,22),small=new VodDraw(150,223,17);
+        private String focusId="";
+        private long focusAt;
+        private boolean marquee;
+        private final Runnable marqueeTick=()->{marquee=false;invalidate();};
         @Override public android.view.accessibility.AccessibilityNodeProvider getAccessibilityNodeProvider(){return a11y.provider(null,null);}
         private Bitmap backdrop;
         private float k=1;
@@ -127,15 +131,16 @@ public final class MovieActivity extends Activity {
             Bitmap pb=PosterCache.get(movie.icon,PosterCache.LARGE,this::invalidate);
             if(pb==null)pb=PosterCache.get(movie.icon,PosterCache.GRID,this::invalidate);
             String rate=movie.rating>0?movie.ratingText():in!=null&&in.rating>0?String.format(java.util.Locale.US,"%.1f",in.rating):"";
-            big.draw(c,r,pb,movie.name,rate,true);
+            big.draw(c,r,pb,movie.shown,rate,true);
             // kind, name and the facts
             String kindText="أفلام"+(section.isEmpty()?"":" · "+section);
             Design.right(c,kindText,1848,129,kind);
-            Design.right(c,Design.fitShrink(movie.name,title,1240),1848,205,title);
-            a11y.add(560,140,1848,220,movie.name,false,false);
+            Design.right(c,Design.fitShrink(movie.shown,title,1240),1848,205,title);
+            a11y.add(560,140,1848,220,movie.shown,false,false);
             List<String> facts=new ArrayList<>();
             if(!rate.isEmpty())facts.add("★"+rate);
-            if(in!=null&&!in.year.isEmpty())facts.add(in.year);
+            String year=in!=null&&!in.year.isEmpty()?in.year:movie.year;   // the year shows here only, not under the posters
+            if(!year.isEmpty())facts.add(year);
             if(in!=null&&in.seconds>0)facts.add(VodData.duration(in.seconds));
             if(in!=null&&!in.quality.isEmpty())facts.add(in.quality);
             float x=1848;
@@ -204,8 +209,10 @@ public final class MovieActivity extends Activity {
                     boolean focus=row==1&&col==i;
                     RectF box=r;if(focus){Design.grown(r,g);box=g;}
                     VodData.Movie m=sim.get(i);
-                    small.draw(c,box,PosterCache.get(m.icon,PosterCache.GRID,this::invalidate),m.name,m.ratingText(),true);
-                    a11y.add(box,m.name,focus,true);
+                    long scroll=-1;
+                    if(focus){if(!m.id.equals(focusId)){focusId=m.id;focusAt=android.os.SystemClock.uptimeMillis();}scroll=android.os.SystemClock.uptimeMillis()-focusAt;}
+                    if(small.draw(c,box,PosterCache.get(m.icon,PosterCache.GRID,this::invalidate),m.shown,m.ratingText(),true,scroll)&&!marquee){marquee=true;postDelayed(marqueeTick,33);}
+                    a11y.add(box,m.shown,focus,true);
                     if(focus)Design.focusRing(c,box,14,1,p);
                 }
             }

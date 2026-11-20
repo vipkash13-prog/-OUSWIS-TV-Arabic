@@ -114,7 +114,7 @@ final class RedesignHomeView extends View {
         return t;
     }
     private int row=1;
-    private final int[] col=new int[5];
+    private final int[] col=new int[6];
     // the matches live in the process, not in the view: coming back from another screen (Back, a new view) shows them at once and only refreshes them
     private static final List<MatchCarouselView.Match> today=new ArrayList<>(),apiToday=new ArrayList<>();   // today: the feed's matches plus the guide's
     private List<HomeApps.Item> apps=new ArrayList<>();
@@ -252,9 +252,10 @@ final class RedesignHomeView extends View {
         PrayerTimes.get(getContext()).addListener(prayerChanged);
         main.removeCallbacks(tick);main.post(tick);
         loadApps();
+        loadVod();
     }
     void pause(){logStats();resumed=false;main.removeCallbacks(tick);PrayerTimes.get(getContext()).removeListener(prayerChanged);}
-    void destroy(){destroyed=true;pause();io.shutdownNow();if(live!=null)live.shutdown();}
+    void destroy(){destroyed=true;pause();main.removeCallbacks(vodRefresh);io.shutdownNow();if(live!=null)live.shutdown();if(vodFilms!=null)vodFilms.shutdown();if(vodSeries!=null)vodSeries.shutdown();vodRefreshing=false;}
     void reset(){row=1;col[1]=0;invalidate();}   // only the Home button asks for this
 
     private void refreshData(){
@@ -315,9 +316,73 @@ final class RedesignHomeView extends View {
             });
         });
     }
+    // MARK: films and series (home_vod.png): what is being watched, then the newest; read from saved data only
+
+    // kept in the process like the matches: coming back to the home shows the row at once, then only updates it
+    private static final List<VodData.RowItem> vodItems=new ArrayList<>();
+    private static String vodFor="";            // the subscription the row belongs to
+    private static boolean vodSettled;          // the saved row was read and either is fresh or a refresh finished
+    private static volatile boolean vodRefreshing;
+    private static long vodRefreshAt;
+    private VodData vodFilms,vodSeries;
+    private final Runnable vodRefresh=this::refreshVod;
+    /** Shown while there is something in it, and (as empty cards) until it is known whether there is. */
+    private boolean vodShown(){return account!=null&&(!vodItems.isEmpty()||!vodSettled);}
+    private void loadVod(){
+        final XtreamAccount a=account;
+        if(a==null||destroyed)return;
+        final String key=AccountData.key(a);
+        if(!key.equals(vodFor)){vodFor=key;vodItems.clear();vodSettled=false;vodRefreshAt=0;}
+        final Context ctx=getContext().getApplicationContext();
+        try{io.execute(()->{
+            List<VodData.RowItem> list;
+            try{list=VodData.homeRow(ctx,a);}catch(Throwable t){list=null;}
+            final boolean stale=VodData.newestStale(ctx,a,false)||VodData.newestStale(ctx,a,true);
+            final List<VodData.RowItem> got=list;
+            main.post(()->{
+                if(destroyed||!key.equals(vodFor))return;
+                if(got!=null)applyVod(got);
+                if(!stale||!vodItems.isEmpty())vodSettled=true;
+                if(stale&&!vodRefreshing&&System.currentTimeMillis()-vodRefreshAt>30*60_000L){main.removeCallbacks(vodRefresh);main.postDelayed(vodRefresh,vodItems.isEmpty()?500:6000);}
+                invalidate();
+            });
+        });}catch(java.util.concurrent.RejectedExecutionException gone){}
+    }
+    private void applyVod(List<VodData.RowItem> got){
+        boolean same=got.size()==vodItems.size();
+        for(int i=0;same&&i<got.size();i++)same=got.get(i).same(vodItems.get(i));
+        if(same){sameDataSkips++;return;}
+        VodData.RowItem held=row==3&&col[3]<vodItems.size()?vodItems.get(col[3]):null;
+        vodItems.clear();vodItems.addAll(got);
+        if(held!=null)for(int i=0;i<vodItems.size();i++)if(vodItems.get(i).series==held.series&&vodItems.get(i).m.id.equals(held.m.id)){col[3]=i;break;}   // the focus stays on the same poster
+        clampColumns();
+        if(row==3&&vodItems.isEmpty())row=4;
+    }
+    /** The newest films and series, from the subscription, on their own threads, at most once a day (every 30 minutes after a failure). */
+    private void refreshVod(){
+        final XtreamAccount a=account;
+        if(a==null||destroyed||vodRefreshing||!resumed)return;
+        vodRefreshing=true;vodRefreshAt=System.currentTimeMillis();
+        Context ctx=getContext().getApplicationContext();
+        if(vodFilms!=null)vodFilms.shutdown();
+        if(vodSeries!=null)vodSeries.shutdown();
+        vodFilms=new VodData(ctx,a,false);vodSeries=new VodData(ctx,a,true);   // new each time: one keeps what it read
+        final int[] left={2};
+        final Runnable one=()->{
+            if(--left[0]>0)return;
+            vodRefreshing=false;vodSettled=true;
+            if(!destroyed)loadVod();
+        };
+        for(VodData d:new VodData[]{vodFilms,vodSeries}){
+            d.loadCategories(()->{});
+            d.loadMovies(VodData.NEWEST,one);
+        }
+    }
+
     private void clampColumns(){
         col[2]=Math.min(col[2],Math.min(today.size(),4));          // cards 0..n-1, "view all" = n
-        col[3]=Math.min(col[3],apps.size());          // apps 0..n-1, "+" = n; the row scrolls, so no cap
+        col[3]=Math.min(col[3],vodItems.size());      // posters 0..n-1, "view all" = n
+        col[4]=Math.min(col[4],apps.size());          // apps 0..n-1, "+" = n; the row scrolls, so no cap
     }
 
     // MARK: drawing
@@ -368,11 +433,13 @@ final class RedesignHomeView extends View {
         c.save();c.scale(k,k);
         drawTop(c);
         boolean hasMatches=!today.isEmpty()||!confirmedEmpty();   // (after data has shown once, the row never goes back to empty cards)   // while loading the row shows empty cards of the same size
-        spread(hasMatches);
+        boolean hasVod=vodShown();
+        spread(hasMatches,hasVod);
         block(c,dy[0]);drawHero(c);drawPrayer(c);unblock(c);
         if(hasMatches){block(c,dy[1]);drawMatches(c);unblock(c);}
-        block(c,dy[2]);drawApps(c);unblock(c);
-        block(c,dy[3]);drawShortcuts(c);unblock(c);
+        if(hasVod){block(c,dy[2]);drawVod(c);unblock(c);}
+        block(c,dy[3]);drawApps(c);unblock(c);
+        block(c,dy[4]);drawShortcuts(c);unblock(c);
         Design.right(c,"◀ ▶ ▲ ▼ للتنقل · OK للفتح",1848,1034,tx(0x73F4EFE4,18,Design.regular()));
         Design.left(c,"الشاشة الرئيسية",72,1034,tx(0x73F4EFE4,18,Design.regular()));
         c.restore();
@@ -380,14 +447,20 @@ final class RedesignHomeView extends View {
 
     private void block(Canvas c,float by){c.save();c.translate(0,by);a11y.shift(by);}
     private void unblock(Canvas c){c.restore();a11y.shift(0);}
-    /** Hero (with the prayer card), matches, apps and shortcuts get equal gaps between the top bar and the hint line. */
-    private void spread(boolean withMatches){
-        final float[] h={229.5f,172f,175f,76f},top={163f,400f,626f,828f};
+    private final boolean[] blockOn=new boolean[5];
+    /**
+     * Hero (with the prayer card), matches, films and series, apps and shortcuts get equal gaps between the top bar and
+     * the hint line. The hero never starts above 142, clear of the date line under the clock (its letters reach about 136).
+     */
+    private void spread(boolean withMatches,boolean withVod){
+        final float[] h={HERO_H+4,146f,VOD_BLOCK,175f,76f},top={163f,424f,0f,626f,828f};
+        blockOn[0]=true;blockOn[1]=withMatches;blockOn[2]=withVod;blockOn[3]=true;blockOn[4]=true;
         float sum=0;int n=0;
-        for(int i=0;i<4;i++)if(i!=1||withMatches){sum+=h[i];n++;}
+        for(int i=0;i<5;i++)if(blockOn[i]){sum+=h[i];n++;}
         float gap=(998f-118f-sum)/n,y=118f+gap;
-        for(int i=0;i<4;i++){
-            if(i==1&&!withMatches){dy[1]=0;continue;}
+        if(y<142f){gap=(998f-142f-sum)/(n-1);y=142f;}
+        for(int i=0;i<5;i++){
+            if(!blockOn[i]){dy[i]=0;continue;}
             dy[i]=y-top[i];y+=h[i]+gap;
         }
     }
@@ -446,22 +519,24 @@ final class RedesignHomeView extends View {
     /** dp of the reference design: 1920 reference px across 1280 dp. */
     private static final float DP=1.5f;
     private static final int CARD_DARK=0xBF0B0D1A;   // #0B0D1A at 75 %: the skyline behind never competes with the text
-    private final float[] dy=new float[4];   // vertical shift of each block so the rows share the screen evenly
+    private final float[] dy=new float[5];   // vertical shift of each block so the rows share the screen evenly
+    /** The last-channel and prayer cards' height (was 153 dp, 229.5 px): lower, so the films and series row fits (home_vod.png). */
+    private static final float HERO_H=146f;
     private final RectF heroBox=new RectF();
     private final Paint heroFill=new Paint(Paint.ANTI_ALIAS_FLAG),heroStroke=new Paint(Paint.ANTI_ALIAS_FLAG);
     private float heroL,heroT,heroR,heroB;   // the box the gradient was made for
     private final Path heroClip=new Path();
     private final Paint goldText15=Design.text(Design.GOLD,15,Design.regular());
 
-    /** The last-channel card: 153 dp tall, always, and everything inside it is clipped to it, so it can't cover the row below. */
+    /** The last-channel card: HERO_H tall, always, and everything inside it is clipped to it, so it can't cover the row below. */
     private void drawHero(Canvas c){
-        heroBox.set(611,163,1850,163+153*DP);RectF box=heroBox;   // its own rectangle: the shared r is changed by the lines drawn inside the card (that moved the ring and drew a stray dash). Focused or not the card is the same size and colour: only the ring appears
+        heroBox.set(611,163,1850,163+HERO_H);RectF box=heroBox;   // its own rectangle: the shared r is changed by the lines drawn inside the card (that moved the ring and drew a stray dash). Focused or not the card is the same size and colour: only the ring appears
         Design.card(c,box,30,1,p,CARD_DARK);   // exactly the prayer card's colour, flat: no blue gradient
         heroStroke.setStyle(Paint.Style.STROKE);heroStroke.setStrokeWidth(1);heroStroke.setColor(Design.STROKE);c.drawRoundRect(box,30,30,heroStroke);
         LiveData.Channel ch=lastChannel();
         c.save();c.clipRect(box.left+2,box.top+2,box.right-2,box.bottom-2);
-        // 200x113 dp thumbnail carrying the channel's logo (stream_icon), with the "live" badge
-        float tw=200*DP,th=113*DP;
+        // a 16:9 thumbnail as tall as the card allows, carrying the channel's logo (stream_icon), with the "live" badge
+        float th=box.height()-28,tw=th*200f/113f;
         float pad=(box.height()-th)/2;
         RectF thumb=new RectF(box.right-pad-tw,box.top+pad,box.right-pad,box.top+pad+th);
         Design.fill(c,thumb,18,p,0xFF1A1F3A);   // dark tile: no green anywhere
@@ -474,32 +549,32 @@ final class RedesignHomeView extends View {
                 bm.set(thumb.centerX()-lw/2,thumb.centerY()-lh/2,thumb.centerX()+lw/2,thumb.centerY()+lh/2);p.setColor(0xFFFFFFFF);c.drawBitmap(logo,null,bm,p);
             }else{   // no logo: the channel's short name on the dark tile
                 String shortName=shortName(Titles.channelName(ch.name));
-                Paint sn=Design.text(Design.TEXT,56,Design.bold());
+                Paint sn=Design.text(Design.TEXT,46,Design.bold());
                 while(sn.getTextSize()>26&&sn.measureText(shortName)>tw-40)sn.setTextSize(sn.getTextSize()-2);   // smaller, never cut
                 Design.center(c,shortName,thumb.centerX(),thumb.centerY()+sn.getTextSize()*0.35f,sn);
             }
             Design.liveBadge(c,thumb.right-52,thumb.top+26,"مباشر",15,p,badge);
         }
         if(ch==null){
-            Design.right(c,"ابدأ المشاهدة",x,box.top+box.height()*0.5f,tx(Design.TEXT,40,Design.bold()));
+            Design.right(c,"ابدأ المشاهدة",x,box.top+box.height()*0.5f+2,tx(Design.TEXT,38,Design.bold()));
             Design.right(c,"افتح البث المباشر واختر قناة",x,box.top+box.height()*0.5f+40,tx(Design.MUTED,22,Design.regular()));
         }else{
-            Design.right(c,"آخر قناة شاهدتها",x,box.top+50,tx(Design.GOLD,22,Design.regular()));
-            Paint nameP=tx(Design.TEXT,44,Design.bold());
-            Design.right(c,Design.fit(Titles.channelName(ch.name),nameP,x-box.left-40),x,box.top+104,nameP);
+            Design.right(c,"آخر قناة شاهدتها",x,box.top+30,tx(Design.GOLD,20,Design.regular()));
+            Paint nameP=tx(Design.TEXT,36,Design.bold());
+            Design.right(c,Design.fit(Titles.channelName(ch.name),nameP,x-box.left-40),x,box.top+70,nameP);
             long now=System.currentTimeMillis();
             List<LiveData.Program> guide=live==null?null:live.guide(ch.id);
             LiveData.Program cur=LiveData.current(guide,now),nxt=LiveData.following(guide,now);
             if(cur!=null){guideFor=ch.id;guideCur=cur;guideNext=nxt;}
             else if(guideFor!=null&&guideFor.equals(ch.id)&&guideCur!=null&&guideCur.end>now){cur=guideCur;nxt=guideNext;}   // the guide is read again in the new view: show what was known meanwhile
-            if(cur==null)programLine(c,"الآن","","بث مباشر",x,box.left+40,box.top+142);   // a channel with no programme guide still says what it is
+            if(cur==null)programLine(c,"الآن","","بث مباشر",x,box.left+40,box.top+100);   // a channel with no programme guide still says what it is
             if(cur!=null){
-                programLine(c,"الآن","",cur.shown,x,box.left+40,box.top+142);
+                programLine(c,"الآن","",cur.shown,x,box.left+40,box.top+100);
                 float f=Math.max(0,Math.min(1,(now-cur.start)/(float)Math.max(1,cur.end-cur.start)));
-                r.set(box.left+40,box.bottom-24,x,box.bottom-20);Design.fill(c,r,2,p,0x1FFFFFFF);
-                r.set(x-(x-box.left-40)*f,box.bottom-24,x,box.bottom-20);Design.fill(c,r,2,p,Design.GOLD);
+                r.set(box.left+40,box.bottom-8,x,box.bottom-5);Design.fill(c,r,2,p,0x1FFFFFFF);
+                r.set(x-(x-box.left-40)*f,box.bottom-8,x,box.bottom-5);Design.fill(c,r,2,p,Design.GOLD);
             }
-            if(nxt!=null)programLine(c,"التالي",fmt("h:mm a",nxt.start),nxt.shown,x,box.left+40,box.top+178);
+            if(nxt!=null)programLine(c,"التالي",fmt("h:mm a",nxt.start),nxt.shown,x,box.left+40,box.top+128);
         }
         c.restore();
         a11y.add(box,heroLabel(ch),focus(1,0),true);
@@ -541,7 +616,7 @@ final class RedesignHomeView extends View {
     }
 
     private void drawPrayer(Canvas c){
-        r.set(72,167,591,396);RectF box=ring(r,focus(1,1));
+        r.set(72,167,591,167+HERO_H);RectF box=ring(r,focus(1,1));
         Design.card(c,box,30,1,p,CARD_DARK);
         PrayerTimes pt=PrayerTimes.get(getContext());
         PrayerSchedule day=pt.today();long now=System.currentTimeMillis();
@@ -553,24 +628,24 @@ final class RedesignHomeView extends View {
             long minutes=(remaining+59_999)/60_000;
             long prev=next.index>0?next.schedule.time(next.index-1):next.at-7*3600_000L;
             float f=Math.max(0,Math.min(1,(now-prev)/(float)Math.max(1,next.at-prev)));
-            float cx=486,cy=281,rad=70;
+            float cx=490,cy=167+HERO_H/2,rad=50;
             arc.set(cx-rad,cy-rad,cx+rad,cy+rad);
-            p.setShader(null);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(13);p.setStrokeCap(Paint.Cap.ROUND);
+            p.setShader(null);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(10);p.setStrokeCap(Paint.Cap.ROUND);
             p.setColor(0x1AFFFFFF);c.drawArc(arc,0,360,false,p);
             p.setColor(Design.GOLD);c.drawArc(arc,-90,360*f,false,p);p.setStrokeCap(Paint.Cap.BUTT);
-            Design.center(c,String.format(Locale.US,"%d:%02d",minutes/60,minutes%60),cx,cy+10,tx(Design.TEXT,44,Design.bold()));
-            Design.center(c,"متبقي",cx,cy+36,tx(Design.MUTED,15,Design.regular()));
+            Design.center(c,String.format(Locale.US,"%d:%02d",minutes/60,minutes%60),cx,cy+8,tx(Design.TEXT,32,Design.bold()));
+            Design.center(c,"متبقي",cx,cy+27,tx(Design.MUTED,13,Design.regular()));
             boolean tomorrow=!Design.clock(next.at,"yyyyMMdd").equals(Design.clock(now,"yyyyMMdd"));
-            Design.right(c,tomorrow?"الصلاة القادمة · غدًا":"الصلاة القادمة",385,226,tx(Design.MUTED,21,Design.regular()));
-            Paint nameP=tx(Design.TEXT,52,Design.bold());
+            Design.right(c,tomorrow?"الصلاة القادمة · غدًا":"الصلاة القادمة",405,167+32,tx(Design.MUTED,19,Design.regular()));
+            Paint nameP=tx(Design.TEXT,42,Design.bold());
             String name=Design.prayer(next.index);
-            Design.right(c,name,385,284,nameP);
-            Design.right(c,Design.clock(next.at,"h:mm a"),385-nameP.measureText(name)-14,284,tx(Design.GOLD,28,Design.bold()));
+            Design.right(c,name,405,167+78,nameP);
+            Design.right(c,Design.clock(next.at,"h:mm a"),405-nameP.measureText(name)-14,167+78,tx(Design.GOLD,24,Design.bold()));
             List<String> others=new ArrayList<>();
             for(int i=0;i<5;i++)if(i!=next.index)others.add(Design.prayer(i)+" "+Design.clock(day.time(i),"h:mm"));
-            Paint line=tx(Design.MUTED,21,Design.regular());
-            Design.right(c,others.get(0)+" · "+others.get(1),385,328,line);
-            Design.right(c,others.get(2)+" · "+others.get(3),385,362,line);
+            Paint line=tx(Design.MUTED,18,Design.regular());
+            Design.right(c,others.get(0)+" · "+others.get(1),405,167+107,line);
+            Design.right(c,others.get(2)+" · "+others.get(3),405,167+132,line);
             String left=minutes<60?minutes+" دقيقة":(minutes/60)+" س "+(minutes%60)+" د";
             StringBuilder all=new StringBuilder("مواقيت الصلاة · الصلاة القادمة: "+name+(tomorrow?" · غدًا":"")+" "+Design.clock(next.at,"h:mm a")+" · المتبقي "+left);
             for(int i=0;i<5;i++)if(i!=next.index)all.append(" · ").append(Design.prayer(i)).append(" ").append(Design.clock(day.time(i),"h:mm"));
@@ -580,55 +655,55 @@ final class RedesignHomeView extends View {
     }
 
     private void drawMatches(Canvas c){
-        Design.right(c,"مباريات اليوم",1842,418,section);   // above the cards with room for the focused card, which grows
+        Design.right(c,"مباريات اليوم",1842,442,section);   // above the cards with room for the focused card, which grows
         goldText.setTextSize(20);
         boolean linkFocus=focus(2,Math.min(today.size(),4));
-        Design.left(c,"عرض الكل ←",78,416,linkFocus?tx(0xFFFFFFFF,22,Design.bold()):goldText);
-        a11y.add(1500,394,1842,430,"مباريات اليوم",false,false);
-        a11y.add(70,394,200,430,"عرض الكل",linkFocus,true);
+        Design.left(c,"عرض الكل ←",78,440,linkFocus?tx(0xFFFFFFFF,22,Design.bold()):goldText);
+        a11y.add(1500,420,1842,452,"مباريات اليوم",false,false);
+        a11y.add(70,420,200,452,"عرض الكل",linkFocus,true);
         int n=Math.min(4,today.size());
         if(today.isEmpty()){
             if(everHadData)skeletonAfterData++;
             // placeholders: same size and place as the cards, nothing to focus
             for(int i=0;i<4;i++){
                 float right=1847-i*425,left=right-404;
-                r.set(left,466,right,592);
+                r.set(left,466,right,570);
                 Design.card(c,r,22,1,p,CARD_DARK);
                 p.setStyle(Paint.Style.FILL);p.setShader(null);p.setColor(0x14FFFFFF);
-                c.drawCircle(right-67,516,26,p);c.drawCircle(left+67,516,26,p);
-                bm.set((left+right)/2-60,486,(left+right)/2+60,508);Design.fill(c,bm,11,p,0x1AFFFFFF);
-                bm.set((left+right)/2-80,528,(left+right)/2+80,556);Design.fill(c,bm,14,p,0x14FFFFFF);
+                c.drawCircle(right-67,506,22,p);c.drawCircle(left+67,506,22,p);
+                bm.set((left+right)/2-60,478,(left+right)/2+60,498);Design.fill(c,bm,10,p,0x1AFFFFFF);
+                bm.set((left+right)/2-80,512,(left+right)/2+80,538);Design.fill(c,bm,13,p,0x14FFFFFF);
             }
             return;
         }
         for(int i=0;i<n;i++){
             MatchCarouselView.Match m=today.get(i);
             float right=1847-i*425,left=right-404;
-            r.set(left,466,right,592);RectF box=ring(r,focus(2,i));
+            r.set(left,466,right,570);RectF box=ring(r,focus(2,i));
             boolean done=!m.live()&&!m.upcoming();
             Design.card(c,box,22,1,p,CARD_DARK);   // a live card is the regular card: only the red badge says it is live
-            crest(c,m.homeLogo,m.home,m.homeEn,right-67,516,26);crest(c,m.awayLogo,m.away,m.awayEn,left+67,516,26);
+            crest(c,m.homeLogo,m.home,m.homeEn,right-67,506,22);crest(c,m.awayLogo,m.away,m.awayEn,left+67,506,22);
             Paint team=tx(Design.TEXT,17,Design.regular());
-            Design.center(c,Design.fitShrink(m.home,team,140),right-67,566,team);
-            Design.center(c,Design.fitShrink(m.away,team,140),left+67,566,team);
+            Design.center(c,Design.fitShrink(m.home,team,140),right-67,552,team);
+            Design.center(c,Design.fitShrink(m.away,team,140),left+67,552,team);
             float cx=(left+right)/2;
             if(m.live()){
-                Design.liveBadge(c,cx,490,minute(m),15,p,badge);
-                Design.center(c,scoreText(m),cx,543,tx(Design.TEXT,42,Design.bold()));
+                Design.liveBadge(c,cx,484,minute(m),15,p,badge);
+                Design.center(c,scoreText(m),cx,530,tx(Design.TEXT,38,Design.bold()));
             }else if(done){
-                if(m.awayScore.isEmpty()&&m.homeScore.isEmpty())Design.center(c,"انتهت",cx,540,tx(0x99F4EFE4,34,Design.bold()));   // no score known: the word alone, no dash
+                if(m.awayScore.isEmpty()&&m.homeScore.isEmpty())Design.center(c,"انتهت",cx,526,tx(0x99F4EFE4,32,Design.bold()));   // no score known: the word alone, no dash
                 else{
-                    Design.center(c,"انتهت",cx,492,tx(Design.MUTED,15,Design.regular()));
-                    Design.center(c,scoreText(m),cx,543,tx(0x99F4EFE4,42,Design.bold()));
+                    Design.center(c,"انتهت",cx,486,tx(Design.MUTED,15,Design.regular()));
+                    Design.center(c,scoreText(m),cx,530,tx(0x99F4EFE4,38,Design.bold()));
                 }
             }else{
-                Design.center(c,"اليوم",cx,492,tx(Design.MUTED,15,Design.regular()));
-                Design.center(c,fmt("h:mm a",m.kickoffMillis),cx,543,tx(Design.TEXT,38,Design.bold()));
+                Design.center(c,"اليوم",cx,486,tx(Design.MUTED,15,Design.regular()));
+                Design.center(c,fmt("h:mm a",m.kickoffMillis),cx,528,tx(Design.TEXT,34,Design.bold()));
             }
             LiveData.Channel ch=channelFor(m);
             boolean known=MatchChannels.resolved(getContext(),m);   // until it is known the line stays empty: no "اختر القناة" that then turns into a name
-            if(ch!=null&&!done)Design.center(c,(m.live()?"▶ ":"")+Design.fit(MatchChannels.shortName(ch.name),goldText15,360),cx,575,goldText15);
-            else if(!done&&known)Design.center(c,"اختر القناة",cx,575,tx(Design.MUTED,15,Design.regular()));
+            if(ch!=null&&!done)Design.center(c,(m.live()?"▶ ":"")+Design.fit(MatchChannels.shortName(ch.name),goldText15,360),cx,556,goldText15);
+            else if(!done&&known)Design.center(c,"اختر القناة",cx,556,tx(Design.MUTED,15,Design.regular()));
             a11y.add(box,m.home+" ضد "+m.away+" · "+(m.live()?"مباشر "+scoreText(m):done?"انتهت "+scoreText(m):fmt("h:mm a",m.kickoffMillis))+(ch!=null&&!done?" · "+MatchChannels.shortName(ch.name):!done&&known?" · اختر القناة":""),focus(2,i),true);
             if(focus(2,i))Design.focusRing(c,box,22,1,p);
         }
@@ -654,8 +729,8 @@ final class RedesignHomeView extends View {
         a11y.add(1600,620,1842,656,"تطبيقاتي",false,false);
         int n=apps.size();
         // the row scrolls sideways: keep the focused tile inside the window of APP_SLOTS tiles
-        if(col[3]<appFirst)appFirst=col[3];
-        if(col[3]>=appFirst+APP_SLOTS)appFirst=col[3]-APP_SLOTS+1;
+        if(col[4]<appFirst)appFirst=col[4];
+        if(col[4]>=appFirst+APP_SLOTS)appFirst=col[4]-APP_SLOTS+1;
         appFirst=Math.max(0,Math.min(appFirst,Math.max(0,n+1-APP_SLOTS)));
         Paint more=tx(Design.GOLD,44,Design.bold());
         if(appFirst>0)Design.center(c,"›",1888,732,more);
@@ -663,7 +738,7 @@ final class RedesignHomeView extends View {
         for(int i=appFirst;i<n&&i<appFirst+APP_SLOTS;i++){
             HomeApps.Item it=apps.get(i);
             float right=1848-(i-appFirst)*198;
-            r.set(right-178,662,right,770);RectF box=ring(r,focus(3,i));
+            r.set(right-178,662,right,770);RectF box=ring(r,focus(4,i));
             if(it.logo!=null){
                 Design.card(c,box,22,1,p,0xFF121528);
                 float s=Math.min(box.width()*0.7f/it.logo.getWidth(),box.height()*0.55f/it.logo.getHeight());
@@ -674,22 +749,76 @@ final class RedesignHomeView extends View {
                 path.reset();path.addRoundRect(box,22,22,Path.Direction.CW);
                 p.setColor(0xFFFFFFFF);c.save();c.clipPath(path);c.drawBitmap(it.tile,null,box,p);c.restore();
             }else Design.card(c,box,22,1,p,Design.SURFACE);
-            a11y.add(box,it.label,focus(3,i),true);
-            if(focus(3,i))Design.focusRing(c,box,22,1,p);
-            Design.center(c,Design.fit(it.label,tx(Design.MUTED,18,Design.regular()),170),right-89,796,tx(focus(3,i)?Design.TEXT:Design.MUTED,18,Design.regular()));
+            a11y.add(box,it.label,focus(4,i),true);
+            if(focus(4,i))Design.focusRing(c,box,22,1,p);
+            Design.center(c,Design.fit(it.label,tx(Design.MUTED,18,Design.regular()),170),right-89,796,tx(focus(4,i)?Design.TEXT:Design.MUTED,18,Design.regular()));
         }
         // the dashed "+ add" tile closes the row
         if(n<appFirst+APP_SLOTS){
         float right=1848-(n-appFirst)*198;
-        r.set(right-178,662,right,770);RectF box=ring(r,focus(3,n));
+        r.set(right-178,662,right,770);RectF box=ring(r,focus(4,n));
         p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(2);p.setColor(0x4DFFFFFF);
         p.setPathEffect(new android.graphics.DashPathEffect(new float[]{10,8},0));
         c.drawRoundRect(box,22,22,p);p.setPathEffect(null);
         Design.center(c,"+",box.centerX(),box.centerY()+14,tx(Design.TEXT,48,Design.light()));
-        a11y.add(box,"إضافة تطبيق",focus(3,n),true);
-        if(focus(3,n))Design.focusRing(c,box,22,1,p);
+        a11y.add(box,"إضافة تطبيق",focus(4,n),true);
+        if(focus(4,n))Design.focusRing(c,box,22,1,p);
         Design.center(c,"إضافة",right-89,796,tx(Design.MUTED,18,Design.regular()));
         }
+    }
+
+    private static final float VOD_W=137f,VOD_H=205f,VOD_PITCH=153f,VOD_TOP=40f,VOD_BLOCK=VOD_TOP+VOD_H;
+    private static final int VOD_SLOTS=11;
+    private int vodFirst;   // index of the first poster showing in the row
+    private final VodDraw vodPoster=new VodDraw(VOD_W,VOD_H,18);
+    private final Runnable posterArrived=this::postInvalidate;
+    private int vodFocus=-1;
+    private long vodFocusAt;
+    private boolean vodMarquee;
+    private final Runnable vodMarqueeTick=()->{vodMarquee=false;invalidate();};
+    /** The films and series row: a heading with "عرض الكل", then posters (right to left), scrolling sideways with the focus. */
+    private void drawVod(Canvas c){
+        Paint icon=tx(Design.GOLD,22,Design.regular());
+        Design.right(c,"🎬",1842,18,icon);
+        float x=1842-icon.measureText("🎬")-10;
+        Design.right(c,"أفلام ومسلسلات",x,18,section);
+        Paint note=tx(Design.MUTED,17,Design.regular());
+        float after=x-section.measureText("أفلام ومسلسلات");
+        Design.center(c,"·",after-14,18,note);   // the dot on its own: at the start of the line it would sit against the heading
+        Design.right(c,"تابع المشاهدة ثم أحدث الإضافات",after-28,18,note);
+        a11y.add(1300,-6,1842,26,"أفلام ومسلسلات",false,false);
+        int n=vodItems.size();
+        boolean linkFocus=focus(3,n);
+        goldText.setTextSize(20);
+        Design.left(c,"عرض الكل ←",78,16,linkFocus?tx(0xFFFFFFFF,22,Design.bold()):goldText);
+        a11y.add(70,-6,200,26,"عرض الكل · الأفلام",linkFocus,n>0);
+        if(n==0){   // not known yet: empty cards of the same size, nothing to focus
+            for(int i=0;i<VOD_SLOTS;i++){
+                float right=1848-i*VOD_PITCH;
+                r.set(right-VOD_W,VOD_TOP,right,VOD_TOP+VOD_H);Design.card(c,r,14,1,p,CARD_DARK);
+            }
+            return;
+        }
+        if(!(hasFocus()&&row==3))vodFocus=-1;
+        int at=col[3];
+        if(at<n){if(at<vodFirst)vodFirst=at;if(at>=vodFirst+VOD_SLOTS)vodFirst=at-VOD_SLOTS+1;}
+        else vodFirst=Math.max(0,n-VOD_SLOTS);
+        vodFirst=Math.max(0,Math.min(vodFirst,Math.max(0,n-VOD_SLOTS)));
+        Paint more=tx(Design.GOLD,44,Design.bold());
+        if(vodFirst>0)Design.center(c,"›",1888,VOD_TOP+VOD_H/2+14,more);
+        if(vodFirst+VOD_SLOTS<n)Design.center(c,"‹",32,VOD_TOP+VOD_H/2+14,more);
+        for(int i=vodFirst;i<n&&i<vodFirst+VOD_SLOTS;i++){
+            VodData.RowItem it=vodItems.get(i);
+            float right=1848-(i-vodFirst)*VOD_PITCH;
+            r.set(right-VOD_W,VOD_TOP,right,VOD_TOP+VOD_H);RectF box=ring(r,focus(3,i));
+            Bitmap b=PosterCache.get(it.m.icon,PosterCache.GRID,posterArrived);
+            long scroll=-1;
+            if(focus(3,i)){if(i!=vodFocus){vodFocus=i;vodFocusAt=android.os.SystemClock.uptimeMillis();}scroll=android.os.SystemClock.uptimeMillis()-vodFocusAt;}
+            if(vodPoster.drawHome(c,box,b,it.m.shown,it.tag,it.progress,scroll)&&!vodMarquee){vodMarquee=true;postDelayed(vodMarqueeTick,33);}   // a long focused name scrolls, about 30 frames a second
+            a11y.add(box,it.m.shown+" · "+it.tag+(it.progress>=0?" · تابع المشاهدة "+Math.round(it.progress*100)+"%":""),focus(3,i),true);
+            if(focus(3,i))Design.focusRing(c,box,14,1,p);
+        }
+        for(int i=vodFirst+VOD_SLOTS;i<Math.min(n,vodFirst+VOD_SLOTS+2);i++)PosterCache.get(vodItems.get(i).m.icon,PosterCache.GRID,null);   // the next two, ahead
     }
 
     private static final String[] SHORTCUT_LABELS={"البث المباشر","أفلام","مسلسلات","المباريات","كل التطبيقات","الأخيرة","التحديثات","الإعدادات"};
@@ -708,13 +837,13 @@ final class RedesignHomeView extends View {
         layoutShortcuts(lab);
         for(int i=0;i<SHORTCUT_LABELS.length;i++){
             float right=shortcutRight[i];
-            r.set(right-shortcutWidth[i],828,right,904);RectF box=ring(r,focus(4,i));
+            r.set(right-shortcutWidth[i],828,right,904);RectF box=ring(r,focus(5,i));
             Design.card(c,box,26,1,p,Design.SURFACE);
             float tw=lab.measureText(SHORTCUT_LABELS[i]);
             Design.center(c,SHORTCUT_LABELS[i],box.centerX()-12,box.centerY()+8,lab);
             Design.center(c,SHORTCUT_ICONS[i],box.centerX()-12+tw/2+30,box.centerY()+9,tx(Design.GOLD,26,Design.bold()));
-            a11y.add(box,SHORTCUT_LABELS[i],focus(4,i),true);
-            if(focus(4,i))Design.focusRing(c,box,26,1,p);
+            a11y.add(box,SHORTCUT_LABELS[i],focus(5,i),true);
+            if(focus(5,i))Design.focusRing(c,box,26,1,p);
         }
     }
 
@@ -727,16 +856,17 @@ final class RedesignHomeView extends View {
             case 0:return 2;
             case 1:return 2;
             case 2:return Math.min(today.size(),4)+1;
-            case 3:return apps.size()+1;
+            case 3:return vodItems.size()+1;
+            case 4:return apps.size()+1;
             default:return SHORTCUT_LABELS.length;
         }
     }
-    private boolean rowShown(int rw){return rw!=2||!today.isEmpty();}
+    private boolean rowShown(int rw){return rw==2?!today.isEmpty():rw==3?vodShown()&&!vodItems.isEmpty():true;}
     @Override public boolean onKeyDown(int key,KeyEvent e){
         switch(key){
             case KeyEvent.KEYCODE_DPAD_DOWN:{
-                int nx=row+1;while(nx<5&&!rowShown(nx))nx++;
-                if(nx<5)row=nx;invalidate();return true;}
+                int nx=row+1;while(nx<6&&!rowShown(nx))nx++;
+                if(nx<6)row=nx;invalidate();return true;}
             case KeyEvent.KEYCODE_DPAD_UP:{
                 int nx=row-1;while(nx>=0&&!rowShown(nx))nx--;
                 if(nx>=0)row=nx;invalidate();return true;}
@@ -778,6 +908,12 @@ final class RedesignHomeView extends View {
                 else start(new Intent(ctx,MatchesScreenActivity.class));
                 break;}
             case 3:{
+                int n=vodItems.size();
+                if(cl>=n){start(new Intent(ctx,MoviesActivity.class));break;}   // "عرض الكل" opens the films screen
+                VodData.RowItem it=vodItems.get(cl);
+                start(it.series?SeriesActivity.intent(ctx,it.m,""):MoviesActivity.details(ctx,it.m,""));
+                break;}
+            case 4:{
                 int n=apps.size();
                 if(cl<n&&ctx instanceof android.app.Activity)HomeApps.open((android.app.Activity)ctx,apps.get(cl),this,0,0,0,0);
                 else addApp();

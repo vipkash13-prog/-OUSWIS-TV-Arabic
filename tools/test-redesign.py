@@ -309,6 +309,8 @@ with tempfile.TemporaryDirectory() as temp:
                         body = {'epg_listings': [{'title': base64.b64encode(t.encode()).decode(), 'start_timestamp': str(now + a), 'stop_timestamp': str(now + b)} for t, a, b in EPGX[sid]]}
                     if action == 'get_simple_data_table' and sid in EPGDAY:   # the whole day: what the short guide (the next few programmes) does not list yet
                         body['epg_listings'] += [{'title': base64.b64encode(t.encode()).decode(), 'start_timestamp': str(now + a), 'stop_timestamp': str(now + b)} for t, a, b in EPGDAY[sid]]
+                elif action in ('get_vod_categories', 'get_vod_streams', 'get_series_categories', 'get_series'):   # no films or series in this subscription
+                    body = []
                 elif q.get('username', [''])[0] == 'bad':   # a provider that refuses the login (HTTP 200, auth 0)
                     body = {'user_info': {'auth': 0, 'status': 'Disabled'}}
                 else:
@@ -409,7 +411,7 @@ with tempfile.TemporaryDirectory() as temp:
     assert 'آخر قناة' in focused_label(), 'The last-channel card must hold the first focus: ' + focused_label()
     # the focus ring belongs round the card (no small ring under it, no stray dash inside it)
     hb = [[int(v) for v in re.findall(r'\d+', n.get('bounds'))] for n in tree().iter('node') if n.get('package') == PKG and n.get('focused') == 'true' and 'آخر قناة' in (n.get('text', '') + n.get('content-desc', ''))]
-    assert hb and hb[0][3] - hb[0][1] >= 200 and hb[0][2] - hb[0][0] >= 1000, 'The focused node of the last-channel card must be the whole card: ' + str(hb)
+    assert hb and hb[0][3] - hb[0][1] >= 140 and hb[0][2] - hb[0][0] >= 1000, 'The focused node of the last-channel card must be the whole card: ' + str(hb)
     under = [img.getpixel((x, y)) for x in range(1380, 1560, 6) for y in range(412, 480, 4)]
     assert sum(1 for px in under if min(px) >= 245) < 6, 'A white ring (an empty focus) shows under the last-channel card'
     note('PASS: the focus ring is round the whole last-channel card ' + str(hb[0]) + ' and nothing is drawn under it.')
@@ -995,7 +997,7 @@ with tempfile.TemporaryDirectory() as temp:
         note('PASS: ' + screen + ' opened and left 5 times: no crash, the home kept its ' + str(len(now_cards)) + ' match cards each time.')
     # All Apps through the home shortcut (the row below the apps): the remote opens a grid of the installed apps
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.HomeActivity'); wait_label('غانا ضد الصومال', 'the home before All Apps')
-    keys('DPAD_DOWN', 'DPAD_DOWN', 'DPAD_DOWN', pause=0.8)
+    keys('DPAD_DOWN', 'DPAD_DOWN', 'DPAD_DOWN', 'DPAD_DOWN', 'DPAD_DOWN', pause=0.8)   # to the shortcuts (extra presses stop there)
     keys('DPAD_LEFT', 'DPAD_LEFT', 'DPAD_LEFT', 'DPAD_LEFT', pause=0.8)
     assert 'كل التطبيقات' in focused_label(), 'The fifth shortcut must be كل التطبيقات: ' + focused_label()
     keys('DPAD_CENTER', pause=0.3); front('AllAppsActivity')
@@ -1043,7 +1045,7 @@ with tempfile.TemporaryDirectory() as temp:
     classic = [f.name for f in (Path(__file__).resolve().parent.parent / 'app').rglob('*.java') if f.name != 'HomeView.java' and 'new HomeView(' in f.read_text(encoding='utf-8')]
     assert not classic, 'Something still creates the old HomeView: ' + str(classic)
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.HomeActivity'); wait_label('غانا ضد الصومال', 'the home before Recent Apps')
-    keys('DPAD_DOWN', 'DPAD_DOWN', 'DPAD_DOWN', pause=0.8)
+    keys('DPAD_DOWN', 'DPAD_DOWN', 'DPAD_DOWN', 'DPAD_DOWN', 'DPAD_DOWN', pause=0.8)   # to the shortcuts (extra presses stop there)
     for _ in range(8):
         if 'الأخيرة' in focused_label(): break
         keys('DPAD_LEFT', pause=0.8)

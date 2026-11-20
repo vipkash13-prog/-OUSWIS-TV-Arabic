@@ -35,6 +35,11 @@ final class AccountData {
     private static volatile String synced="";
     private static volatile boolean migrating,pending=true;
     private static volatile long lastTry;
+    // films and series: their history and favourites follow by name too (VodData.stash / carryOver)
+    private static volatile boolean vodPending=true,vodMigrating;
+    private static volatile long vodLastTry;
+    /** The subscription the data on this TV belongs to now. */
+    static String stamp(Context c){return live(c).getString(STAMP,"");}
 
     static String key(String server,String user){return Integer.toHexString((server+"|"+user).hashCode());}
     static String key(XtreamAccount a){return key(a.server,a.user);}
@@ -53,6 +58,7 @@ final class AccountData {
             }
         }
         if(pending&&!migrating&&System.currentTimeMillis()-lastTry>60_000L)migrate(app,a);
+        if(vodPending&&!vodMigrating&&System.currentTimeMillis()-vodLastTry>10*60_000L)migrateVod(app,a);
     }
 
     /** The subscription was removed: nothing of it stays. */
@@ -68,9 +74,11 @@ final class AccountData {
         }
     }
 
-    private static boolean owned(String n){return n.startsWith("live-")||n.startsWith("guide-day-")||n.startsWith("xtream-catalog-cache");}
+    private static boolean owned(String n){return n.startsWith("live-")||n.startsWith("guide-day-")||n.startsWith("xtream-catalog-cache")||n.startsWith("vod-")||n.startsWith("series-");}
     private static boolean belongsTo(String n,String key){
-        return !key.isEmpty()&&(n.equals("live-categories-"+key+".json")||n.startsWith("live-cat-"+key+"-")||n.equals("guide-day-"+key+".json"));
+        if(key.isEmpty())return false;
+        if(n.startsWith("vod-")||n.startsWith("series-"))return n.contains("-"+key+".")||n.contains("-"+key+"-");   // films and series (VodData): vod-cat-KEY-ID.json, series-newest-KEY.json...
+        return n.equals("live-categories-"+key+".json")||n.startsWith("live-cat-"+key+"-")||n.equals("guide-day-"+key+".json");
     }
     /** Deletes the subscription files and preference keys that are not {@code keep}'s. */
     private static void wipe(Context app,String keep){
@@ -80,12 +88,20 @@ final class AccountData {
         for(String k:KEYS)e.remove(k);
         e.commit();
         XtreamAccount.prefs(app).edit().remove("lastChannel").remove("lastChannelName").commit();
+        // films and series: where each stopped and the favourites are kept per subscription (its key at the end of the name)
+        SharedPreferences vod=app.getSharedPreferences("ouswis-vod",Context.MODE_PRIVATE);
+        SharedPreferences.Editor ve=vod.edit();
+        for(String k:vod.getAll().keySet())if(keep.isEmpty()||!k.endsWith("-"+keep))ve.remove(k);
+        ve.commit();
     }
 
     private static void switchTo(Context app,String from,String to){
         SharedPreferences s=live(app);
         JSONArray stash=names(app,s);
+        JSONObject vod=VodData.stash(app,from);   // names only, read before the old keys go
         wipe(app,to);
+        VodData.putStash(app,to,vod);
+        vodPending=VodData.stashSize(vod)>0;vodLastTry=0;
         s.edit().putString(STAMP,to).putString(STASH,stash.toString()).commit();
         pending=stash.length()>0;
         if(!from.isEmpty()||stash.length()>0){
@@ -180,6 +196,22 @@ final class AccountData {
             }catch(Exception e){AppLog.w("account data carry-over failed, tries again");}
             finally{migrating=false;}
         },"ouswis-account-carry").start();
+    }
+    /** The films and series history: matched by name in the background; tried again in 10 minutes when the subscription can't be read, three times at most. */
+    private static void migrateVod(final Context app,final XtreamAccount a){
+        if(!VodData.hasStash(app,key(a))){vodPending=false;return;}
+        vodMigrating=true;vodLastTry=System.currentTimeMillis();
+        new Thread(()->{
+            try{
+                String done=VodData.carryOver(app,a,LOCK);
+                vodPending=false;
+                if(!done.isEmpty())PlayLog.add(app,0,"تغيير الاشتراك: نُقل سجل الأفلام والمسلسلات ومفضلتها بالاسم: "+done);
+            }catch(Exception e){
+                AppLog.w("films and series carry-over failed, tries again");
+                VodData.giveUpIfTried(app,key(a));
+                if(!VodData.hasStash(app,key(a))){vodPending=false;PlayLog.add(app,0,"تغيير الاشتراك: تعذّر نقل سجل الأفلام والمسلسلات بعد 3 محاولات");}
+            }finally{vodMigrating=false;}
+        },"ouswis-vod-carry").start();
     }
     private static String joined(String now,JSONArray carried,int cap){
         JSONArray out=new JSONArray();Set<String> ids=new HashSet<>();

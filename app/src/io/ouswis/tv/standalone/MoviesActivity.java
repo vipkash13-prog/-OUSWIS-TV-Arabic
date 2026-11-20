@@ -72,6 +72,10 @@ public final class MoviesActivity extends Activity {
         private final RectF r=new RectF(),g=new RectF();
         private final A11y a11y=new A11y(this);
         private final VodDraw poster=new VodDraw(PW,PH,21);
+        private String focusId="";
+        private long focusAt;
+        private boolean marquee;
+        private final Runnable marqueeTick=()->{marquee=false;invalidate();};
         @Override public android.view.accessibility.AccessibilityNodeProvider getAccessibilityNodeProvider(){return a11y.provider(null,null);}
         private Bitmap backdrop;
         private float k=1;
@@ -115,7 +119,7 @@ public final class MoviesActivity extends Activity {
             boolean ordered=c.id.equals(VodData.CONTINUE)||c.id.equals(VodData.FAVORITES)||c.id.equals(VodData.SEARCH);
             if(!ordered||sort!=0){
                 if(sort==0)Collections.sort(out,(a,b)->Long.compare(b.added,a.added));
-                else if(sort==1){final java.text.Collator coll=java.text.Collator.getInstance(Design.AR);Collections.sort(out,(a,b)->coll.compare(a.name,b.name));}
+                else if(sort==1){final java.text.Collator coll=java.text.Collator.getInstance(Design.AR);Collections.sort(out,(a,b)->coll.compare(a.shown,b.shown));}
                 else Collections.sort(out,(a,b)->Float.compare(b.rating,a.rating));
             }
             shownCache=out;shownFor=sig;
@@ -185,6 +189,7 @@ public final class MoviesActivity extends Activity {
                 Design.center(c,m,(120+RIGHT)/2f,560,msg);
                 a11y.add(120,520,RIGHT,600,m,false,false);
             }
+            boolean moving=false;
             int row=sel/COLS;
             if(row<top)top=row;if(row>=top+ROWS)top=row-ROWS+1;
             for(int i=top*COLS;i<Math.min(list.size(),(top+ROWS)*COLS);i++){
@@ -195,10 +200,13 @@ public final class MoviesActivity extends Activity {
                 RectF box=r;if(focus){Design.grown(r,g);box=g;}
                 VodData.Movie m=list.get(i);
                 Bitmap b=PosterCache.get(m.icon,PosterCache.GRID,this::invalidate);
-                poster.draw(c,box,b,m.name,m.ratingText(),true);
-                a11y.add(box,m.name+(m.rating>0?" · ★ "+m.ratingText():""),focus,true);
+                long scroll=-1;
+                if(focus){if(!m.id.equals(focusId)){focusId=m.id;focusAt=android.os.SystemClock.uptimeMillis();}scroll=android.os.SystemClock.uptimeMillis()-focusAt;}
+                if(poster.draw(c,box,b,m.shown,m.ratingText(),true,scroll))moving=true;
+                a11y.add(box,m.shown+(m.rating>0?" · ★ "+m.ratingText():""),focus,true);
                 if(focus)Design.focusRing(c,box,14,1,p);
             }
+            if(moving&&!marquee){marquee=true;postDelayed(marqueeTick,33);}   // a long focused name scrolls: about 30 frames a second, only then
             // the next row, asked for ahead (not drawn)
             for(int i=(top+ROWS)*COLS;i<Math.min(list.size(),(top+ROWS+1)*COLS);i++)PosterCache.get(list.get(i).icon,PosterCache.GRID,null);
             // footer

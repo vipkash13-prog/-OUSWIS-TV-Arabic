@@ -106,10 +106,10 @@ try:
     top=[(x,y) for x in range(40,1900,60) for y in range(8,380,40)]
     near=sum(1 for x,y in top if max(abs(a-b) for a,b in zip(im.getpixel((int(x*k),int(y*k))),ref.getpixel((int(x*k),int(y*k)))))<=28)
     assert near>=0.45*len(top),('The supplied wallpaper must be drawn',near,len(top))
-    # the last-channel card is 153 dp (229.5 reference px) tall and stays above the matches heading
+    # the last-channel card is 146 reference px tall (lower since the films and series row) and stays above the matches heading
     hero=[n for n in nodes if label(n).startswith('آخر قناة') or label(n).startswith('ابدأ المشاهدة')]
     assert hero,'The last-channel card must be a control'
-    hb=bounds(hero[0]);assert (hb[3]-hb[1])<=(229.5+16)*k+2,('The hero card must be 153 dp tall',hb)
+    hb=bounds(hero[0]);assert (hb[3]-hb[1])<=(146+16)*k+2,('The hero card must be 146 px tall',hb)
     heading=[n for n in nodes if n.get('text')=='مباريات اليوم']
     if heading:assert hb[3]<=bounds(heading[0])[1]+2,('The hero card must not reach the matches row',hb,bounds(heading[0]))
     # the first focus is the last-channel card
@@ -123,7 +123,7 @@ try:
     key('DPAD_UP');again=focused(ui());assert again is not None and bounds(again)[1]<bounds(lower)[1]
     # "+ إضافة": opens the list of installed apps (not the settings), and a pick joins the row
     launch()
-    for _ in range(4):key('DPAD_DOWN')
+    for _ in range(6):key('DPAD_DOWN')   # to the shortcuts (extra presses stop there)
     key('DPAD_UP')   # shortcuts row -> up to the apps row
     tree=ui()
     on_row=focused(tree)
@@ -146,7 +146,7 @@ try:
     # shortcuts open their screens with the remote's keys
     for index,name in [(6,'UpdatesActivity'),(3,'MatchesScreenActivity'),(2,'XtreamActivity'),(1,'XtreamActivity'),(0,'XtreamActivity')]:   # Live TV, Movies and Series ask to sign in when nobody has
         launch()
-        for _ in range(5):key('DPAD_DOWN',0.3)
+        for _ in range(7):key('DPAD_DOWN',0.3)
         for _ in range(8):key('DPAD_RIGHT',0.2)
         for _ in range(index):key('DPAD_LEFT',0.3)
         key('DPAD_CENTER',pause=1.5);front(name)
