@@ -88,7 +88,7 @@ public final class MoviesActivity extends Activity {
         private final Runnable loadLater=this::loadSection;
 
         GridView(Context c){super(c);setFocusable(true);setFocusableInTouchMode(true);}
-        @Override protected void onSizeChanged(int w,int h,int ow,int oh){k=w/1920f;backdrop=Wallpaper.inner(getContext(),w,h);}
+        @Override protected void onSizeChanged(int w,int h,int ow,int oh){k=w/1920f;backdrop=Wallpaper.cinema(getContext(),w,h);}
 
         private List<VodData.Category> sections(){
             List<VodData.Category> out=new ArrayList<>();

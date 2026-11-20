@@ -299,7 +299,7 @@ public final class LiveActivity extends Activity {
 
         @Override protected void onSizeChanged(int w,int h,int ow,int oh){
             k=w/1920f;
-            backdrop=Wallpaper.inner(getContext(),w,h);   // the inner wallpaper, already dark: nothing over it
+            backdrop=Wallpaper.desert(getContext(),w,h);   // its own wallpaper, already dark: nothing over it
         }
         private String clock(){
             java.text.SimpleDateFormat f=new java.text.SimpleDateFormat("h:mm a",Design.AR);

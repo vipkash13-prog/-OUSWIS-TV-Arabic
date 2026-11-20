@@ -95,7 +95,7 @@ public final class SeriesActivity extends Activity {
             super(c);setFocusable(true);setFocusableInTouchMode(true);
             plotPaint.setColor(0xD9F4EFE4);plotPaint.setTextSize(21);plotPaint.setTypeface(Design.regular());
         }
-        @Override protected void onSizeChanged(int w,int h,int ow,int oh){k=w/1920f;backdrop=Wallpaper.inner(getContext(),w,h);}
+        @Override protected void onSizeChanged(int w,int h,int ow,int oh){k=w/1920f;backdrop=Wallpaper.cinema(getContext(),w,h);}
         private VodData.SeriesInfo info(){return data.seriesInfo(show.id);}
         void resumed(){work();invalidate();}
         void infoReady(){

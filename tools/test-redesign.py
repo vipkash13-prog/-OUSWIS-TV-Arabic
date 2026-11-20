@@ -758,12 +758,12 @@ with tempfile.TemporaryDirectory() as temp:
         time.sleep(1)
     img = shot('redesign-matches.png'); keys('DPAD_DOWN'); keys('DPAD_LEFT'); shot('redesign-matches-focus.png')
     no_crash('Matches')
-    # the matches screen draws the supplied inner wallpaper with no dark layer over it: its edges equal the file's own pixels
-    inner_ref = Image.open(Path(__file__).resolve().parent.parent / 'app' / 'assets' / 'backgrounds' / 'ouswis_bg_stars_inner_1080p.webp').convert('RGB').resize(img.size)
+    # the matches screen draws its own supplied wallpaper (the stadium) with no dark layer over it: its edges equal the file's own pixels
+    inner_ref = Image.open(Path(__file__).resolve().parent.parent / 'app' / 'assets' / 'backgrounds' / 'ouswis_bg_stadium_inner_1080p.webp').convert('RGB').resize(img.size)
     spots_bg = [(30, 300), (30, 700), (1890, 300), (1890, 700), (960, 1068), (960, 8)]
     off_bg = [(sp, img.getpixel(sp), inner_ref.getpixel(sp)) for sp in spots_bg if max(abs(p - q) for p, q in zip(img.getpixel(sp), inner_ref.getpixel(sp))) > 28]
-    assert len(off_bg) <= 1, 'The matches screen background must be the supplied inner wallpaper, not darkened further: ' + str(off_bg)
-    note('PASS: matches screen background equals the supplied inner wallpaper at %d of %d edge spots.' % (len(spots_bg) - len(off_bg), len(spots_bg)))
+    assert len(off_bg) <= 1, 'The matches screen background must be the supplied stadium wallpaper, not darkened further: ' + str(off_bg)
+    note('PASS: matches screen background equals the supplied stadium wallpaper at %d of %d edge spots.' % (len(spots_bg) - len(off_bg), len(spots_bg)))
     cards = [l for l in labels() if ' ضد ' in l and not l.startswith('تفاصيل')]
     # the guide of the sports channels names one match (الهلال × النصر): it is a match on the screen, with its channel
     guide_card = wait_label('الهلال ضد النصر', 'the match found only in the guide')
@@ -1146,12 +1146,13 @@ with tempfile.TemporaryDirectory() as temp:
         adb('shell', 'input', 'keyevent', '23'); time.sleep(2.5)
         front(activity)
         side_img = shot('final-side-' + str(i) + '-' + activity + '.png')
-        if activity in ('LiveActivity', 'MatchesScreenActivity', 'UpdatesActivity', 'ChannelMapActivity', 'SectionOrderActivity', 'IptvActivity'):   # the same dark inner wallpaper on every inner screen, Updates included
-            ref = Image.open(Path(__file__).resolve().parent.parent / 'app' / 'assets' / 'backgrounds' / 'ouswis_bg_stars_inner_1080p.webp').convert('RGB').resize(side_img.size)
+        if activity in ('LiveActivity', 'MatchesScreenActivity', 'UpdatesActivity', 'ChannelMapActivity', 'SectionOrderActivity', 'IptvActivity'):   # each inner screen's dark wallpaper: Live TV the desert, Matches the stadium, the rest (Updates included) the stars
+            wall_file = {'LiveActivity': 'ouswis_bg_desert_inner_1080p.webp', 'MatchesScreenActivity': 'ouswis_bg_stadium_inner_1080p.webp'}.get(activity, 'ouswis_bg_stars_inner_1080p.webp')
+            ref = Image.open(Path(__file__).resolve().parent.parent / 'app' / 'assets' / 'backgrounds' / wall_file).convert('RGB').resize(side_img.size)
             sp = [(1890, 300), (1890, 700), (960, 1068), (960, 8), (30, 700)] if activity != 'UpdatesActivity' else [(1890, 300), (1890, 700), (960, 1068), (960, 8), (1890, 900)]
             off = [(q, side_img.getpixel(q), ref.getpixel(q)) for q in sp if max(abs(p - r) for p, r in zip(side_img.getpixel(q), ref.getpixel(q))) > 28]
-            assert len(off) <= 1, activity + ' must draw the dark inner wallpaper: ' + str(off)
-            note('PASS: ' + activity + ' background equals the dark inner wallpaper at ' + str(len(sp) - len(off)) + ' of ' + str(len(sp)) + ' spots.')
+            assert len(off) <= 1, activity + ' must draw its dark wallpaper (' + wall_file + '): ' + str(off)
+            note('PASS: ' + activity + ' background equals its dark wallpaper (' + wall_file + ') at ' + str(len(sp) - len(off)) + ' of ' + str(len(sp)) + ' spots.')
         if activity == 'UpdatesActivity':
             lum_u = [sum(side_img.getpixel((x, y))) / 3 for x in range(0, 1920, 40) for y in range(0, 1080, 40)]
             assert sum(lum_u) / len(lum_u) < 60 and sum(1 for v in lum_u if v > 200) / len(lum_u) < 0.03, 'Updates must be dark for an OLED: mean ' + str(round(sum(lum_u) / len(lum_u)))
