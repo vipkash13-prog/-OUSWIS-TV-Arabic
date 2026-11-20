@@ -523,7 +523,7 @@ try:
               ('the matches', group(lambda l: ' ضد ' in l and not l.startswith('تفاصيل'))),
               ('the films and series', group(lambda l: bool(re.search(r' · (فيلم|مسلسل)', l)))),
               ('the apps', group(lambda l: l == 'إضافة تطبيق')),
-              ('the shortcuts', group(lambda l: l in ('البث المباشر', 'أفلام', 'مسلسلات', 'المباريات', 'كل التطبيقات', 'الأخيرة', 'التحديثات', 'الإعدادات')))]
+              ('the shortcuts', [b for b in group(lambda l: l in ('البث المباشر', 'أفلام', 'مسلسلات', 'المباريات', 'كل التطبيقات', 'الأخيرة', 'التحديثات', 'الإعدادات')) if b[1] > 540])]   # not the gear chip in the top bar, also "الإعدادات"
     spans = []
     for name, bs in groups:
         assert bs, 'Nothing found for ' + name + ': ' + str(labels()[:40])
