@@ -17,8 +17,8 @@ final class Design {
     private Design(){}
     static final int BG=0xFF0B0D1A, GLOW_A=0xFF3A2350, GLOW_B=0xFF1A1430;
     static final int SURFACE=0x0FFFFFFF, STROKE=0x1AFFFFFF;
-    /** Live TV's and the matches screen's columns, cards and panels: dark and nearly opaque, so their wallpaper doesn't show through. */
-    static final int PANEL=0xE6121A3A;
+    /** Live TV's and the matches screen's columns, cards and panels: dark and fully opaque, so their wallpaper never shows through. */
+    static final int PANEL=0xFF121A3A;
     static final int TEXT=0xFFF4EFE4, MUTED=0x9EF4EFE4;           // muted = 62 %
     static final int GOLD=0xFFE9C46A, GOLD2=0xFFB8862B, LIVE=0xFFEF4444, OK=0xFF4ADE80;
     static final float W=1920f, H=1080f;

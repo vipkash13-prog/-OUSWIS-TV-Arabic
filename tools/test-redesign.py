@@ -782,10 +782,10 @@ with tempfile.TemporaryDirectory() as temp:
     off_bg = [(sp, img.getpixel(sp), inner_ref.getpixel(sp)) for sp in spots_bg if max(abs(p - q) for p, q in zip(img.getpixel(sp), inner_ref.getpixel(sp))) > 28]
     assert len(off_bg) <= 1, 'The matches screen background must be the supplied stadium wallpaper, not darkened further: ' + str(off_bg)
     note('PASS: matches screen background equals the supplied stadium wallpaper at %d of %d edge spots.' % (len(spots_bg) - len(off_bg), len(spots_bg)))
-    # Nov 21: the match's panel is #E6121A3A (dark, nearly opaque): inside its left and right edges it is that colour over any wallpaper
+    # Nov 21: the match's panel is #FF121A3A (fully opaque): inside its left and right edges it is exactly that colour
     panel_off = [(sp, img.getpixel(sp)) for sp in ((80, 560), (583, 560)) if max(abs(a - b) for a, b in zip(img.getpixel(sp), (18, 26, 58))) > 12]
-    assert not panel_off, 'The matches panel must be #E6121A3A: ' + str(panel_off)
-    note('PASS: the matches panel is #E6121A3A: %s.' % [img.getpixel(sp) for sp in ((80, 560), (583, 560))])
+    assert not panel_off, 'The matches panel must be #FF121A3A: ' + str(panel_off)
+    note('PASS: the matches panel is #FF121A3A: %s.' % [img.getpixel(sp) for sp in ((80, 560), (583, 560))])
     cards = [l for l in labels() if ' ضد ' in l and not l.startswith('تفاصيل')]
     # the guide of the sports channels names one match (الهلال × النصر): it is a match on the screen, with its channel
     guide_card = wait_label('الهلال ضد النصر', 'the match found only in the guide')
@@ -1176,11 +1176,11 @@ with tempfile.TemporaryDirectory() as temp:
             off = [(q, side_img.getpixel(q), ref.getpixel(q)) for q in sp if max(abs(p - r) for p, r in zip(side_img.getpixel(q), ref.getpixel(q))) > 28]
             assert len(off) <= 1, activity + ' must draw its dark wallpaper (' + wall_file + '): ' + str(off)
             note('PASS: ' + activity + ' background equals its dark wallpaper (' + wall_file + (', mirrored' if activity == 'LiveActivity' else '') + ') at ' + str(len(sp) - len(off)) + ' of ' + str(len(sp)) + ' spots.')
-            if activity == 'LiveActivity':   # the sections and channels columns and the guide card are #E6121A3A: inside their edges, that colour
+            if activity == 'LiveActivity':   # the sections and channels columns and the guide card are #FF121A3A: inside their edges, that colour
                 live_spots = ((1556, 600), (912, 600), (79, 800))
                 live_off = [(q, side_img.getpixel(q)) for q in live_spots if max(abs(a - b) for a, b in zip(side_img.getpixel(q), (18, 26, 58))) > 12]
-                assert len(live_off) <= 1, 'Live TV\'s columns and guide card must be #E6121A3A: ' + str(live_off)
-                note('PASS: Live TV\'s columns and guide card are #E6121A3A at %d of 3 spots: %s.' % (3 - len(live_off), [side_img.getpixel(q) for q in live_spots]))
+                assert len(live_off) <= 1, 'Live TV\'s columns and guide card must be #FF121A3A: ' + str(live_off)
+                note('PASS: Live TV\'s columns and guide card are #FF121A3A at %d of 3 spots: %s.' % (3 - len(live_off), [side_img.getpixel(q) for q in live_spots]))
         if activity == 'UpdatesActivity':
             lum_u = [sum(side_img.getpixel((x, y))) / 3 for x in range(0, 1920, 40) for y in range(0, 1080, 40)]
             assert sum(lum_u) / len(lum_u) < 60 and sum(1 for v in lum_u if v > 200) / len(lum_u) < 0.03, 'Updates must be dark for an OLED: mean ' + str(round(sum(lum_u) / len(lum_u)))
