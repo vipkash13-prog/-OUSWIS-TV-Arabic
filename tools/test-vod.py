@@ -519,7 +519,9 @@ try:
         whole('going up')
     label, b = whole('back at the top')
     assert label.startswith('الصوت: إنجليزي'), 'Back up at the first sound: ' + label
-    keys('BACK', pause=1); keys('BACK', pause=1.5)
+    # play this test film to its end, so it doesn't stay in "continue watching" (the home row check below counts that list)
+    keys('BACK', pause=1); keys(*['DPAD_RIGHT'] * 13, pause=0.3); time.sleep(4)
+    if 'VodPlayerActivity' in adb('shell', 'dumpsys', 'activity', 'activities').split('topResumedActivity')[-1][:300]: keys('BACK', pause=1.5)
     note('PASS: with 3 sounds and 12 subtitles the menu shows the sound first, then بدون ترجمة, Arabic and the rest in the file\'s order; going down to the last subtitle and back up, the focused line stayed whole inside the panel every step; the panel is opaque #121A3A with a white focus frame.')
     no_crash('Sound and subtitles')
 
