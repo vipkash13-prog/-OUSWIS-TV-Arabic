@@ -217,27 +217,76 @@ final class VodData {
                     JSONObject o=new JSONObject(new String(Files.readAllBytes(f.toPath()),StandardCharsets.UTF_8));
                     List<Movie> list=new ArrayList<>();JSONArray a=o.getJSONArray("items");
                     for(int i=0;i<a.length();i++){Movie m=Movie.from(a.optJSONObject(i));if(m!=null)list.add(m);}
-                    put(category,list);
-                    fresh=System.currentTimeMillis()-o.optLong("at")<DAY;
-                    main.post(changed);
+                    if(!list.isEmpty()){   // an empty copy is asked again: the section may have been empty only for a moment
+                        put(category,list);
+                        fresh=System.currentTimeMillis()-o.optLong("at")<DAY;
+                        main.post(changed);
+                    }
                 }
             }catch(Exception ignored){}
-            if(!fresh){
-                try{
-                    JSONArray rows=new JSONArray(XtreamAccount.get(account.api(act("get_vod_streams"),"category_id="+XtreamAccount.enc(category))));
-                    List<Movie> list=new ArrayList<>();
-                    for(int i=0;i<rows.length();i++){Movie m=series?fromSeries(rows.optJSONObject(i),category):fromStream(rows.optJSONObject(i),category);if(m!=null)list.add(m);}
-                    put(category,list);failedCats.remove(category);
-                    JSONArray slim=new JSONArray();for(Movie m:list)slim.put(m.json());
-                    Files.write(f.toPath(),new JSONObject().put("at",System.currentTimeMillis()).put("items",slim).toString().getBytes(StandardCharsets.UTF_8));
-                }catch(Exception e){
-                    synchronized(movies){if(!movies.containsKey(category))failedCats.add(category);}
-                    AppLog.w("vod section failed");
-                }
-            }
+            if(!fresh)fetchSection(category,f);
             synchronized(busy){busy.remove(category);}
             main.post(changed);
         });
+    }
+    /**
+     * One section from the subscription: get_vod_streams&category_id= first; when that answers nothing (some panels give an
+     * empty list for sections whose films have it as a second section, "category_ids") or fails, the whole catalogue
+     * (get_vod_streams without category_id, the copy the newest and the search read) filtered here by category_id and
+     * category_ids, as other players do. Empty only when both say so; failed only when both failed. Each step is logged:
+     * the section's id, how many came, the HTTP code and the time (never the address: it holds the password).
+     */
+    private void fetchSection(String category,File f){
+        String kind=series?"series":"vod";
+        long t0=System.currentTimeMillis();
+        int[] code={0};
+        List<Movie> list=null;
+        try{
+            String body=XtreamAccount.get(account.api(act("get_vod_streams"),"category_id="+XtreamAccount.enc(category)),code).trim();
+            list=new ArrayList<>();
+            if(body.startsWith("[")){
+                JSONArray rows=new JSONArray(body);
+                for(int i=0;i<rows.length();i++){Movie m=series?fromSeries(rows.optJSONObject(i),category):fromStream(rows.optJSONObject(i),category);if(m!=null)list.add(m);}
+                AppLog.w(kind+" section "+category+": "+list.size()+" of "+rows.length()+" rows, HTTP "+code[0]+", "+(System.currentTimeMillis()-t0)+" ms");
+            }else{   // "{}", "null" or nothing: no list for this section
+                AppLog.w(kind+" section "+category+": no list ("+(body.isEmpty()?"empty body":body.length()>12?body.substring(0,12)+"…":body)+"), HTTP "+code[0]+", "+(System.currentTimeMillis()-t0)+" ms");
+            }
+        }catch(Exception e){
+            list=null;
+            AppLog.w(kind+" section "+category+": failed ("+(code[0]!=0?"HTTP "+code[0]:e.getClass().getSimpleName())+"), "+(System.currentTimeMillis()-t0)+" ms");
+        }
+        if(list==null||list.isEmpty()){
+            long t1=System.currentTimeMillis();
+            try{
+                waitCategories();
+                File all=catalogueFile();
+                final List<Movie> found=new ArrayList<>();
+                final int[] byIds={0};
+                scan(all,(m,ids)->{
+                    if(category.equals(m.cat)){found.add(m);return true;}
+                    if(ids!=null&&ids.contains(category)){found.add(m);byIds[0]++;}
+                    return true;
+                });
+                AppLog.w(kind+" section "+category+": "+found.size()+" from the whole catalogue ("+byIds[0]+" by category_ids), "+(System.currentTimeMillis()-t1)+" ms");
+                list=found;
+            }catch(Exception e){
+                AppLog.w(kind+" section "+category+": the whole catalogue failed too ("+e.getClass().getSimpleName()+"), "+(System.currentTimeMillis()-t1)+" ms");
+                if(list==null){
+                    synchronized(movies){if(!movies.containsKey(category))failedCats.add(category);}
+                    return;
+                }
+            }
+        }
+        put(category,list);failedCats.remove(category);
+        try{
+            JSONArray slim=new JSONArray();for(Movie m:list)slim.put(m.json());
+            Files.write(f.toPath(),new JSONObject().put("at",System.currentTimeMillis()).put("items",slim).toString().getBytes(StandardCharsets.UTF_8));
+        }catch(Exception ignored){}
+    }
+    /** Forgets a section that failed, so OK on it asks again. */
+    void retry(String category){
+        failedCats.remove(category);
+        synchronized(movies){movies.remove(category);}
     }
     private void put(String category,List<Movie> list){
         synchronized(movies){movies.put(category,list);}
@@ -263,7 +312,9 @@ final class VodData {
 
     private File allFile(){return file("all-"+key());}
     /** The catalogue's copy on disk, downloaded again when over a day old. Runs on the catalogue thread. */
-    private File catalogueFile() throws Exception {
+    private final Object allLock=new Object();
+    private File catalogueFile() throws Exception {synchronized(allLock){return catalogueFileLocked();}}
+    private File catalogueFileLocked() throws Exception {
         File f=allFile();
         if(f.isFile()&&f.length()>2&&System.currentTimeMillis()-f.lastModified()<DAY)return f;
         File part=new File(f.getPath()+".part");
@@ -280,7 +331,7 @@ final class VodData {
         return f;
     }
     /** Reads every film of the copy on disk, one at a time; `each` returns false to stop. */
-    private interface Each{boolean take(Movie m);}
+    private interface Each{boolean take(Movie m,List<String> categoryIds);}
     private void scan(File f,Each each) throws Exception {
         try(JsonReader r=new JsonReader(new InputStreamReader(new FileInputStream(f),StandardCharsets.UTF_8))){
             if(r.peek()!=JsonToken.BEGIN_ARRAY)return;
@@ -288,11 +339,17 @@ final class VodData {
             while(r.hasNext()){
                 if(r.peek()!=JsonToken.BEGIN_OBJECT){r.skipValue();continue;}
                 String id="",name="",icon="",ext="",cat="",rate="";long added=0;
+                List<String> ids=null;
                 r.beginObject();
                 while(r.hasNext()){
                     String k=r.nextName();
                     if(r.peek()==JsonToken.NULL){r.nextNull();continue;}
                     JsonToken t=r.peek();
+                    if(t==JsonToken.BEGIN_ARRAY&&"category_ids".equals(k)){   // every section the film is in (XUI panels)
+                        ids=new ArrayList<>();r.beginArray();
+                        while(r.hasNext()){JsonToken e=r.peek();if(e==JsonToken.STRING||e==JsonToken.NUMBER)ids.add(r.nextString().trim());else r.skipValue();}
+                        r.endArray();continue;
+                    }
                     if(t==JsonToken.BEGIN_OBJECT||t==JsonToken.BEGIN_ARRAY||t==JsonToken.BOOLEAN){r.skipValue();continue;}
                     switch(k){
                         case "stream_id":if(!series)id=r.nextString();else r.skipValue();break;
@@ -310,7 +367,7 @@ final class VodData {
                 }
                 r.endObject();
                 if(id.isEmpty()||name.isEmpty()||adultIds.contains(cat))continue;
-                if(!each.take(new Movie(id,name,icon,ext,cat,rating(rate),added)))return;
+                if(!each.take(new Movie(id,name,icon,ext,cat,rating(rate),added),ids))return;
             }
         }
     }
@@ -326,7 +383,7 @@ final class VodData {
                 waitCategories();
                 File f=catalogueFile();
                 final List<Movie> top=new ArrayList<>();final int[] count={0};
-                scan(f,m->{
+                scan(f,(m,ids)->{
                     count[0]++;
                     if(top.size()<NEWEST_MAX||m.added>top.get(top.size()-1).added){
                         int at=top.size();while(at>0&&top.get(at-1).added<m.added)at--;
@@ -435,7 +492,7 @@ final class VodData {
             try{
                 waitCategories();
                 File f=catalogueFile();
-                scan(f,m->{
+                scan(f,(m,ids)->{
                     if(XtreamCatalog.normalize(m.name).contains(q))found.add(m);
                     return found.size()<SEARCH_MAX;
                 });

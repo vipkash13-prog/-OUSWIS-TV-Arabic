@@ -260,7 +260,7 @@ public final class MoviesActivity extends Activity {
                     else{sort=(sort+1)%3;shownFor="";sel=0;top=0;invalidate();}
                 }else if(area==0){
                     VodData.Category c=current();
-                    if(data.failed(c.id))loadSection();
+                    if(data.failed(c.id)){data.retry(c.id);loadSection();}
                     if(!shown().isEmpty())area=1;
                     invalidate();
                 }else{
