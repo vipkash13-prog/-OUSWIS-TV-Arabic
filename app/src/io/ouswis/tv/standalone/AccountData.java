@@ -68,9 +68,11 @@ final class AccountData {
         }
     }
 
-    private static boolean owned(String n){return n.startsWith("live-")||n.startsWith("guide-day-")||n.startsWith("xtream-catalog-cache");}
+    private static boolean owned(String n){return n.startsWith("live-")||n.startsWith("guide-day-")||n.startsWith("xtream-catalog-cache")||n.startsWith("vod-")||n.startsWith("series-");}
     private static boolean belongsTo(String n,String key){
-        return !key.isEmpty()&&(n.equals("live-categories-"+key+".json")||n.startsWith("live-cat-"+key+"-")||n.equals("guide-day-"+key+".json"));
+        if(key.isEmpty())return false;
+        if(n.startsWith("vod-")||n.startsWith("series-"))return n.contains("-"+key+".")||n.contains("-"+key+"-");   // films and series (VodData): vod-cat-KEY-ID.json, series-newest-KEY.json...
+        return n.equals("live-categories-"+key+".json")||n.startsWith("live-cat-"+key+"-")||n.equals("guide-day-"+key+".json");
     }
     /** Deletes the subscription files and preference keys that are not {@code keep}'s. */
     private static void wipe(Context app,String keep){
@@ -80,6 +82,11 @@ final class AccountData {
         for(String k:KEYS)e.remove(k);
         e.commit();
         XtreamAccount.prefs(app).edit().remove("lastChannel").remove("lastChannelName").commit();
+        // films and series: where each stopped and the favourites are kept per subscription (its key at the end of the name)
+        SharedPreferences vod=app.getSharedPreferences("ouswis-vod",Context.MODE_PRIVATE);
+        SharedPreferences.Editor ve=vod.edit();
+        for(String k:vod.getAll().keySet())if(keep.isEmpty()||!k.endsWith("-"+keep))ve.remove(k);
+        ve.commit();
     }
 
     private static void switchTo(Context app,String from,String to){
