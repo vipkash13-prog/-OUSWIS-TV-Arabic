@@ -406,9 +406,17 @@ try:
     keys('DPAD_RIGHT', 'DPAD_RIGHT', 'DPAD_RIGHT', 'DPAD_RIGHT', pause=0.3); time.sleep(1.5)
     p1, l1 = bar_position()
     assert p0 >= 0 and p1 >= p0 + 35, 'Four ▶ presses must move forward about 40 s: %s → %s' % (l0, l1)
-    img = shot('vod-seek-forward.png')
-    # the bar fills from left to right: at about 40 % of the film, gold on the left part of the bar, grey on the right
+    # the bar stays 4 s after a key, and reading the position above can take longer (Nov 20: the shot caught the film
+    # without its bar): ▲ shows it again without seeking, and the shot is taken once the bar is drawn (some gold on its line)
     gold = lambda px: px[0] > 180 and px[1] > 140 and px[2] < 140
+    keys('DPAD_UP', pause=0.2)
+    for _ in range(8):
+        img = shot('vod-seek-forward.png')
+        if any(gold(img.getpixel((x, 929))) for x in range(80, 1840, 16)): break
+        time.sleep(0.2)
+    else:
+        raise AssertionError('The bar did not show after ▲: %s %s' % (img.getpixel((200, 929)), img.getpixel((1700, 929))))
+    # the bar fills from left to right: at about 40 % of the film, gold on the left part of the bar, grey on the right
     assert gold(img.getpixel((200, 929))) and not gold(img.getpixel((1700, 929))), 'The bar must fill from left to right: %s %s' % (img.getpixel((200, 929)), img.getpixel((1700, 929)))
     keys('DPAD_LEFT', pause=0.3); time.sleep(1.5)
     p2, l2 = bar_position()
