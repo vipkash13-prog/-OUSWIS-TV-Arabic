@@ -779,7 +779,9 @@ final class RedesignHomeView extends View {
         float x=1842-icon.measureText("🎬")-10;
         Design.right(c,"أفلام ومسلسلات",x,18,section);
         Paint note=tx(Design.MUTED,17,Design.regular());
-        Design.right(c,"· تابع المشاهدة ثم أحدث الإضافات",x-section.measureText("أفلام ومسلسلات")-10,18,note);
+        float after=x-section.measureText("أفلام ومسلسلات");
+        Design.center(c,"·",after-14,18,note);   // the dot on its own: at the start of the line it would sit against the heading
+        Design.right(c,"تابع المشاهدة ثم أحدث الإضافات",after-28,18,note);
         a11y.add(1300,-6,1842,26,"أفلام ومسلسلات",false,false);
         int n=vodItems.size();
         boolean linkFocus=focus(3,n);
