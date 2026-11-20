@@ -38,9 +38,11 @@ import org.json.JSONObject;
  */
 final class VodData {
     static final class Movie {
-        final String id,name,icon,ext,cat;final float rating;final long added;
+        /** name: as the provider gives it (kept, and matched on); shown: without its prefixes and year; year: the one in the name, or "". */
+        final String id,name,icon,ext,cat,shown,year;final float rating;final long added;
         Movie(String id,String name,String icon,String ext,String cat,float rating,long added){
             this.id=id;this.name=name;this.icon=icon==null?"":icon;this.ext=ext==null||ext.isEmpty()?"mp4":ext;this.cat=cat==null?"":cat;this.rating=rating;this.added=added;
+            this.shown=clean(name);this.year=yearOf(name);
         }
         JSONObject json(){
             try{return new JSONObject().put("id",id).put("name",name).put("icon",icon).put("ext",ext).put("cat",cat).put("rating",rating).put("added",added);}
@@ -69,6 +71,45 @@ final class VodData {
         /** Worth resuming: past the first half minute and not at the credits. */
         boolean resumable(){return pos>=30_000&&(dur<=0||pos<dur*0.95);}
     }
+
+    // MARK: names as shown
+
+    private static final Pattern TAG_BAR=Pattern.compile("^\\|?\\s*[A-Za-z0-9]{1,5}\\s*\\|\\s*"),          // "EN| ", "AR |", "|4K|"
+            TAG_DASHES=Pattern.compile("^-\\s*[A-Za-z0-9 ]{1,8}?\\s*-\\s*"),                                  // "-TOP- "
+            TAG_LETTERS=Pattern.compile("^(?=[A-Z0-9-]*[A-Z])[A-Z0-9]{1,4}(?:-[A-Z0-9]{1,4})?\\s*-\\s+"),        // "R - ", "PT - ", "AS-S - " (a letter in it: "24 - Legacy" stays)
+            TAG_BRACKET=Pattern.compile("^\\[[^\\]]{1,10}\\]\\s*"),                                          // "[AR] "
+            YEAR_END=Pattern.compile("\\s*(?:[\\(\\[]\\s*((?:19|20)\\d\\d)\\s*[\\)\\]]|[-–|]\\s*((?:19|20)\\d\\d)|\\s((?:19|20)\\d\\d))\\s*$");
+    /** The name without the provider's prefixes (R - , -TOP- , AS-S - , PT - , EN| , AR| ) and without a year at its end. */
+    static String clean(String raw){
+        if(raw==null)return "";
+        String s=raw.trim(),before;
+        do{
+            before=s;
+            s=TAG_BAR.matcher(s).replaceFirst("");
+            s=TAG_DASHES.matcher(s).replaceFirst("");
+            s=TAG_LETTERS.matcher(s).replaceFirst("");
+            s=TAG_BRACKET.matcher(s).replaceFirst("");
+            s=s.trim();
+        }while(!s.equals(before)&&!s.isEmpty());
+        java.util.regex.Matcher y=YEAR_END.matcher(s);
+        if(y.find()&&plausibleYear(y)){String t=s.substring(0,y.start()).trim();if(!t.isEmpty())s=t;}
+        return s.isEmpty()?raw.trim():s;
+    }
+    /** The year at the end of the name ("Film (2023)", "Film - 2023", "Film 2023"), or "". */
+    static String yearOf(String raw){
+        if(raw==null)return "";
+        java.util.regex.Matcher y=YEAR_END.matcher(raw.trim());
+        if(!y.find()||!plausibleYear(y))return "";
+        return y.group(1)!=null?y.group(1):y.group(2)!=null?y.group(2):y.group(3);
+    }
+    /** A year can't be in the future ("Blade Runner 2049" keeps its number). */
+    private static boolean plausibleYear(java.util.regex.Matcher y){
+        String g=y.group(1)!=null?y.group(1):y.group(2)!=null?y.group(2):y.group(3);
+        int v=Integer.parseInt(g);
+        return v>=1900&&v<=java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)+1;
+    }
+    /** For matching one subscription's titles with another's: clean, lower case, letters and digits only. */
+    static String canon(String raw){return clean(raw).toLowerCase(java.util.Locale.ROOT).replaceAll("[^\\p{L}\\p{N}]+"," ").trim();}
 
     static final String CONTINUE="*continue",FAVORITES="*fav",NEWEST="*new",SEARCH="*search";
     private static final long DAY=24L*3600_000;
@@ -631,7 +672,9 @@ final class VodData {
             JSONObject all=read(c,eKey(a));
             if(pos>=5_000||(dur>0&&pos>=dur*0.95)){
                 if(dur>0&&pos>=dur*0.95)pos=dur;
-                all.put(episodeId,new JSONObject().put("pos",pos).put("dur",dur).put("at",System.currentTimeMillis()));
+                JSONObject rec=new JSONObject().put("pos",pos).put("dur",dur).put("at",System.currentTimeMillis());
+                if(num>0)rec.put("s",seriesItem.name).put("se",season).put("n",num);   // what it is, by name: so it can follow to another subscription
+                all.put(episodeId,rec);
                 trim(all,1500);
                 JSONObject last=lastAll(c,a);
                 last.put(seriesItem.id,new JSONObject().put("series",seriesItem.json()).put("episode",episodeId).put("season",season).put("num",num).put("at",System.currentTimeMillis()));
@@ -646,6 +689,221 @@ final class VodData {
         Collections.sort(ids,(x,y)->Long.compare(all.optJSONObject(x)==null?0:all.optJSONObject(x).optLong("at"),all.optJSONObject(y)==null?0:all.optJSONObject(y).optLong("at")));
         for(int i=0;i<ids.size()-max;i++)all.remove(ids.get(i));
     }
+    /** The series page knows its episodes: records saved before they carried their series, season and number get them now. */
+    static synchronized void tagEpisodes(Context c,XtreamAccount a,Movie show,SeriesInfo in){
+        if(in==null)return;
+        try{
+            JSONObject all=read(c,eKey(a));boolean changed=false;
+            for(List<Episode> l:in.episodes.values())for(Episode e:l){
+                JSONObject o=all.optJSONObject(e.id);
+                if(o!=null&&!o.has("s")){o.put("s",show.name).put("se",e.season).put("n",e.num);changed=true;}
+            }
+            JSONObject last=lastAll(c,a),lo=last.optJSONObject(show.id);
+            if(lo!=null&&lo.optInt("num",0)<=0){Episode e=in.find(lo.optString("episode"));if(e!=null){lo.put("season",e.season).put("num",e.num);changed=true;}}
+            if(changed)store(c).edit().putString(eKey(a),all.toString()).putString(lKey(a),last.toString()).apply();
+        }catch(Exception ignored){}
+    }
+
+    // MARK: another subscription: the history and the favourites follow by name (never an id of the old one)
+
+    private static String stashKey(String forKey){return "vodStash-"+forKey;}
+    /**
+     * Before the old subscription's data goes: the names of what was watched (with where it stopped), the favourites and
+     * the episodes (series name, season, number), plus what an earlier change had not carried over yet. No ids.
+     */
+    static JSONObject stash(Context c,String fromKey){
+        JSONObject out;
+        try{out=new JSONObject(store(c).getString(stashKey(fromKey),"{}"));}catch(Exception e){out=new JSONObject();}
+        try{
+            JSONArray films=arr(out,"films"),filmFav=arr(out,"filmFav"),seriesFav=arr(out,"seriesFav"),series=arr(out,"series"),eps=arr(out,"episodes");
+            JSONObject prog=read(c,"progress-"+fromKey);
+            java.util.Iterator<String> it=prog.keys();
+            while(it.hasNext()){JSONObject o=prog.optJSONObject(it.next());if(o!=null&&!o.optString("name").isEmpty())films.put(new JSONObject().put("n",o.optString("name")).put("pos",o.optLong("pos")).put("dur",o.optLong("dur")).put("at",o.optLong("at")));}
+            names(c,"favorites-"+fromKey,filmFav);
+            names(c,"seriesFavorites-"+fromKey,seriesFav);
+            JSONObject last=read(c,"seriesLast-"+fromKey);
+            it=last.keys();
+            while(it.hasNext()){
+                JSONObject o=last.optJSONObject(it.next());if(o==null)continue;
+                JSONObject sr=o.optJSONObject("series");
+                if(sr!=null&&o.optInt("num",0)>0)series.put(new JSONObject().put("n",sr.optString("name")).put("se",o.optInt("season")).put("num",o.optInt("num")).put("at",o.optLong("at")));
+            }
+            JSONObject ep=read(c,"episodes-"+fromKey);
+            it=ep.keys();
+            while(it.hasNext()){
+                JSONObject o=ep.optJSONObject(it.next());
+                if(o!=null&&o.has("s")&&o.optInt("n",0)>0)eps.put(new JSONObject().put("s",o.optString("s")).put("se",o.optInt("se")).put("n",o.optInt("n")).put("pos",o.optLong("pos")).put("dur",o.optLong("dur")).put("at",o.optLong("at")));
+            }
+            out.put("films",films).put("filmFav",filmFav).put("seriesFav",seriesFav).put("series",series).put("episodes",eps);
+        }catch(Exception ignored){}
+        return out;
+    }
+    private static JSONArray arr(JSONObject o,String k){JSONArray a=o.optJSONArray(k);return a==null?new JSONArray():a;}
+    private static void names(Context c,String key,JSONArray into){
+        try{JSONArray a=new JSONArray(store(c).getString(key,"[]"));for(int i=0;i<a.length();i++){JSONObject o=a.optJSONObject(i);if(o!=null&&!o.optString("name").isEmpty())into.put(o.optString("name"));}}catch(Exception ignored){}
+    }
+    static int stashSize(JSONObject st){
+        if(st==null)return 0;
+        int n=0;for(String k:new String[]{"films","filmFav","seriesFav","series","episodes"})n+=arr(st,k).length();
+        return n;
+    }
+    static void putStash(Context c,String forKey,JSONObject st){
+        if(stashSize(st)==0)store(c).edit().remove(stashKey(forKey)).commit();
+        else store(c).edit().putString(stashKey(forKey),st.toString()).commit();
+    }
+    static boolean hasStash(Context c,String forKey){return store(c).contains(stashKey(forKey));}
+
+    /**
+     * Matches the stashed names with the new subscription's films and series (read as a stream) and the episodes by season
+     * and number (get_series_info of each matched series); what has no match is dropped. `lock` and `stamp` keep it from
+     * writing for a subscription that is no longer the current one. Throws when the subscription can't be read (tried again later).
+     */
+    static String carryOver(Context c,XtreamAccount a,Object lock) throws Exception {
+        final String key=AccountData.key(a);
+        JSONObject st;
+        try{st=new JSONObject(store(c).getString(stashKey(key),"{}"));}catch(Exception e){st=new JSONObject();}
+        if(stashSize(st)==0){store(c).edit().remove(stashKey(key)).commit();return "";}
+        int tries=st.optInt("tries",0)+1;
+        st.put("tries",tries);store(c).edit().putString(stashKey(key),st.toString()).commit();
+        JSONArray films=arr(st,"films"),filmFav=arr(st,"filmFav"),seriesFav=arr(st,"seriesFav"),series=arr(st,"series"),eps=arr(st,"episodes");
+        Set<String> wantFilms=new HashSet<>(),wantSeries=new HashSet<>();
+        for(int i=0;i<films.length();i++)wantFilms.add(canon(films.getJSONObject(i).optString("n")));
+        for(int i=0;i<filmFav.length();i++)wantFilms.add(canon(filmFav.optString(i)));
+        for(int i=0;i<seriesFav.length();i++)wantSeries.add(canon(seriesFav.optString(i)));
+        for(int i=0;i<series.length();i++)wantSeries.add(canon(series.getJSONObject(i).optString("n")));
+        for(int i=0;i<eps.length();i++)wantSeries.add(canon(eps.getJSONObject(i).optString("s")));
+        Map<String,List<Movie>> fFound=wantFilms.isEmpty()?new HashMap<>():streamFind(a,false,wantFilms);
+        Map<String,List<Movie>> sFound=wantSeries.isEmpty()?new HashMap<>():streamFind(a,true,wantSeries);
+        int films0=0,favs0=0,series0=0,eps0=0,lost=0;
+        // films: where each stopped, and the favourites
+        JSONObject prog=new JSONObject();
+        for(int i=0;i<films.length();i++){
+            JSONObject o=films.getJSONObject(i);Movie m=best(o.optString("n"),fFound);
+            if(m==null){lost++;continue;}
+            JSONObject had=prog.optJSONObject(m.id);
+            if(had==null||had.optLong("at")<o.optLong("at")){prog.put(m.id,m.json().put("pos",o.optLong("pos")).put("dur",o.optLong("dur")).put("at",o.optLong("at")));films0++;}
+        }
+        JSONArray favF=new JSONArray(),favS=new JSONArray();Set<String> seen=new HashSet<>();
+        for(int i=0;i<filmFav.length();i++){Movie m=best(filmFav.optString(i),fFound);if(m==null){lost++;continue;}if(seen.add("f"+m.id)){favF.put(m.json());favs0++;}}
+        for(int i=0;i<seriesFav.length();i++){Movie m=best(seriesFav.optString(i),sFound);if(m==null){lost++;continue;}if(seen.add("s"+m.id)){favS.put(m.json());favs0++;}}
+        // series: their episodes by season and number, then the last one watched
+        JSONObject epOut=new JSONObject(),lastOut=new JSONObject();
+        Map<String,Map<String,String>> epIds=new HashMap<>();   // new series id -> "season:number" -> new episode id
+        int infoCalls=0;
+        for(int i=0;i<eps.length();i++){
+            JSONObject o=eps.getJSONObject(i);Movie sr=best(o.optString("s"),sFound);
+            if(sr==null){lost++;continue;}
+            Map<String,String> ids=epIds.get(sr.id);
+            if(ids==null&&infoCalls<60){ids=episodeIds(a,sr.id);infoCalls++;epIds.put(sr.id,ids);}
+            String eid=ids==null?null:ids.get(o.optInt("se")+":"+o.optInt("n"));
+            if(eid==null){lost++;continue;}
+            epOut.put(eid,new JSONObject().put("pos",o.optLong("pos")).put("dur",o.optLong("dur")).put("at",o.optLong("at")).put("s",sr.name).put("se",o.optInt("se")).put("n",o.optInt("n")));eps0++;
+        }
+        for(int i=0;i<series.length();i++){
+            JSONObject o=series.getJSONObject(i);Movie sr=best(o.optString("n"),sFound);
+            if(sr==null){lost++;continue;}
+            Map<String,String> ids=epIds.get(sr.id);
+            if(ids==null&&infoCalls<60){ids=episodeIds(a,sr.id);infoCalls++;epIds.put(sr.id,ids);}
+            String eid=ids==null?null:ids.get(o.optInt("se")+":"+o.optInt("num"));
+            if(eid==null){lost++;continue;}
+            JSONObject had=lastOut.optJSONObject(sr.id);
+            if(had==null||had.optLong("at")<o.optLong("at")){lastOut.put(sr.id,new JSONObject().put("series",sr.json()).put("episode",eid).put("season",o.optInt("se")).put("num",o.optInt("num")).put("at",o.optLong("at")));series0++;}
+        }
+        synchronized(lock){
+            if(!key.equals(AccountData.stamp(c)))return "";   // the subscription changed again: the next change carries it
+            SharedPreferences sp=store(c);
+            JSONObject progNow=read(c,"progress-"+key),epNow=read(c,"episodes-"+key),lastNow=read(c,"seriesLast-"+key);
+            // what was watched since the change stays as it is
+            for(java.util.Iterator<String> it=prog.keys();it.hasNext();){String id=it.next();if(!progNow.has(id))progNow.put(id,prog.get(id));}
+            for(java.util.Iterator<String> it=epOut.keys();it.hasNext();){String id=it.next();if(!epNow.has(id))epNow.put(id,epOut.get(id));}
+            for(java.util.Iterator<String> it=lastOut.keys();it.hasNext();){String id=it.next();if(!lastNow.has(id))lastNow.put(id,lastOut.get(id));}
+            sp.edit().putString("progress-"+key,progNow.toString()).putString("episodes-"+key,epNow.toString()).putString("seriesLast-"+key,lastNow.toString())
+              .putString("favorites-"+key,joinedById(sp.getString("favorites-"+key,"[]"),favF,300))
+              .putString("seriesFavorites-"+key,joinedById(sp.getString("seriesFavorites-"+key,"[]"),favS,300))
+              .remove(stashKey(key)).commit();
+        }
+        return films0+" فيلم، "+series0+" مسلسل، "+eps0+" حلقة، "+favs0+" مفضلة؛ بلا مقابل: "+lost;
+    }
+    /** Gives up after three failed tries (each reads the whole catalogue): the stash goes. */
+    static void giveUpIfTried(Context c,String forKey){
+        try{JSONObject st=new JSONObject(store(c).getString(stashKey(forKey),"{}"));if(st.optInt("tries",0)>=3)store(c).edit().remove(stashKey(forKey)).commit();}catch(Exception ignored){}
+    }
+    private static String joinedById(String now,JSONArray carried,int cap){
+        JSONArray out=new JSONArray();Set<String> ids=new HashSet<>();
+        try{JSONArray cur=new JSONArray(now);for(int i=0;i<cur.length()&&out.length()<cap;i++){JSONObject o=cur.optJSONObject(i);if(o!=null&&ids.add(o.optString("id")))out.put(o);}}catch(Exception ignored){}
+        for(int i=0;i<carried.length()&&out.length()<cap;i++){JSONObject o=carried.optJSONObject(i);if(o!=null&&ids.add(o.optString("id")))out.put(o);}
+        return out.toString();
+    }
+    /** The new subscription's title for this name: the same clean name; when there are several, the same year, then the same full name. */
+    private static Movie best(String name,Map<String,List<Movie>> found){
+        List<Movie> l=found.get(canon(name));
+        if(l==null||l.isEmpty())return null;
+        String y=yearOf(name);Movie pick=null;int score=Integer.MAX_VALUE;
+        for(Movie m:l){int sc=(y.isEmpty()||m.year.isEmpty()||y.equals(m.year)?0:2)+(m.name.trim().equalsIgnoreCase(name.trim())?0:1);if(sc<score){score=sc;pick=m;}}
+        return pick;
+    }
+    /** Reads the new subscription's whole film (or series) list as a stream and keeps only the titles wanted. */
+    private static Map<String,List<Movie>> streamFind(XtreamAccount a,boolean series,Set<String> wanted) throws Exception {
+        Map<String,List<Movie>> out=new HashMap<>();
+        HttpURLConnection c=(HttpURLConnection)new URL(a.api(series?"get_series":"get_vod_streams",null)).openConnection();
+        c.setConnectTimeout(15000);c.setReadTimeout(60000);c.setInstanceFollowRedirects(true);
+        try{
+            if(c.getResponseCode()!=200)throw new Exception("HTTP "+c.getResponseCode());
+            try(JsonReader r=new JsonReader(new InputStreamReader(c.getInputStream(),StandardCharsets.UTF_8))){
+                if(r.peek()!=JsonToken.BEGIN_ARRAY)return out;   // nothing of that kind in this subscription
+                r.beginArray();
+                while(r.hasNext()){
+                    if(r.peek()!=JsonToken.BEGIN_OBJECT){r.skipValue();continue;}
+                    String id="",name="",icon="",ext="",cat="",rate="";long added=0;
+                    r.beginObject();
+                    while(r.hasNext()){
+                        String k=r.nextName();JsonToken t=r.peek();
+                        if(t!=JsonToken.STRING&&t!=JsonToken.NUMBER){r.skipValue();continue;}
+                        String v=r.nextString();
+                        switch(k){
+                            case "stream_id":if(!series)id=v;break;
+                            case "series_id":if(series)id=v;break;
+                            case "name":name=v.trim();break;
+                            case "stream_icon":if(!series)icon=v;break;
+                            case "cover":if(series)icon=v;break;
+                            case "container_extension":ext=v;break;
+                            case "category_id":cat=v;break;
+                            case "rating":rate=v;break;
+                            case "added":if(!series)try{added=Long.parseLong(v.trim());}catch(Exception e){added=0;}break;
+                            case "last_modified":if(series)try{added=Long.parseLong(v.trim());}catch(Exception e){added=0;}break;
+                            default:break;
+                        }
+                    }
+                    r.endObject();
+                    if(id.isEmpty()||name.isEmpty())continue;
+                    String k=canon(name);
+                    if(!wanted.contains(k))continue;
+                    List<Movie> l=out.get(k);
+                    if(l==null){l=new ArrayList<>();out.put(k,l);}
+                    if(l.size()<10)l.add(new Movie(id,name,icon,ext,cat,rating(rate),added));
+                }
+            }
+        }finally{c.disconnect();}
+        return out;
+    }
+    /** A series' episodes on the new subscription: "season:number" -> episode id. */
+    private static Map<String,String> episodeIds(XtreamAccount a,String seriesId) throws Exception {
+        Map<String,String> out=new HashMap<>();
+        JSONObject o=new JSONObject(XtreamAccount.get(a.api("get_series_info","series_id="+XtreamAccount.enc(seriesId))));
+        Object eps=o.opt("episodes");
+        List<JSONArray> groups=new ArrayList<>();
+        if(eps instanceof JSONObject){java.util.Iterator<String> it=((JSONObject)eps).keys();while(it.hasNext()){JSONArray g=((JSONObject)eps).optJSONArray(it.next());if(g!=null)groups.add(g);}}
+        else if(eps instanceof JSONArray){JSONArray g=(JSONArray)eps;for(int k=0;k<g.length();k++){Object x=g.opt(k);if(x instanceof JSONArray)groups.add((JSONArray)x);}}
+        for(JSONArray g:groups)for(int k=0;k<g.length();k++){
+            JSONObject e=g.optJSONObject(k);if(e==null)continue;
+            String id=e.optString("id");if(id.isEmpty())continue;
+            JSONObject ei=e.optJSONObject("info");
+            int season=e.optInt("season",ei==null?1:ei.optInt("season",1)),num=e.optInt("episode_num",k+1);
+            out.put(season+":"+num,id);
+        }
+        return out;
+    }
+
     /** "4 مواسم" in Arabic. */
     static String seasons(int n){return n==1?"موسم واحد":n==2?"موسمان":n<=10?n+" مواسم":n+" موسماً";}
 

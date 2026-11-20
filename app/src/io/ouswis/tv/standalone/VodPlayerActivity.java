@@ -260,8 +260,8 @@ public final class VodPlayerActivity extends Activity {
             else if(buffering){Design.center(c,"جارٍ التحميل…",960,560,big);}
             long dur=player==null?knownDur:(player.getDuration()>0?player.getDuration():knownDur);
             long pos=seekTarget>=0?seekTarget:player==null?0:player.getCurrentPosition();
-            Design.right(c,Design.fit(movie.name,name,1200),1848,880,name);
-            a11y.add(600,840,1848,890,movie.name,false,false);
+            Design.right(c,Design.fit(movie.shown,name,1200),1848,880,name);
+            a11y.add(600,840,1848,890,movie.shown,false,false);
             boolean paused=player!=null&&!player.getPlayWhenReady();
             if(paused)Design.left(c,"❚❚ متوقف",72,880,time);
             float f=dur>0?Math.max(0,Math.min(1,pos/(float)dur)):0;

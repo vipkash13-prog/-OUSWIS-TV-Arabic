@@ -63,7 +63,7 @@ public final class SeriesActivity extends Activity {
 
     private static String label(VodData.Episode e){return "م"+e.season+" · ح"+e.num;}
     private void play(VodData.Episode e,long from){
-        startActivity(VodPlayerActivity.episode(this,show,e,from,show.name+" · "+label(e)));
+        startActivity(VodPlayerActivity.episode(this,show,e,from,show.shown+" · "+label(e)));
     }
 
     private final class PageView extends View {
@@ -100,6 +100,7 @@ public final class SeriesActivity extends Activity {
         void resumed(){work();invalidate();}
         void infoReady(){
             VodData.SeriesInfo in=info();
+            if(in!=null)VodData.tagEpisodes(getContext(),account,show,in);
             if(in!=null){
                 String text=in.info.plot;
                 plot=text.isEmpty()?null:StaticLayout.Builder.obtain(text,0,text.length(),plotPaint,420)
@@ -147,13 +148,14 @@ public final class SeriesActivity extends Activity {
             String rate=show.rating>0?show.ratingText():in!=null&&in.info.rating>0?String.format(java.util.Locale.US,"%.1f",in.info.rating):"";
             Bitmap pb=PosterCache.get(show.icon,PosterCache.LARGE,this::invalidate);
             if(pb==null)pb=PosterCache.get(show.icon,PosterCache.GRID,this::invalidate);
-            poster.draw(c,r,pb,show.name,rate,true);
-            Design.right(c,Design.fitShrink(show.name,title,420),1848,756,title);
-            a11y.add(1428,700,1848,770,show.name,false,false);
+            poster.draw(c,r,pb,show.shown,rate,true);
+            Design.right(c,Design.fitShrink(show.shown,title,420),1848,756,title);
+            a11y.add(1428,700,1848,770,show.shown,false,false);
             List<String> facts=new ArrayList<>();
             if(!rate.isEmpty())facts.add("★"+rate);
             if(in!=null&&!in.seasons.isEmpty())facts.add(VodData.seasons(in.seasons.size()));
-            if(in!=null&&!in.info.year.isEmpty())facts.add(in.info.year);
+            String year=in!=null&&!in.info.year.isEmpty()?in.info.year:show.year;
+            if(!year.isEmpty())facts.add(year);
             float x=1848;
             for(String f:facts){
                 boolean isRate=f.startsWith("★");String t=isRate?f.substring(1):f;

@@ -109,16 +109,21 @@ CATS = [('1', 'AR| أفلام عربية'), ('2', 'EN| Action'), ('3', 'XXX Adul
 COLOURS = [(200, 40, 40), (40, 160, 60), (40, 70, 200), (200, 150, 30), (150, 40, 180), (30, 160, 170), (210, 90, 30), (90, 90, 210), (170, 170, 40), (200, 60, 120)]
 MOVIES = {   # id: (name, category, rating, added days ago)
     '501': ('ظل الصحراء', '1', '7.5', 1), '502': ('المدينة الأخيرة', '1', '7.9', 0), '503': ('سرّ البحر', '1', '6.6', 3), '504': ('رحلة النجوم', '1', '8.5', 5),
-    '505': ('الحارس', '1', '9.0', 7), '506': ('طريق الذهب', '1', '6.9', 9), '507': ('ليلة في جدة', '1', '6.5', 11), '508': ('الصقر', '1', '6.4', 13),
-    '601': ('Desert Storm', '2', '7.1', 2), '602': ('Night Run', '2', '5.9', 4), '603': ('Last Train', '2', '8.0', 6), '604': ('Two Voices', '2', '6.2', 8),
+    '505': ('-TOP- الحارس', '1', '9.0', 7), '506': ('R - طريق الذهب', '1', '6.9', 9), '507': ('ليلة في جدة', '1', '6.5', 11), '508': ('الصقر', '1', '6.4', 13),
+    '601': ('Desert Storm', '2', '7.1', 2), '602': ('Night Run: The Long Road Back Home', '2', '5.9', 4), '603': ('EN| Last Train (2019)', '2', '8.0', 6), '604': ('AS-S - Two Voices', '2', '6.2', 8),
     '901': ('Adult Film', '3', '5.0', 0),
 }
-def stream(i, m):
+def stream(i, m, off=0):
     name, cat, rate, ago = m
-    return {'num': int(i), 'name': name, 'stream_type': 'movie', 'stream_id': int(i), 'stream_icon': 'http://127.0.0.1:%d/poster/%s.png' % (PORT[0], i),
+    if off: name = B_NAMES.get(i, name)
+    return {'num': int(i), 'name': name, 'stream_type': 'movie', 'stream_id': int(i) + off, 'stream_icon': 'http://127.0.0.1:%d/poster/%s.png' % (PORT[0], i),
             'rating': rate, 'rating_5based': float(rate) / 2, 'added': str(NOW - ago * 86400 - int(i)), 'category_id': cat, 'container_extension': 'mkv' if i == '604' else 'mp4', 'custom_sid': None, 'direct_source': ''}
 PORT = [0]
-SERIES = [('701', 'الوادي البعيد', '21', '8.6'), ('702', 'Night Shift', '21', '7.0'), ('901', 'Adult Show', '22', '5.0')]
+SERIES = [('701', 'الوادي البعيد', '21', '8.6'), ('702', 'AR| Night Shift (2021)', '21', '7.0'), ('901', 'Adult Show', '22', '5.0')]
+# subscription B (user demo2): the same titles under other numbers (+5000) and other prefixes, without Desert Storm
+B_OFF = 5000
+B_NAMES = {'602': 'PT - Night Run: The Long Road Back Home (2024)', '701': 'AR| الوادي البعيد'}
+B_LACKS = {'601'}
 EPISODES = [('1001', 1, 1), ('1002', 1, 2), ('1003', 1, 3), ('1004', 2, 1), ('1005', 2, 2), ('1006', 2, 3)]
 CLIP = [b'']
 MKV = [b'']
@@ -152,13 +157,15 @@ class Provider(BaseHTTPRequestHandler):
                             'competitions': [{'competitors': [team(home, 'home'), team(away, 'away')], 'broadcasts': []}]}
                 events = [ev('9101', 'Liverpool', 'Arsenal', 10), ev('9102', 'Chelsea', 'Everton', 20), ev('9103', 'Fulham', 'Brentford', 30), ev('9104', 'Leeds', 'Burnley', 40)]
             return self.send_bytes(json.dumps({'leagues': [{'name': 'English Premier League', 'logos': []}], 'events': events}).encode(), 'application/json')
+        who = q.get('username', [''])[0] or (url.path.split('/')[2] if url.path.count('/') >= 4 else '')
+        off = B_OFF if who == 'demo2' else 0
         if url.path == '/player_api.php':
             if action == 'get_vod_categories': body = [{'category_id': i, 'category_name': n, 'parent_id': 0} for i, n in CATS]
             elif action == 'get_vod_streams':
                 cat = q.get('category_id', [''])[0]
-                body = [stream(i, m) for i, m in MOVIES.items() if cat in ('', m[1])]
+                body = [stream(i, m, off) for i, m in MOVIES.items() if cat in ('', m[1]) and not (off and i in B_LACKS)]
             elif action == 'get_vod_info':
-                i = q.get('vod_id', [''])[0]; name, cat, rate, ago = MOVIES.get(i, ('?', '1', '0', 0))
+                i = str(int(q.get('vod_id', ['0'])[0] or 0) - off); name, cat, rate, ago = MOVIES.get(i, ('?', '1', '0', 0))
                 body = {'info': {'name': name, 'plot': 'بعد انقطاع الاتصال عن آخر مدينة على الساحل، ينطلق فريق صغير في رحلة خطيرة عبر الصحراء لإيصال رسالة قد تغيّر مصير الجميع.',
                                  'cast': 'ممثل أول، ممثلة ثانية، ممثل ثالث', 'director': 'مخرج الاختبار', 'genre': 'أكشن', 'releasedate': '2025-03-01',
                                  'duration_secs': 120, 'duration': '00:02:00', 'rating': rate, 'video': {'width': 1920, 'height': 1080}},
@@ -166,13 +173,13 @@ class Provider(BaseHTTPRequestHandler):
             elif action == 'get_series_categories': body = [{'category_id': '21', 'category_name': 'AR| مسلسلات عربية', 'parent_id': 0}, {'category_id': '22', 'category_name': 'XXX Adult', 'parent_id': 0}]
             elif action == 'get_series':
                 cat = q.get('category_id', [''])[0]
-                body = [{'num': n + 1, 'name': name, 'series_id': int(sid), 'cover': 'http://127.0.0.1:%d/poster/%s.png' % (PORT[0], sid), 'plot': '', 'rating': rate,
+                body = [{'num': n + 1, 'name': B_NAMES.get(sid, name) if off else name, 'series_id': int(sid) + off, 'cover': 'http://127.0.0.1:%d/poster/%s.png' % (PORT[0], sid), 'plot': '', 'rating': rate,
                          'last_modified': str(NOW - n * 3600), 'category_id': c} for n, (sid, name, c, rate) in enumerate(SERIES) if cat in ('', c)]
             elif action == 'get_series_info':
-                sid = q.get('series_id', [''])[0]
+                sid = str(int(q.get('series_id', ['0'])[0] or 0) - off)
                 body = {'seasons': [{'season_number': 1, 'name': 'Season 1', 'episode_count': 3}, {'season_number': 2, 'name': 'Season 2', 'episode_count': 3}],
                         'info': {'name': 'الوادي البعيد', 'plot': 'قصة المسلسل من بيانات الاشتراك.', 'cast': 'ممثل', 'director': 'مخرج', 'releaseDate': '2023-05-01', 'rating': '8.6', 'category_id': '21'},
-                        'episodes': {str(season): [{'id': eid, 'episode_num': num, 'title': 'الوادي البعيد S0%dE0%d' % (se, num), 'container_extension': 'mkv' if eid == '1006' else 'mp4', 'season': se,
+                        'episodes': {str(season): [{'id': str(int(eid) + off), 'episode_num': num, 'title': 'الوادي البعيد S0%dE0%d' % (se, num), 'container_extension': 'mkv' if eid == '1006' else 'mp4', 'season': se,
                                                 'info': {'plot': 'ملخص الحلقة %d' % num, 'duration_secs': 120}} for eid, se, num in EPISODES if se == season] for season in (1, 2)} if sid == '701' else {}}
             elif action in ('get_live_categories',): body = [{'category_id': '11', 'category_name': 'رياضة'}]
             elif action in ('get_live_streams',): body = [{'num': 101, 'name': 'SSC 1 HD', 'stream_id': '101', 'category_id': '11', 'stream_icon': '', 'container_extension': 'ts'}]
@@ -183,13 +190,13 @@ class Provider(BaseHTTPRequestHandler):
         if m:
             b = BytesIO(); Image.new('RGB', (300, 450), COLOURS[int(m[1]) % len(COLOURS)]).save(b, 'PNG')
             return self.send_bytes(b.getvalue(), 'image/png')
-        if url.path == '/series/demo/demo/1006.mkv':
+        if url.path in ('/series/demo/demo/1006.mkv', '/series/demo2/demo2/6006.mkv'):
             return self.send_bytes(MKV[0], 'video/x-matroska')
-        if re.fullmatch(r'/series/demo/demo/10\d\d\.mp4', url.path):
+        if re.fullmatch(r'/series/(demo|demo2)/\1/[16]0\d\d\.mp4', url.path):
             return self.send_bytes(CLIP[0], 'video/mp4')
-        if url.path == '/movie/demo/demo/604.mkv':
+        if url.path in ('/movie/demo/demo/604.mkv', '/movie/demo2/demo2/5604.mkv'):
             return self.send_bytes(MKV[0], 'video/x-matroska')
-        m = re.fullmatch(r'/movie/demo/demo/(\d+)\.mp4', url.path)
+        m = re.fullmatch(r'/movie/(?:demo|demo2)/(?:demo|demo2)/(\d+)\.mp4', url.path)
         if m:
             assert m[1] != '901'
             return self.send_bytes(CLIP[0], 'video/mp4')
@@ -262,6 +269,11 @@ try:
     assert colourful(img, (0.62, 0.14, 0.79, 0.42)) > 0.3, 'The first poster is not drawn from the provider'
     assert 'المدينة الأخيرة' in focused_label(), 'The first film holds the focus: ' + focused_label()
     note('PASS: films screen: newest first, ' + head[0] + ', posters from the provider, sections on the right, no adult section or film.')
+    # the providers' prefixes and the year at the end of a name are not shown (R - , -TOP- , AS-S - , EN| , (2019))
+    for need in ('الحارس · ★ 9.0', 'طريق الذهب · ★ 6.9', 'Last Train · ★ 8.0', 'Two Voices · ★ 6.2'):
+        assert need in labs, 'The clean name is not shown: ' + need + ' | ' + str(grid)
+    assert not any(t in l for l in grid for t in ('-TOP-', 'R - ', 'AS-S', 'EN|', '2019')), 'A prefix or a year shows under a poster: ' + str(grid)
+    note('PASS: names shown clean: الحارس, طريق الذهب, Last Train, Two Voices (provider: -TOP- الحارس, R - طريق الذهب, EN| Last Train (2019), AS-S - Two Voices).')
 
     # sort by rating: the 9.0 film first
     keys('DPAD_UP', 'DPAD_LEFT', 'DPAD_CENTER', pause=0.8)
@@ -486,7 +498,7 @@ try:
 
     # 8. the home's films and series row (home_vod.png): started and unfinished first with their progress, then the newest
     adb('shell', 'am', 'force-stop', PKG); time.sleep(1)
-    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.VodPlayerActivity', '--es', 'id', '602', '--es', 'name', "'Night Run'", '--es', 'icon', 'http://127.0.0.1:%d/poster/602.png' % PORT[0], '--es', 'ext', 'mp4', '--es', 'cat', '2', '--el', 'from', '50000')
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.VodPlayerActivity', '--es', 'id', '602', '--es', 'name', "'Night Run: The Long Road Back Home'", '--es', 'icon', 'http://127.0.0.1:%d/poster/602.png' % PORT[0], '--es', 'ext', 'mp4', '--es', 'cat', '2', '--el', 'from', '50000')
     front('VodPlayerActivity'); time.sleep(5); keys('BACK', pause=2)   # a film stopped part way (about 55 s of 2 min)
     adb('shell', 'am', 'force-stop', PKG); time.sleep(1)
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.HomeActivity'); front('HomeActivity')
@@ -498,7 +510,7 @@ try:
         time.sleep(1)
     rl = row_labels()
     note('Home row (right to left): ' + ' | '.join(rl[:7]))
-    assert rl and rl[0].startswith('Night Run · فيلم · تابع المشاهدة '), 'The last film started comes first, with its progress: ' + str(rl[:4])
+    assert rl and rl[0].startswith('Night Run: The Long Road Back Home · فيلم · تابع المشاهدة '), 'The last film started comes first, with its progress: ' + str(rl[:4])
     assert len(rl) > 1 and rl[1].startswith('الوادي البعيد · مسلسل · ح3 · تابع المشاهدة '), 'Then the series left part way, with its episode: ' + str(rl[:4])
     assert [l.split(' · ')[0] for l in rl[2:5]] == ['المدينة الأخيرة', 'Night Shift', 'ظل الصحراء'], 'Then the newest films and series, newest first: ' + str(rl[2:6])
     assert all('تابع المشاهدة' not in l for l in rl[2:]), 'Only what is being watched carries a progress bar: ' + str(rl)
@@ -508,7 +520,7 @@ try:
         time.sleep(1)
     time.sleep(2)
     img = shot('vod-home-row.png')
-    first = [list(map(int, re.findall(r'\d+', n.get('bounds')))) for n in tree().iter('node') if n.get('package') == PKG and (n.get('text', '') or n.get('content-desc', '')).startswith('Night Run · ')]
+    first = [list(map(int, re.findall(r'\d+', n.get('bounds')))) for n in tree().iter('node') if n.get('package') == PKG and (n.get('text', '') or n.get('content-desc', '')).startswith('Night Run')]
     assert first, 'The first poster has no node'
     x1, y1, x2, y2 = first[0]
     W, H = img.size
@@ -538,6 +550,17 @@ try:
         if focused_label().startswith('Night Run'): break
         keys('DPAD_DOWN', pause=0.6)
     assert focused_label().startswith('Night Run'), 'DOWN reaches the row and its first poster: ' + focused_label()
+    # a name too long for the poster scrolls while the poster has the focus, and stays still on the others
+    def name_strip(label_start):
+        b = [list(map(int, re.findall(r'\d+', n.get('bounds')))) for n in tree().iter('node') if n.get('package') == PKG and (n.get('text', '') or n.get('content-desc', '')).startswith(label_start)]
+        x1, y1, x2, y2 = b[0]
+        return (x1 + 4, y2 - int((y2 - y1) * 0.2), x2 - 4, y2 - 14)   # the name's line, above the progress bar
+    strip = name_strip('Night Run')
+    a1 = shot('vod-marquee-1.png').crop(strip); time.sleep(2.5); a2 = shot('vod-marquee-2.png').crop(strip)
+    from PIL import ImageChops
+    moved = ImageChops.difference(a1.convert('L'), a2.convert('L')).point(lambda v: 255 if v > 60 else 0).getbbox() is not None
+    assert moved, 'The long name of the focused poster must scroll'
+    note('PASS: the focused poster\'s long name (Night Run: The Long Road Back Home) scrolls (marquee).')
     keys('DPAD_CENTER', pause=2); front('MovieActivity')
     wait_label('Night Run', 'the film page from the home row')
     assert any(l.startswith('▶ كمّل من ') for l in labels()), 'The film page offers to continue: ' + str(labels()[:20])
@@ -545,6 +568,10 @@ try:
     assert focused_label().startswith('Night Run'), 'Back on the home, the focus stays on the poster: ' + focused_label()
     keys('DPAD_LEFT', pause=0.6)
     assert focused_label().startswith('الوادي البعيد'), focused_label()
+    b1 = shot('vod-marquee-3.png').crop(strip); time.sleep(2.5); b2 = shot('vod-marquee-4.png').crop(strip)
+    still = ImageChops.difference(b1.convert('L'), b2.convert('L')).point(lambda v: 255 if v > 60 else 0).getbbox() is None
+    assert still, 'Without the focus the long name must stay still (cut with …)'
+    note('PASS: without the focus the long name stays still.')
     keys('DPAD_CENTER', pause=2); front('SeriesActivity')
     wait_label('▶ كمّل: ', 'the series page from the home row')
     keys('BACK', pause=2); front('HomeActivity')
@@ -559,7 +586,51 @@ try:
     note('PASS: on the home row, OK opens the film page (with "كمّل من"), the series page, and عرض الكل the films screen; the focus stays on the poster after Back.')
     no_crash('Home row')
 
-    # 9. Live TV still opens from its shortcut, with the account
+    # 9. another subscription (B): the films and series history and the favourites follow by name, with B's numbers;
+    # what B lacks (Desert Storm, a favourite) goes, and nothing of A's numbers stays
+    old_key, new_key = jhash('http://127.0.0.1:%d|demo' % PORT[0]), jhash('http://127.0.0.1:%d|demo2' % PORT[0])
+    before = adb('shell', 'cat', folder + '/ouswis-vod.xml')
+    assert 'progress-' + old_key in before and 'Desert Storm' in before, 'Test setup: A\'s history and favourites: ' + before[:300]
+    adb('shell', 'am', 'force-stop', PKG); time.sleep(1)
+    adb('shell', 'rm', '-f', folder + '/xtream-vault.xml')
+    xml_b = '<?xml version="1.0" encoding="utf-8"?><map><string name="server">http://127.0.0.1:%d</string><string name="user">demo2</string><string name="pass">demo2</string></map>' % PORT[0]
+    subprocess.run([ADB, 'shell', 'cat > %s/XtreamActivity.xml' % folder], input=xml_b.encode(), check=True)
+    adb('shell', 'chown', uid + ':' + uid, folder + '/XtreamActivity.xml')
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.HomeActivity'); front('HomeActivity')
+    after = ''
+    for _ in range(60):
+        after = adb('shell', 'cat', folder + '/ouswis-vod.xml', check=False).replace('&quot;', '"')
+        if 'vodStash-' not in after and 'progress-' + new_key in after: break
+        time.sleep(1)
+    assert 'vodStash-' not in after and 'progress-' + new_key in after, 'The carry-over did not finish: ' + after[:600]
+    assert old_key not in after, 'Nothing of A may stay: ' + after[:600]
+    assert '"5602"' in after and '"602"' not in after, 'The film follows under B\'s number: ' + after[:600]
+    fav = re.search(r'name="favorites-%s">(.*?)</string>' % new_key, after, re.S)
+    assert not fav or 'Desert Storm' not in fav[1], 'A favourite B lacks must go: ' + (fav[1] if fav else '')
+    assert '"6006"' in after and '"6004"' in after and '"5701"' in after, 'The episodes and the series follow under B\'s numbers: ' + after[:800]
+    log = adb('shell', 'cat', '/data/user/0/%s/files/playlog.txt' % PKG, check=False)
+    carried = [l for l in log.splitlines() if 'نُقل سجل الأفلام والمسلسلات' in l]
+    note('PASS: subscription B: ' + (carried[-1].split('|')[-1].strip() if carried else 'carried over') + '; no number of A left; Desert Storm (not in B) dropped.')
+    adb('shell', 'am', 'force-stop', PKG); time.sleep(1)
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.HomeActivity'); front('HomeActivity')
+    rl = []
+    for _ in range(20):
+        rl = row_labels()
+        if len(rl) >= 2 and 'تابع المشاهدة' in rl[1]: break
+        time.sleep(1)
+    assert rl and rl[0].startswith('Night Run: The Long Road Back Home · فيلم · تابع المشاهدة ') and rl[1].startswith('الوادي البعيد · مسلسل · ح3 · تابع المشاهدة '), 'B\'s home row continues the same film and series: ' + str(rl[:3])
+    shot('vod-carry-home.png')
+    adb('shell', 'am', 'start', '-W', '-n', PKG + '/.SeriesActivity', '--es', 'id', '5701', '--es', 'name', "'AR| الوادي البعيد'", '--es', 'cat', '21')
+    front('SeriesActivity'); wait_label('▶ كمّل: م2 · ح3', 'continue on B\'s series page')
+    labs = labels()
+    if not any(l.startswith('الموسم 2 — محدد') for l in labs): keys('DPAD_LEFT', pause=1); labs = labels()
+    assert any(l.startswith('الحلقة 1 · شوهدت') for l in labs) and any(l.startswith('الحلقة 2 · متوقفة عند ') for l in labs), 'Watched and part-watched episodes follow: ' + str(labs)
+    shot('vod-carry-series.png')
+    keys('BACK', pause=1.5)
+    note('PASS: on B the home row continues the same film and series, and the series page keeps ✓ شوهدت, the part-watched episode and "كمّل: م2 · ح3".')
+    no_crash('Subscription change')
+
+    # 10. Live TV still opens from its shortcut, with the account
     keys('BACK', pause=2)
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.HomeActivity'); front('HomeActivity'); time.sleep(2)
     keys(*['DPAD_DOWN'] * 7, pause=0.4); keys(*['DPAD_RIGHT'] * 9, pause=0.25)

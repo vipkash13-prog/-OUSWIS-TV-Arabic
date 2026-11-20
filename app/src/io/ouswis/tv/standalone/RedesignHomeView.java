@@ -772,6 +772,10 @@ final class RedesignHomeView extends View {
     private int vodFirst;   // index of the first poster showing in the row
     private final VodDraw vodPoster=new VodDraw(VOD_W,VOD_H,18);
     private final Runnable posterArrived=this::postInvalidate;
+    private int vodFocus=-1;
+    private long vodFocusAt;
+    private boolean vodMarquee;
+    private final Runnable vodMarqueeTick=()->{vodMarquee=false;invalidate();};
     /** The films and series row: a heading with "عرض الكل", then posters (right to left), scrolling sideways with the focus. */
     private void drawVod(Canvas c){
         Paint icon=tx(Design.GOLD,22,Design.regular());
@@ -795,6 +799,7 @@ final class RedesignHomeView extends View {
             }
             return;
         }
+        if(!(hasFocus()&&row==3))vodFocus=-1;
         int at=col[3];
         if(at<n){if(at<vodFirst)vodFirst=at;if(at>=vodFirst+VOD_SLOTS)vodFirst=at-VOD_SLOTS+1;}
         else vodFirst=Math.max(0,n-VOD_SLOTS);
@@ -807,8 +812,10 @@ final class RedesignHomeView extends View {
             float right=1848-(i-vodFirst)*VOD_PITCH;
             r.set(right-VOD_W,VOD_TOP,right,VOD_TOP+VOD_H);RectF box=ring(r,focus(3,i));
             Bitmap b=PosterCache.get(it.m.icon,PosterCache.GRID,posterArrived);
-            vodPoster.drawHome(c,box,b,it.m.name,it.tag,it.progress);
-            a11y.add(box,it.m.name+" · "+it.tag+(it.progress>=0?" · تابع المشاهدة "+Math.round(it.progress*100)+"%":""),focus(3,i),true);
+            long scroll=-1;
+            if(focus(3,i)){if(i!=vodFocus){vodFocus=i;vodFocusAt=android.os.SystemClock.uptimeMillis();}scroll=android.os.SystemClock.uptimeMillis()-vodFocusAt;}
+            if(vodPoster.drawHome(c,box,b,it.m.shown,it.tag,it.progress,scroll)&&!vodMarquee){vodMarquee=true;postDelayed(vodMarqueeTick,33);}   // a long focused name scrolls, about 30 frames a second
+            a11y.add(box,it.m.shown+" · "+it.tag+(it.progress>=0?" · تابع المشاهدة "+Math.round(it.progress*100)+"%":""),focus(3,i),true);
             if(focus(3,i))Design.focusRing(c,box,14,1,p);
         }
         for(int i=vodFirst+VOD_SLOTS;i<Math.min(n,vodFirst+VOD_SLOTS+2);i++)PosterCache.get(vodItems.get(i).m.icon,PosterCache.GRID,null);   // the next two, ahead
