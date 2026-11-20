@@ -459,9 +459,12 @@ try:
     play('605', 'Many Voices', 'mkv')
     keys('DPAD_DOWN', pause=1.5)
     ml = menu_labels()
-    subs = [l for l in ml if l.startswith('الترجمة: ')]
-    assert subs[:3] == ['الترجمة: بدون ترجمة — مختار', 'الترجمة: عربي', 'الترجمة: إنجليزي'], 'Subtitles must start with بدون ترجمة, then Arabic, then the rest: ' + str(subs)
-    assert ml[0].startswith('الصوت: ') and ml.index('الترجمة: بدون ترجمة — مختار') > max(i for i, l in enumerate(ml) if l.startswith('الصوت: ')), 'The sound comes before the subtitles: ' + str(ml)
+    # (the Arabic subtitles picked earlier in this test are still the kept choice, so they carry the ✓ here)
+    subs = [l.split(' — ')[0] for l in ml if l.startswith('الترجمة: ')]
+    assert subs[:3] == ['الترجمة: بدون ترجمة', 'الترجمة: عربي', 'الترجمة: إنجليزي'], 'Subtitles must start with بدون ترجمة, then Arabic, then the rest: ' + str(subs)
+    assert 'الترجمة: عربي — مختار' in ml, 'The kept Arabic subtitles: ' + str(ml)
+    first_sub = min(i for i, l in enumerate(ml) if l.startswith('الترجمة: '))
+    assert ml[0].startswith('الصوت: ') and first_sub > max(i for i, l in enumerate(ml) if l.startswith('الصوت: ')), 'The sound comes before the subtitles: ' + str(ml)
     img = shot('vod-tracks-many-top.png')
     panel = img.getpixel((1246, 600))
     assert abs(panel[0] - 0x12) <= 6 and abs(panel[1] - 0x1A) <= 6 and abs(panel[2] - 0x3A) <= 6, 'The panel must be opaque #121A3A: ' + str(panel)
