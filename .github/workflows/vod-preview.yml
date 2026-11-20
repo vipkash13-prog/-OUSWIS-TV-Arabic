@@ -3,7 +3,7 @@ name: Films preview (signed, emulator tested)
 # test (tools/test-vod.py) pass on a 1920x1080 Android 14 emulator. Published as a pre-release, never the official release.
 on:
   push:
-    branches: ['feature/vod-movies']
+    branches: ['feature/vod-movies', 'feature/vod-series']
     paths: ['app/**', 'build.sh', 'tools/test-vod.py', 'tools/test-gold-home.py', '.github/workflows/vod-preview.yml']
   workflow_dispatch:
 permissions:
@@ -95,8 +95,8 @@ jobs:
           code=$(sed -n 's/.*android:versionCode="\([0-9]*\)".*/\1/p' app/AndroidManifest.xml)
           cp FreeMyTV.apk OUSWIS-TV-preview.apk
           tag="preview-vod-${GITHUB_RUN_ID}"
-          gh release create "$tag" --prerelease --target "$GITHUB_SHA" --title "OUSWIS TV films preview (round 1, not an official release)" \
-            --notes "Films round 1 (movies only) from feature/vod-movies. Signed with the repository key, versionCode $code, versionName 1.0: installs over the current build. Emulator tests passed (run ${GITHUB_RUN_ID}); not tested on the MECOOL KM2 Plus." \
+          gh release create "$tag" --prerelease --target "$GITHUB_SHA" --title "OUSWIS TV films and series preview (not an official release)" \
+            --notes "Films and series preview from ${GITHUB_REF_NAME}. Signed with the repository key, versionCode $code, versionName 1.0: installs over the current build. Emulator tests passed (run ${GITHUB_RUN_ID}); not tested on the MECOOL KM2 Plus." \
             OUSWIS-TV-preview.apk vod-evidence/*.png vod-evidence/vod.log vod-evidence/gold-home.log
           echo "https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/OUSWIS-TV-preview.apk" | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Remove runner signing key

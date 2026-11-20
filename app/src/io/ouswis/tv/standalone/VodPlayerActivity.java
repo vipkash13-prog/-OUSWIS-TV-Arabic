@@ -45,10 +45,16 @@ public final class VodPlayerActivity extends Activity {
     private long startAt,knownDur;
     private boolean ended,failedOnce;
     private String error="";
+    private VodData.Movie show;   // set when this is an episode of that series
     private boolean tracksApplied;
     private List<Cue> cues=new ArrayList<>();
     private TrackMenu menu;
 
+    /** An episode: `show` is the series (saved as its last episode), `title` what the bar shows (the series · S2 · E3). */
+    static Intent episode(Context c,VodData.Movie show,VodData.Episode e,long from,String title){
+        return new Intent(c,VodPlayerActivity.class).putExtra("id",e.id).putExtra("name",title).putExtra("ext",e.ext).putExtra("from",from).putExtra("dur",e.seconds*1000L)
+                .putExtra("show",show.id).putExtra("showName",show.name).putExtra("showIcon",show.icon).putExtra("showCat",show.cat).putExtra("showRating",show.rating).putExtra("showAdded",show.added);
+    }
     static Intent intent(Context c,VodData.Movie m,String ext,long from,long dur){
         return new Intent(c,VodPlayerActivity.class).putExtra("id",m.id).putExtra("name",m.name).putExtra("icon",m.icon).putExtra("ext",ext)
                 .putExtra("cat",m.cat).putExtra("rating",m.rating).putExtra("added",m.added).putExtra("from",from).putExtra("dur",dur);
@@ -67,6 +73,7 @@ public final class VodPlayerActivity extends Activity {
         movie=new VodData.Movie(str("id"),str("name"),str("icon"),str("ext"),str("cat"),i.getFloatExtra("rating",0),i.getLongExtra("added",0));
         ext=str("ext").isEmpty()?movie.ext:str("ext");
         startAt=i.getLongExtra("from",0);knownDur=i.getLongExtra("dur",0);
+        if(!str("show").isEmpty())show=new VodData.Movie(str("show"),str("showName"),str("showIcon"),"",str("showCat"),i.getFloatExtra("showRating",0),i.getLongExtra("showAdded",0));
         root=new FrameLayout(this);root.setBackgroundColor(Color.BLACK);
         surface=new SurfaceView(this);
         root.addView(surface,new FrameLayout.LayoutParams(-1,-1,Gravity.CENTER));
@@ -112,7 +119,7 @@ public final class VodPlayerActivity extends Activity {
                     main.postDelayed(()->open(at),1500);
                     return;
                 }
-                error="تعذّر تشغيل الفيلم";bar.show(true);
+                error=show!=null?"تعذّر تشغيل الحلقة":"تعذّر تشغيل الفيلم";bar.show(true);
             }
         });
         open(Math.max(0,startAt));
@@ -121,9 +128,9 @@ public final class VodPlayerActivity extends Activity {
     }
     private void open(long at){
         if(player==null)return;
-        player.setMediaItem(new MediaItem.Builder().setUri(account.movieUrl(movie.id,ext)).build(),at);
+        player.setMediaItem(new MediaItem.Builder().setUri(show!=null?account.seriesUrl(movie.id,ext):account.movieUrl(movie.id,ext)).build(),at);
         player.prepare();player.setPlayWhenReady(true);
-        log("فتح فيلم · الصيغة "+ext+(at>0?" · من "+VodData.clock(at):""));
+        log((show!=null?"فتح حلقة":"فتح فيلم")+" · الصيغة "+ext+(at>0?" · من "+VodData.clock(at):""));
     }
     private final Runnable saver=new Runnable(){@Override public void run(){save();main.postDelayed(this,10_000);}};
     private void save(){
@@ -131,8 +138,11 @@ public final class VodPlayerActivity extends Activity {
         long dur=player.getDuration()>0?player.getDuration():knownDur;
         long pos=ended?dur:player.getCurrentPosition();
         if(pos<=0&&!ended)return;
-        VodData.saveProgress(this,account,movie,pos,dur);
+        if(show!=null)VodData.saveEpisode(this,account,show,movie.id,pos,dur);
+        else VodData.saveProgress(this,account,movie,pos,dur);
     }
+    /** Saved here, not only on stop: the page under the player resumes (and reads it) before this one stops. */
+    @Override protected void onPause(){save();super.onPause();}
     @Override protected void onStop(){
         if(busy){busy=false;Busy.leave();}
         main.removeCallbacksAndMessages(null);

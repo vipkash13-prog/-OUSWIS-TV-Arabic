@@ -692,14 +692,24 @@ final class RedesignHomeView extends View {
         }
     }
 
-    private static final String[] SHORTCUT_LABELS={"البث المباشر","أفلام","المباريات","كل التطبيقات","الأخيرة","التحديثات","الإعدادات"};
-    private static final String[] SHORTCUT_ICONS={"▣","🎬","⚽","⠿","↻","⤓","⚙"};
+    private static final String[] SHORTCUT_LABELS={"البث المباشر","أفلام","مسلسلات","المباريات","كل التطبيقات","الأخيرة","التحديثات","الإعدادات"};
+    private static final String[] SHORTCUT_ICONS={"▣","🎬","📺","⚽","⠿","↻","⤓","⚙"};
+    private final float[] shortcutRight=new float[SHORTCUT_LABELS.length],shortcutWidth=new float[SHORTCUT_LABELS.length];
+    /** Eight across the row: each as wide as its words and icon, the room left shared out evenly, 16 apart. Worked out once. */
+    private void layoutShortcuts(Paint lab){
+        if(shortcutWidth[0]>0)return;
+        int n=SHORTCUT_LABELS.length;float sum=0;
+        for(int i=0;i<n;i++){shortcutWidth[i]=lab.measureText(SHORTCUT_LABELS[i])+30+56;sum+=shortcutWidth[i];}
+        float extra=Math.max(0,(1775-16*(n-1)-sum)/n),right=1847;
+        for(int i=0;i<n;i++){shortcutWidth[i]+=extra;shortcutRight[i]=right;right-=shortcutWidth[i]+16;}
+    }
     private void drawShortcuts(Canvas c){
-        for(int i=0;i<SHORTCUT_LABELS.length;i++){   // seven across the same width: 240 wide, 16 apart
-            float right=1847-i*256;
-            r.set(right-240,828,right,904);RectF box=ring(r,focus(4,i));
+        Paint lab=tx(Design.TEXT,23,Design.bold());
+        layoutShortcuts(lab);
+        for(int i=0;i<SHORTCUT_LABELS.length;i++){
+            float right=shortcutRight[i];
+            r.set(right-shortcutWidth[i],828,right,904);RectF box=ring(r,focus(4,i));
             Design.card(c,box,26,1,p,Design.SURFACE);
-            Paint lab=tx(Design.TEXT,23,Design.bold());
             float tw=lab.measureText(SHORTCUT_LABELS[i]);
             Design.center(c,SHORTCUT_LABELS[i],box.centerX()-12,box.centerY()+8,lab);
             Design.center(c,SHORTCUT_ICONS[i],box.centerX()-12+tw/2+30,box.centerY()+9,tx(Design.GOLD,26,Design.bold()));
@@ -776,10 +786,11 @@ final class RedesignHomeView extends View {
                 switch(cl){
                     case 0:start(new Intent(ctx,LiveActivity.class));break;
                     case 1:start(new Intent(ctx,MoviesActivity.class));break;
-                    case 2:start(new Intent(ctx,MatchesScreenActivity.class));break;
-                    case 3:start(new Intent(ctx,AllAppsActivity.class));break;
-                    case 4:host.openClassic(true);break;
-                    case 5:start(new Intent(ctx,UpdatesActivity.class));break;
+                    case 2:start(new Intent(ctx,MoviesActivity.class).putExtra(MoviesActivity.EXTRA_SERIES,true));break;
+                    case 3:start(new Intent(ctx,MatchesScreenActivity.class));break;
+                    case 4:start(new Intent(ctx,AllAppsActivity.class));break;
+                    case 5:host.openClassic(true);break;
+                    case 6:start(new Intent(ctx,UpdatesActivity.class));break;
                     default:start(new Intent().setComponent(new ComponentName(ctx,SettingsActivity.class)));
                 }
         }

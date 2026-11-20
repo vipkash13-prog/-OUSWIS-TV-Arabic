@@ -22,13 +22,17 @@ import java.util.List;
 /**
  * The films screen (movies.png): the sections on the right (continue watching, favourites, newest, then the
  * subscription's own), a grid of posters with the rating and the name, search by name and the sort order. Only the
- * section in front is held in memory; posters load for the rows on screen and the next one.
+ * section in front is held in memory; posters load for the rows on screen and the next one. With EXTRA_SERIES the same
+ * screen lists the subscription's series, and a pick opens the series' page (SeriesActivity).
  */
 public final class MoviesActivity extends Activity {
     private final Handler main=new Handler(Looper.getMainLooper());
     private XtreamAccount account;
     private VodData data;
     private GridView view;
+    static final String EXTRA_SERIES="series";
+    private boolean series;
+    private String w(String film,String show){return series?show:film;}
 
     @Override public void finish(){super.finish();overridePendingTransition(0,0);}
     @Override protected void onCreate(Bundle b){
@@ -38,7 +42,8 @@ public final class MoviesActivity extends Activity {
         getWindow().getDecorView().setSystemUiVisibility(5894);
         account=XtreamAccount.read(this);
         if(account==null){startActivity(new Intent(this,XtreamActivity.class));finish();return;}
-        data=new VodData(this,account);
+        series=getIntent().getBooleanExtra(EXTRA_SERIES,false);
+        data=new VodData(this,account,series);
         view=new GridView(this);
         FrameLayout root=new FrameLayout(this);
         root.addView(view,new FrameLayout.LayoutParams(-1,-1));
@@ -122,7 +127,7 @@ public final class MoviesActivity extends Activity {
             java.text.SimpleDateFormat f=new java.text.SimpleDateFormat("h:mm a",Design.AR);
             f.setTimeZone(java.util.TimeZone.getTimeZone("Asia/Riyadh"));return f.format(new java.util.Date());
         }
-        private String count(int n){return String.format(java.util.Locale.US,"%,d",n)+" فيلم";}
+        private String count(int n){return String.format(java.util.Locale.US,"%,d",n)+w(" فيلم"," مسلسل");}
 
         @Override protected void onDraw(Canvas c){
             int w=getWidth(),h=getHeight();
@@ -134,12 +139,12 @@ public final class MoviesActivity extends Activity {
             VodData.Category cur=secs.get(sec);
             List<VodData.Movie> list=shown();
             // header: title, what is shown, and the chips
-            Design.right(c,"الأفلام",1780,82,title);
-            Design.right(c,"🎬",1848,82,icon);
+            Design.right(c,w("الأفلام","المسلسلات"),1780,82,title);
+            Design.right(c,w("🎬","📺"),1848,82,icon);
             String what=cur.id.equals(VodData.NEWEST)?(data.total>=0?"أحدث الإضافات · "+count(data.total):"أحدث الإضافات"):
                     cur.shown+(data.cached(cur.id)!=null?" · "+count(list.size()):"");
             Design.right(c,what,1848,112,sub);
-            a11y.add(1100,30,1848,122,"الأفلام · "+what,false,false);
+            a11y.add(1100,30,1848,122,w("الأفلام","المسلسلات")+" · "+what,false,false);
             String[] chips={"⌕ بحث","ترتيب: "+sortName(),clock()};
             float[][] cr={{362,460},{190,349},{72,177}};
             for(int i=0;i<3;i++){
@@ -171,12 +176,12 @@ public final class MoviesActivity extends Activity {
             if(list.isEmpty()){
                 boolean own=cur.id.equals(VodData.CONTINUE)||cur.id.equals(VodData.FAVORITES);
                 String m;
-                if(!own&&data.failed(cur.id))m=cur.id.equals(VodData.NEWEST)&&data.categoriesFailed?"تعذّر الاتصال بالاشتراك":"تعذّر تحميل الأفلام · اضغط OK على القسم لإعادة المحاولة";
-                else if(!own&&(data.loading(cur.id)||data.cached(cur.id)==null))m=cur.id.equals(VodData.SEARCH)?"جارٍ البحث…":"جارٍ تحميل الأفلام…";
-                else if(cur.id.equals(VodData.CONTINUE))m="لا توجد أفلام لمتابعتها";
-                else if(cur.id.equals(VodData.FAVORITES))m="لا توجد أفلام مفضلة: اضغط OK مطوّلاً على فيلم";
+                if(!own&&data.failed(cur.id))m=cur.id.equals(VodData.NEWEST)&&data.categoriesFailed?"تعذّر الاتصال بالاشتراك":w("تعذّر تحميل الأفلام","تعذّر تحميل المسلسلات")+" · اضغط OK على القسم لإعادة المحاولة";
+                else if(!own&&(data.loading(cur.id)||data.cached(cur.id)==null))m=cur.id.equals(VodData.SEARCH)?"جارٍ البحث…":w("جارٍ تحميل الأفلام…","جارٍ تحميل المسلسلات…");
+                else if(cur.id.equals(VodData.CONTINUE))m=w("لا توجد أفلام لمتابعتها","لا توجد مسلسلات لمتابعتها");
+                else if(cur.id.equals(VodData.FAVORITES))m=w("لا توجد أفلام مفضلة: اضغط OK مطوّلاً على فيلم","لا توجد مسلسلات مفضلة: اضغط OK مطوّلاً على مسلسل");
                 else if(cur.id.equals(VodData.SEARCH))m="لا توجد نتائج";
-                else m="لا توجد أفلام في هذا القسم";
+                else m=w("لا توجد أفلام في هذا القسم","لا توجد مسلسلات في هذا القسم");
                 Design.center(c,m,(120+RIGHT)/2f,560,msg);
                 a11y.add(120,520,RIGHT,600,m,false,false);
             }
@@ -198,7 +203,7 @@ public final class MoviesActivity extends Activity {
             for(int i=(top+ROWS)*COLS;i<Math.min(list.size(),(top+ROWS+1)*COLS);i++)PosterCache.get(list.get(i).icon,PosterCache.GRID,null);
             // footer
             Design.right(c,"OK تفاصيل · ▲▼◀▶ تنقل · ضغطة مطوّلة = مفضلة",1848,1054,hint);
-            Design.left(c,"الأفلام",72,1054,hint);
+            Design.left(c,w("الأفلام","المسلسلات"),72,1054,hint);
             c.restore();
         }
 
@@ -255,7 +260,7 @@ public final class MoviesActivity extends Activity {
                     if(sel>=0&&sel<list.size()){
                         VodData.Movie m=list.get(sel);
                         String name=data.categoryName(m.cat);
-                        startActivity(details(getContext(),m,name));
+                        startActivity(series?SeriesActivity.intent(getContext(),m,name):details(getContext(),m,name));
                     }
                 }
                 return true;
@@ -264,8 +269,8 @@ public final class MoviesActivity extends Activity {
         }
         private void askSearch(){
             final EditText input=new EditText(getContext());input.setSingleLine(true);input.setText(data.searchFor);
-            input.setHint("اسم الفيلم");
-            new AlertDialog.Builder(getContext()).setTitle("بحث في الأفلام").setView(input)
+            input.setHint(w("اسم الفيلم","اسم المسلسل"));
+            new AlertDialog.Builder(getContext()).setTitle(w("بحث في الأفلام","بحث في المسلسلات")).setView(input)
                     .setPositiveButton("بحث",(d,w)->{
                         String q=input.getText().toString().trim();
                         boolean had=!data.searchFor.isEmpty();

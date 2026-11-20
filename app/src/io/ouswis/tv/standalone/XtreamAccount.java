@@ -31,6 +31,8 @@ final class XtreamAccount {
     String liveUrlAlt(String id,String ext){return server+"/"+enc(user)+"/"+enc(pass)+"/"+enc(id)+"."+ext;}
     /** A film's address, /movie/USER/PASS/ID.ext (it holds the password too). */
     String movieUrl(String id,String ext){return server+"/movie/"+enc(user)+"/"+enc(pass)+"/"+enc(id)+"."+(ext==null||ext.isEmpty()?"mp4":ext);}
+    /** An episode's address, /series/USER/PASS/ID.ext (it holds the password too). */
+    String seriesUrl(String id,String ext){return server+"/series/"+enc(user)+"/"+enc(pass)+"/"+enc(id)+"."+(ext==null||ext.isEmpty()?"mp4":ext);}
     String api(String action,String extra){
         return server+"/player_api.php?username="+enc(user)+"&password="+enc(pass)
                 +(action==null?"":"&action="+action)+(extra==null?"":"&"+extra);
